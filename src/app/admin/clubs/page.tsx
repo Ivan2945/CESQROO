@@ -1,36 +1,36 @@
-import { requireAdmin } from "@/lib/auth/requireAdmin";
-import { supabaseServer } from "@/lib/supabase/server";
-import { createClubAction } from "./actions";
+"use client";
 
-export default async function AdminClubsPage() {
-  await requireAdmin();
+import { useActionState } from "react";
+import { createClubAction, type CreateClubState } from "./actions";
 
-  const supabase = await supabaseServer();
-  const { data: clubs, error } = await supabase
-    .from("clubs")
-    .select("id, name, slug, created_at")
-    .order("created_at", { ascending: false });
-
-  if (error) throw new Error(error.message);
+export default function AdminClubsPage() {
+  const [state, formAction] = useActionState<CreateClubState | null, FormData>(
+    createClubAction,
+    null
+  );
 
   return (
-    <div style={{ padding: 24 }}>
+    <main style={{ padding: 24 }}>
       <h1>Admin • Clubs</h1>
 
-      <form action={createClubAction} style={{ display: "grid", gap: 8, maxWidth: 420, marginTop: 16 }}>
-        <input name="name" placeholder="Club name" />
+      <form action={formAction} style={{ display: "grid", gap: 8, maxWidth: 420, marginTop: 16 }}>
+        <input name="name" placeholder="Club name" required />
         <input name="slug" placeholder="slug (optional)" />
         <button type="submit">Create club</button>
-      </form>
 
-      <h2 style={{ marginTop: 24 }}>Existing clubs</h2>
-      <ul>
-        {clubs?.map((c) => (
-          <li key={c.id}>
-            {c.name} — <code>{c.slug}</code>
-          </li>
-        ))}
-      </ul>
-    </div>
+        {state?.message ? (
+          <p style={{ margin: 0, color: state.ok ? "green" : "crimson" }}>
+            {state.message}
+          </p>
+        ) : null}
+
+        {state?.ok ? (
+          <p style={{ margin: 0, opacity: 0.8 }}>
+            Created: <b>{state.club.name}</b>
+            {state.club.slug ? ` (${state.club.slug})` : ""}
+          </p>
+        ) : null}
+      </form>
+    </main>
   );
 }

@@ -3,25 +3,29 @@
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
 import { revalidatePath } from "next/cache";
 
-type ActionState = {
-  ok: boolean;
-  message: string;
-  club?: { id: string; name: string; slug: string | null };
-};
+export type CreateClubState =
+  | { ok: true; message: string; club: { id: string; name: string; slug: string | null } }
+  | { ok: false; message: string };
 
 function getText(fd: FormData, key: string) {
   const v = fd.get(key);
   return typeof v === "string" ? v.trim() : "";
 }
 
-export async function createClubAction(_prev: ActionState | null, formData: FormData): Promise<ActionState> {
+export async function createClubAction(
+  _prev: CreateClubState | null,
+  formData: FormData
+): Promise<CreateClubState> {
   const { supabase, profile } = await requireClubAdmin();
-  if (profile.role !== "admin") return { ok: false, message: "Access denied." };
+
+  if (profile.role !== "admin") {
+    return { ok: false, message: "Access denied." };
+  }
 
   const name = getText(formData, "name");
   const slug = getText(formData, "slug") || null;
 
-  if (!name) return { ok: false, message: "Name is required." };
+  if (!name) return { ok: false, message: "Club name is required." };
 
   const { data, error } = await supabase
     .from("clubs")

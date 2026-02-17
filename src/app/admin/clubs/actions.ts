@@ -1,23 +1,27 @@
 "use server";
 
-import { supabaseServer } from "@/lib/supabase/server";
+import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
+import { revalidatePath } from "next/cache";
 
-function slugify(input: string) {
-  return input
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/(^-|-$)+/g, "");
+type ActionState = {
+  ok: boolean;
+  message: string;
+  club?: { id: string; name: string; slug: string | null };
+};
+
+function getText(fd: FormData, key: string) {
+  const v = fd.get(key);
+  return typeof v === "string" ? v.trim() : "";
 }
 
-export async function createClubAction(formData: FormData) {
-  const supabase = await supabaseServer();
+export async function createClubAction(_prev: ActionState | null, formData: FormData): Promise<ActionState> {
+  const { supabase, profile } = await requireClubAdmin();
+  if (profile.role !== "admin") return { ok: false, message: "Access denied." };
 
-  const name = String(formData.get("name") ?? "").trim();
-  let slug = String(formData.get("slug") ?? "").trim();
+  const name = getText(formData, "name");
+  const slug = getText(formData, "slug") || null;
 
-  if (!name) throw new Error("Club name is required.");
-  if (!slug) slug = slugify(name);
+  if (!name) return { ok: false, message: "Name is required." };
 
   const { data, error } = await supabase
     .from("clubs")
@@ -25,6 +29,11 @@ export async function createClubAction(formData: FormData) {
     .select("id, name, slug")
     .single();
 
-  if (error) throw new Error(error.message);
-  return data;
+  if (error) return { ok: false, message: error.message };
+
+  revalidatePath("/admin");
+  revalidatePath("/admin/clubs");
+
+  return { ok: true, message: "Club created.", club: data };
 }
+

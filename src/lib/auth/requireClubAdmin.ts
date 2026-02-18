@@ -29,15 +29,17 @@ export async function requireClubAdmin() {
   const isAllowed = profile.role === "admin" || profile.role === "club_admin";
   if (!isAllowed) redirect("/");
 
+  const hasClub =
+    typeof profile.club_id === "string" && profile.club_id.trim().length > 0;
+
   // club_admin MUST have a club_id; admin can be null
-  if (profile.role === "club_admin" && !profile.club_id) redirect("/admin/clubs");
+  if (profile.role === "club_admin" && !hasClub) redirect("/no-club");
 
   return {
     user,
-    profile,                 // ✅ lowercase variable
-    clubId: profile.club_id, // can be null for global admin
+    profile,
+    clubId: profile.club_id,
     isAdmin: profile.role === "admin",
     supabase,
   };
 }
-

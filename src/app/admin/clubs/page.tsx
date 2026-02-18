@@ -1,5 +1,6 @@
 "use client";
 
+import { requireAdmin } from "@/lib/auth/requireAdmin";
 import { useActionState } from "react";
 import { createClubAction } from "./actions";
 import type { ActionResult } from "../actionTypes";

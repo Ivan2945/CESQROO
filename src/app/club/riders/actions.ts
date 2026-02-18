@@ -158,3 +158,18 @@ export async function unlinkHorseFromRiderAction(riderId: string, horseId: strin
   revalidatePath(`/club/riders/${riderId}`);
   revalidatePath(`/club/horses/${horseId}`);
 }
+
+import type { ActionResult } from "@/app/admin/actionTypes";
+
+// AdminQuickCreate wrapper (useActionState signature)
+export async function createRiderActionState(
+  _prev: ActionResult,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    await createRiderAction(formData); // calls your existing 1-arg action
+    return { ok: true, message: "Rider created.", data: undefined };
+  } catch (e: any) {
+    return { ok: false, message: e?.message ?? "Failed to create rider." };
+  }
+}

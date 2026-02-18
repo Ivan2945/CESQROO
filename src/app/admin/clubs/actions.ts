@@ -2,10 +2,9 @@
 
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
 import { revalidatePath } from "next/cache";
+import type { ActionResult } from "../actionTypes"; // <-- note: from src/app/admin/clubs to src/app/admin
 
-export type CreateClubState =
-  | { ok: true; message: string; club: { id: string; name: string; slug: string | null } }
-  | { ok: false; message: string };
+type Club = { id: string; name: string; slug: string | null };
 
 function getText(fd: FormData, key: string) {
   const v = fd.get(key);
@@ -13,18 +12,15 @@ function getText(fd: FormData, key: string) {
 }
 
 export async function createClubAction(
-  _prev: CreateClubState | null,
+  _prev: ActionResult<Club>,
   formData: FormData
-): Promise<CreateClubState> {
+): Promise<ActionResult<Club>> {
   const { supabase, profile } = await requireClubAdmin();
 
-  if (profile.role !== "admin") {
-    return { ok: false, message: "Access denied." };
-  }
+  if (profile.role !== "admin") return { ok: false, message: "Access denied." };
 
   const name = getText(formData, "name");
   const slug = getText(formData, "slug") || null;
-
   if (!name) return { ok: false, message: "Club name is required." };
 
   const { data, error } = await supabase
@@ -38,6 +34,5 @@ export async function createClubAction(
   revalidatePath("/admin");
   revalidatePath("/admin/clubs");
 
-  return { ok: true, message: "Club created.", club: data };
+  return { ok: true, message: "Club created.", data };
 }
-

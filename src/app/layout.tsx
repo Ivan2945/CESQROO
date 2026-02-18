@@ -27,7 +27,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`} style={{ margin: 0 }}>
         {/* Shows only when logged in */}
-        {/* @ts-expect-error Server Component */}
         <AppHeader />
 
         <main style={{ padding: 20 }}>{children}</main>

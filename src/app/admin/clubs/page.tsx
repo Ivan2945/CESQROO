@@ -1,10 +1,13 @@
 "use client";
 
 import { useActionState } from "react";
-import { createClubAction, type CreateClubState } from "./actions";
+import { createClubAction } from "./actions";
+import type { ActionResult } from "../actionTypes";
+
+type Club = { id: string; name: string; slug: string | null };
 
 export default function AdminClubsPage() {
-  const [state, formAction] = useActionState<CreateClubState | null, FormData>(
+  const [state, formAction] = useActionState<ActionResult<Club>, FormData>(
     createClubAction,
     null
   );
@@ -26,11 +29,12 @@ export default function AdminClubsPage() {
 
         {state?.ok ? (
           <p style={{ margin: 0, opacity: 0.8 }}>
-            Created: <b>{state.club.name}</b>
-            {state.club.slug ? ` (${state.club.slug})` : ""}
+            Created: <b>{state.data.name}</b>
+            {state.data.slug ? ` (${state.data.slug})` : ""}
           </p>
         ) : null}
       </form>
     </main>
   );
 }
+

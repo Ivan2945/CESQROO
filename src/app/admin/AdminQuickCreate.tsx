@@ -1,12 +1,14 @@
 "use client";
 
-import React, { useEffect, useMemo, useState, useActionState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { useActionState } from "react";
+
 import { useFormStatus } from "react-dom";
+import type { ActionResult } from "./actionTypes";
 
 type Club = { id: string; name: string | null };
 type Panel = "club" | "rider" | "horse" | "test";
 
-type ActionResult = { ok: boolean; message: string } | null;
 
 function SubmitButton({ children }: { children: React.ReactNode }) {
   const { pending } = useFormStatus();
@@ -21,7 +23,7 @@ function SubmitButton({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Message({ state }: { state: ActionResult }) {
+function Message({ state }: { state: ActionResult<any> }) {
   if (!state) return null;
   return (
     <p style={{ margin: 0, opacity: 0.85 }}>
@@ -39,11 +41,16 @@ export default function AdminQuickCreate({
   createHorseTestAction,
 }: {
   clubs: Club[];
-  createClubAction: (prevState: ActionResult, formData: FormData) => Promise<ActionResult>;
-  createRiderAction: (prevState: ActionResult, formData: FormData) => Promise<ActionResult>;
-  createHorseAction: (prevState: ActionResult, formData: FormData) => Promise<ActionResult>;
-  createHorseTestAction: (prevState: ActionResult, formData: FormData) => Promise<ActionResult>;
+  createClubAction: (
+    prevState: ActionResult<{ id: string; name: string; slug: string | null }>,
+    formData: FormData
+  ) => Promise<ActionResult<{ id: string; name: string; slug: string | null }>>;
+ createRiderAction: (prevState: ActionResult, formData: FormData) => Promise<ActionResult>;
+createHorseAction: (prevState: ActionResult, formData: FormData) => Promise<ActionResult>;
+createHorseTestAction: (prevState: ActionResult, formData: FormData) => Promise<ActionResult>;
+
 }) {
+
   const [open, setOpen] = useState<Panel | null>(null);
 
   // Shared club selection for the "test" panel to load horses

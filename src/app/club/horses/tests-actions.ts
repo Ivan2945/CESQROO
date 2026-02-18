@@ -87,3 +87,21 @@ export async function updateHorseTestAction(testId: string, horseId: string, for
   revalidatePath(`/club/horses/${horseId}`);
   revalidatePath("/club/tests");
 }
+
+import type { ActionResult } from "@/app/admin/actionTypes";
+
+export async function createHorseTestActionState(
+  _prev: ActionResult,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    const horseId = getText(formData, "horse_id");
+    if (!horseId) throw new Error("horse_id is required.");
+
+    await createHorseTestAction(horseId, formData);
+
+    return { ok: true, message: "Test added.", data: undefined };
+  } catch (e: any) {
+    return { ok: false, message: e?.message ?? "Failed to add test." };
+  }
+}

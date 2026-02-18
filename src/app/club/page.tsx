@@ -94,7 +94,9 @@ export default async function ClubHome() {
 
   if (horsesForTestsErr) throw new Error(horsesForTestsErr.message);
 
-  const horseNameById = new Map((horsesForTests ?? []).map((h: any) => [h.id, h]));
+  type HorseRow = { id: string; name: string | null };
+
+
 
   const today = todayISO();
   const in30 = addDaysISO(30);
@@ -111,6 +113,11 @@ export default async function ClubHome() {
 
   const { data: horses, error: horsesErr } = await horsesQuery;
   if (horsesErr) throw new Error(horsesErr.message);
+
+
+const horseNameById = new Map<string, HorseRow>(
+  ((horses ?? []) as HorseRow[]).map((h) => [h.id, h] as const)
+);
 
   // -------------------------
   // 3) Riders (third)

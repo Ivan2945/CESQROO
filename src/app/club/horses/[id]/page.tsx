@@ -42,6 +42,20 @@ function rowStyle(status: "expired" | "expiring" | "valid") {
   return { background: "rgba(0,128,0,0.06)" };
 }
 
+type RiderHorseLinkRow = {
+  rider_id: string;
+  relationship: string | null;
+  created_at: string;
+};
+
+type RiderRow = {
+  id: string;
+  first_name: string;
+  last_name: string;
+  status: string | null;
+};
+
+
 export default async function HorseDetailPage({
   params,
 }: {
@@ -93,7 +107,9 @@ export default async function HorseDetailPage({
   const { data: links, error: linksErr } = await linksQuery;
   if (linksErr) throw new Error(linksErr.message);
 
-  const riderIds = (links ?? []).map((l: any) => l.rider_id);
+ const typedLinks = (links ?? []) as RiderHorseLinkRow[];
+const riderIds = typedLinks.map((l) => l.rider_id);
+
 
   // Linked riders (scoped)
   let linkedRidersQuery = supabase
@@ -104,13 +120,19 @@ export default async function HorseDetailPage({
 
   linkedRidersQuery = applyClubScope(linkedRidersQuery, profile, clubId);
 
-  const { data: linkedRiders, error: ridersErr } = riderIds.length
-    ? await linkedRidersQuery
-    : ({ data: [], error: null } as any);
+const { data: linkedRidersRaw, error: ridersErr } = riderIds.length
+  ? await linkedRidersQuery
+  : ({ data: [], error: null } as { data: RiderRow[]; error: null });
 
-  if (ridersErr) throw new Error(ridersErr.message);
+if (ridersErr) throw new Error(ridersErr.message);
 
-  const linkedById = new Map((linkedRiders ?? []).map((r: any) => [r.id, r]));
+const linkedRiders = (linkedRidersRaw ?? []) as RiderRow[];
+
+// IMPORTANT: type the Map so .get() returns RiderRow | undefined
+const linkedById = new Map<string, RiderRow>(
+  linkedRiders.map((r) => [r.id, r] as const)
+);
+
 
   // All riders for linking dropdown (scoped)
   let allRidersQuery = supabase
@@ -124,9 +146,10 @@ export default async function HorseDetailPage({
   if (allRErr) throw new Error(allRErr.message);
 
   const linkedSet = new Set(riderIds);
-  const availableRiders = (allRiders ?? []).filter(
-    (r: any) => !linkedSet.has(r.id) && r.status === "active"
-  );
+  const availableRiders = ((allRiders ?? []) as RiderRow[]).filter(
+  (r) => !linkedSet.has(r.id) && r.status === "active"
+);
+
 
   // Horse tests (scoped)
   let testsQuery = supabase
@@ -373,9 +396,10 @@ export default async function HorseDetailPage({
 
       {(links?.length ?? 0) ? (
         <ul style={{ paddingLeft: 18 }}>
-          {links!.map((l: any) => {
-            const r = linkedById.get(l.rider_id);
-            const label = r ? `${r.last_name}, ${r.first_name} (${r.status})` : l.rider_id;
+          {typedLinks.map((l) => {
+  const r = linkedById.get(l.rider_id);
+  const label = r ? `${r.last_name}, ${r.first_name} (${r.status ?? ""})` : l.rider_id;
+
 
             return (
               <li key={l.rider_id} style={{ marginBottom: 8 }}>
@@ -414,7 +438,7 @@ export default async function HorseDetailPage({
       >
         <select name="rider_id" required style={{ padding: 8, minWidth: 240 }}>
           <option value="">Select rider…</option>
-          {availableRiders.map((r: any) => (
+          {availableRiders.map((r) => (
             <option key={r.id} value={r.id}>
               {r.last_name}, {r.first_name}
             </option>

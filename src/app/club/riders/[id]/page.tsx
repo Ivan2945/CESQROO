@@ -8,6 +8,21 @@ import {
   updateRiderAction,
 } from "../actions";
 
+
+type RiderHorseLinkRow = {
+  horse_id: string;
+  relationship: string | null;
+  created_at: string;
+};
+
+type HorseRow = {
+  id: string;
+  name: string | null;
+  status: string | null; // or "active" | "inactive" if you want
+};
+
+
+
 export default async function RiderDetailPage({
   params,
 }: {
@@ -62,7 +77,9 @@ export default async function RiderDetailPage({
   const { data: links, error: linksErr } = await linksQuery;
   if (linksErr) throw new Error(linksErr.message);
 
-  const horseIds = (links ?? []).map((l: any) => l.horse_id);
+  const typedLinks = (links ?? []) as RiderHorseLinkRow[];
+const horseIds = typedLinks.map((l) => l.horse_id);
+
 
   // Linked horses (scoped)
   let linkedHorsesQuery = supabase
@@ -73,13 +90,18 @@ export default async function RiderDetailPage({
 
   linkedHorsesQuery = applyClubScope(linkedHorsesQuery, profile, clubId);
 
-  const { data: linkedHorses, error: horsesErr } = horseIds.length
-    ? await linkedHorsesQuery
-    : ({ data: [], error: null } as any);
+  const { data: linkedHorsesRaw, error: horsesErr } = horseIds.length
+  ? await linkedHorsesQuery
+  : ({ data: [], error: null } as { data: HorseRow[]; error: null });
 
-  if (horsesErr) throw new Error(horsesErr.message);
+if (horsesErr) throw new Error(horsesErr.message);
 
-  const linkedById = new Map((linkedHorses ?? []).map((h: any) => [h.id, h]));
+const linkedHorses = (linkedHorsesRaw ?? []) as HorseRow[];
+
+const linkedById = new Map<string, HorseRow>(
+  linkedHorses.map((h) => [h.id, h] as const)
+);
+
 
   // Horses available to link (scoped)
   let allHorsesQuery = supabase
@@ -93,9 +115,10 @@ export default async function RiderDetailPage({
   if (allHErr) throw new Error(allHErr.message);
 
   const linkedSet = new Set(horseIds);
-  const available = (allHorses ?? []).filter(
-    (h: any) => !linkedSet.has(h.id) && h.status === "active"
-  );
+ const available = ((allHorses ?? []) as HorseRow[]).filter(
+  (h) => !linkedSet.has(h.id) && h.status === "active"
+);
+
 
   return (
     <>
@@ -184,41 +207,44 @@ export default async function RiderDetailPage({
 
       <h3 style={{ marginTop: 0 }}>Linked Horses</h3>
 
-      {(links?.length ?? 0) ? (
-        <ul style={{ paddingLeft: 18 }}>
-          {links!.map((l: any) => {
-            const h = linkedById.get(l.horse_id);
-            return (
-              <li key={l.horse_id} style={{ marginBottom: 8 }}>
-                <span>
-                  {h ? `${h.name} (${h.status})` : l.horse_id}
-                  {l.relationship ? ` — ${l.relationship}` : ""}
-                </span>{" "}
-                <form
-                  action={unlinkHorseFromRiderAction.bind(null, riderId, l.horse_id)}
-                  style={{ display: "inline" }}
-                >
-                  {/* For admin-safe unlink action */}
-                  {profile.role === "admin" ? (
-                    <input type="hidden" name="club_id" value={rider.club_id} />
-                  ) : null}
+      {(typedLinks.length ?? 0) ? (
+  <ul style={{ paddingLeft: 18 }}>
+    {typedLinks.map((l) => {
+      const h = linkedById.get(l.horse_id);
+      const label = h ? `${h.name ?? "(no name)"} (${h.status ?? ""})` : l.horse_id;
 
-                  <button type="submit" style={{ marginLeft: 8 }}>
-                    Unlink
-                  </button>
-                </form>{" "}
-                {h && (
-                  <Link href={`/club/horses/${h.id}`} style={{ marginLeft: 8 }}>
-                    Open horse
-                  </Link>
-                )}
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <p>No linked horses.</p>
-      )}
+      return (
+        <li key={l.horse_id} style={{ marginBottom: 8 }}>
+          <span>
+            {label}
+            {l.relationship ? ` — ${l.relationship}` : ""}
+          </span>{" "}
+          <form
+            action={unlinkHorseFromRiderAction.bind(null, riderId, l.horse_id)}
+            style={{ display: "inline" }}
+          >
+            {/* For admin-safe unlink action */}
+            {profile.role === "admin" ? (
+              <input type="hidden" name="club_id" value={rider.club_id} />
+            ) : null}
+
+            <button type="submit" style={{ marginLeft: 8 }}>
+              Unlink
+            </button>
+          </form>{" "}
+          {h && (
+            <Link href={`/club/horses/${h.id}`} style={{ marginLeft: 8 }}>
+              Open horse
+            </Link>
+          )}
+        </li>
+      );
+    })}
+  </ul>
+) : (
+  <p>No linked horses.</p>
+)}
+
 
       <h4 style={{ marginTop: 18 }}>Link a horse</h4>
       <form
@@ -237,7 +263,7 @@ export default async function RiderDetailPage({
 
         <select name="horse_id" required style={{ padding: 8, minWidth: 240 }}>
           <option value="">Select horse…</option>
-          {available.map((h: any) => (
+          {available.map((h) => (
             <option key={h.id} value={h.id}>
               {h.name}
             </option>

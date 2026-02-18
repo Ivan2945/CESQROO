@@ -1,79 +1,116 @@
 "use server";
 
-import { supabaseAdmin } from "@/lib/supabase/admin";
-import { supabaseServer } from "@/lib/supabase/server";
+import { revalidatePath } from "next/cache";
+import { createClient } from "@supabase/supabase-js";
+import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
+import type { ActionResult } from "../actionTypes";
 
-type UserType = "admin" | "club_admin";
+export type UserRole = "admin" | "club_admin" | "user";
 
-export async function createUserAction(formData: FormData) {
-  const supabase = await supabaseServer();
+export type CreatedUser = {
+  user_id: string; // Auth user UUID
+  email: string;
+  name: string;
+  role: UserRole;
+  club_id: string | null;
+  invited: boolean;
+};
 
-  const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  const name = String(formData.get("name") ?? "").trim();
-  const password = String(formData.get("password") ?? "").trim();
+function getText(fd: FormData, key: string) {
+  const v = fd.get(key);
+  return typeof v === "string" ? v.trim() : "";
+}
 
-  const role = String(formData.get("role") ?? "").trim() as UserType;
-  const clubId = String(formData.get("club_id") ?? "").trim();
+function getBool(fd: FormData, key: string) {
+  return fd.get(key) === "on";
+}
 
-  if (!email) throw new Error("Email is required.");
-  if (!password || password.length < 8) throw new Error("Password must be at least 8 characters.");
-  if (role !== "admin" && role !== "club_admin") throw new Error("Invalid role.");
-  if (role === "club_admin" && !clubId) throw new Error("Club is required for club admins.");
+function adminSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  // 1) Create Auth user (service role)
-  const { data: created, error: createErr } = await supabaseAdmin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    user_metadata: { name },
+  if (!url) throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL.");
+  if (!serviceRole) throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY (server-only).");
+
+  return createClient(url, serviceRole, {
+    auth: { persistSession: false, autoRefreshToken: false },
   });
+}
 
-  let userId = created?.user?.id;
+export async function createUserAction(
+  _prev: ActionResult<CreatedUser>,
+  formData: FormData
+): Promise<ActionResult<CreatedUser>> {
+  // Only allow global admin
+  const { profile } = await requireClubAdmin();
+  if (profile.role !== "admin") return { ok: false, message: "Access denied." };
 
-  // If user already exists, recover their user_id from profiles by email
-  // (Since your profiles table has no email column, we can't do profiles.email lookup.)
-  // Instead: try to find user by listing users (small scale OK).
-  if (createErr || !userId) {
-    const { data: listData, error: listErr } = await supabaseAdmin.auth.admin.listUsers({
-      page: 1,
-      perPage: 1000,
-    });
-    if (listErr) throw new Error(listErr.message);
+  const email = getText(formData, "email").toLowerCase();
+  const name = getText(formData, "name");
+  const role = getText(formData, "role") as UserRole;
+  const club_id_raw = getText(formData, "club_id");
+  const club_id = club_id_raw ? club_id_raw : null;
 
-    const match = listData.users.find((u) => (u.email ?? "").toLowerCase() === email);
-    if (!match?.id) throw new Error(createErr?.message ?? "Failed to create user and could not find existing user.");
+  const password = getText(formData, "password"); // optional
+  const send_invite = getBool(formData, "send_invite"); // optional
 
-    userId = match.id;
+  if (!email) return { ok: false, message: "Email is required." };
+  if (!name) return { ok: false, message: "Name is required." };
+  if (!role || !["admin", "club_admin", "user"].includes(role)) {
+    return { ok: false, message: "Role must be admin, club_admin, or user." };
+  }
+  if ((role === "club_admin" || role === "user") && !club_id) {
+    return { ok: false, message: "club_id is required for club_admin/user." };
   }
 
-  // 2) Upsert profile (your schema: user_id, club_id, role, name)
-  const profileClubId = role === "club_admin" ? clubId : null;
+  const adminClient = adminSupabase();
 
-  const { error: profErr } = await supabase
+  // 1) Create Auth user
+  let user_id: string;
+  let invited = false;
+
+  if (send_invite && !password) {
+    const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email);
+    if (error) return { ok: false, message: error.message };
+    if (!data?.user?.id) return { ok: false, message: "Invite failed (no user id returned)." };
+    user_id = data.user.id;
+    invited = true;
+  } else {
+    const { data, error } = await adminClient.auth.admin.createUser({
+      email,
+      password: password || undefined,
+      email_confirm: true,
+      user_metadata: { name },
+    });
+    if (error) return { ok: false, message: error.message };
+    if (!data?.user?.id) return { ok: false, message: "Create user failed (no user id returned)." };
+    user_id = data.user.id;
+    invited = false;
+  }
+
+  // 2) Upsert into public.profiles ONLY
+  // Assumes profiles has: user_id, club_id, name, role, created_at
+  const { error: profErr } = await adminClient
     .from("profiles")
     .upsert(
       {
-        user_id: userId,
-        club_id: profileClubId,
+        user_id,
+        club_id,
+        name,
         role,
-        name: name || null,
       },
       { onConflict: "user_id" }
     );
 
-  if (profErr) throw new Error(profErr.message);
-
-  // 3) If club_admin, upsert membership row (club_memberships: club_id, user_id, role)
-  if (role === "club_admin") {
-    const { error: memErr } = await supabase
-      .from("club_memberships")
-      .upsert(
-        { club_id: clubId, user_id: userId, role: "club_admin" },
-        { onConflict: "club_id,user_id" }
-      );
-
-    if (memErr) throw new Error(memErr.message);
+  if (profErr) {
+    return { ok: false, message: `Auth user created, but profiles upsert failed: ${profErr.message}` };
   }
 
-  return { userId, email, role, clubId: role === "club_admin" ? clubId : null };
+  revalidatePath("/admin/users");
+
+  return {
+    ok: true,
+    message: invited ? "User invited." : "User created.",
+    data: { user_id, email, name, role, club_id, invited },
+  };
 }

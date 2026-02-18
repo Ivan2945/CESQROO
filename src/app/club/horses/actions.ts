@@ -170,3 +170,17 @@ export async function unlinkRiderFromHorseAction(horseId: string, riderId: strin
   revalidatePath(`/club/horses/${horseId}`);
   revalidatePath(`/club/riders/${riderId}`);
 }
+
+import type { ActionResult } from "@/app/admin/actionTypes";
+
+export async function createHorseActionState(
+  _prev: ActionResult,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    await createHorseAction(formData);
+    return { ok: true, message: "Horse created.", data: undefined };
+  } catch (e: any) {
+    return { ok: false, message: e?.message ?? "Failed to create horse." };
+  }
+}

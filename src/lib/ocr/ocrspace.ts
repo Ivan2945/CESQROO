@@ -20,6 +20,12 @@ export async function ocrSpacePdfToText(params: {
     contentType: "application/pdf",
   });
 
+  // DEBUG — remove after testing
+  console.log("OCR filename:", params.filename);
+  console.log("OCR buffer length:", params.pdfBuffer?.length);
+  console.log("OCR key present:", !!params.apiKey);
+  console.log("OCR key prefix:", params.apiKey?.slice(0, 4));
+
   const res = await fetch("https://api.ocr.space/parse/image", {
     method: "POST",
     headers: form.getHeaders(), // required for multipart boundary

@@ -1,4 +1,6 @@
+// src/app/club/tests/page.tsx
 import Link from "next/link";
+import TestsActions from "./TestsActions.client";
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
 import { applyClubScope } from "@/lib/db/applyClubScope";
 
@@ -53,16 +55,19 @@ export default async function TestsDashboardPage() {
   const today = todayISO();
   const in30 = addDaysISO(30);
 
+  // CURRENT tests
   let query = supabase
     .from("horse_tests")
     .select(
       `
       id,
+      club_id,
       horse_id,
       test_type,
       reg_number,
       test_date,
       expires_on,
+      result,
       horses:horse_id (
         id,
         name,
@@ -81,12 +86,25 @@ export default async function TestsDashboardPage() {
   const expiringSoon = (tests ?? []).filter((t) => t.expires_on >= today && t.expires_on <= in30);
   const validLater = (tests ?? []).filter((t) => t.expires_on > in30);
 
+  // Horses list for Quick Add dropdown
+  let hq = supabase
+    .from("horses")
+    .select("id,name,microchip,status")
+    .order("name", { ascending: true });
+
+  hq = applyClubScope(hq, profile, clubId);
+
+  const { data: horses, error: horsesErr } = await hq;
+  if (horsesErr) throw new Error(horsesErr.message);
+
   return (
     <>
       <h2 style={{ margin: 0 }}>Medical Tests Dashboard</h2>
       <p style={{ marginTop: 8, opacity: 0.8 }}>
         Today: <b>{today}</b> • Expiring window through: <b>{in30}</b>
       </p>
+
+      <TestsActions horses={horses ?? []} />
 
       <Section title={`Expired (${expired.length})`} items={expired} today={today} in30={in30} />
       <Section title={`Expiring in 30 days (${expiringSoon.length})`} items={expiringSoon} today={today} in30={in30} />
@@ -126,6 +144,7 @@ function Section({
               <th>Test date</th>
               <th>Expires</th>
               <th>Reg #</th>
+              <th>Result</th>
             </tr>
           </thead>
           <tbody>
@@ -144,6 +163,7 @@ function Section({
                   <td>{t.test_date}</td>
                   <td>{t.expires_on}</td>
                   <td>{t.reg_number ?? "-"}</td>
+                  <td>{t.result ?? "-"}</td>
                 </tr>
               );
             })}
@@ -155,4 +175,3 @@ function Section({
     </section>
   );
 }
-

@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
+import type { ActionResult } from "@/lib/types/actions";
+
 
 function getText(fd: FormData, key: string) {
   const v = fd.get(key);
@@ -171,16 +173,14 @@ export async function unlinkRiderFromHorseAction(horseId: string, riderId: strin
   revalidatePath(`/club/riders/${riderId}`);
 }
 
-import type { ActionResult } from "@/app/admin/actionTypes";
-
 export async function createHorseActionState(
-  _prev: ActionResult,
+  _prev: ActionResult<void>,
   formData: FormData
-): Promise<ActionResult> {
+): Promise<ActionResult<void>> {
   try {
     await createHorseAction(formData);
-    return { ok: true, message: "Horse created.", data: undefined };
+    return { ok: true, data: undefined, message: "Created" };
   } catch (e: any) {
-    return { ok: false, message: e?.message ?? "Failed to create horse." };
+    return { ok: false, message: e?.message ?? "Failed to create horse" };
   }
 }

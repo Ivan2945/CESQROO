@@ -174,10 +174,12 @@ const linkedById = new Map<string, RiderRow>(
       </div>
 
       {/* Horse edit */}
-      <form
-        action={updateHorseAction.bind(null, horseId)}
-        style={{ marginTop: 12, display: "grid", gap: 10, maxWidth: 520 }}
-      >
+    <form
+  action={createHorseTestAction}
+  style={{ display: "grid", gap: 10, maxWidth: 520, marginTop: 10 }}
+>
+  <input type="hidden" name="horse_id" value={horseId} />
+
         {/* admin needs club_id for server actions if your update action relies on clubId;
             safest is to pass the horse's real club_id as hidden */}
         {profile.role === "admin" ? (
@@ -289,15 +291,19 @@ const linkedById = new Map<string, RiderRow>(
                     <span style={badgeStyle(status)}>{status}</span>
                   </td>
                   <td colSpan={5}>
-                    <form
-                      action={updateHorseTestAction.bind(null, t.id, horseId)}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "2fr 1fr 1fr 1fr auto",
-                        gap: 8,
-                        alignItems: "center",
-                      }}
-                    >
+                 <form
+  action={updateHorseTestAction}
+  style={{
+    display: "grid",
+    gridTemplateColumns: "2fr 1fr 1fr 1fr auto",
+    gap: 8,
+    alignItems: "end",
+  }}
+>
+  <input type="hidden" name="horse_id" value={horseId} />
+  {/* If you still want to send which row was edited (optional) */}
+  <input type="hidden" name="test_id" value={t.id} />
+
                       {/* For admin, pass the real club_id of the test row */}
                       {profile.role === "admin" ? (
                         <input type="hidden" name="club_id" value={t.club_id} />
@@ -345,9 +351,11 @@ const linkedById = new Map<string, RiderRow>(
 
       <h4 style={{ marginTop: 18 }}>Add new test</h4>
       <form
-        action={createHorseTestAction.bind(null, horseId)}
-        style={{ display: "grid", gap: 10, maxWidth: 520, marginTop: 10 }}
-      >
+  action={createHorseTestAction}
+  style={{ display: "grid", gap: 10, maxWidth: 520, marginTop: 10 }}
+>
+  <input type="hidden" name="horse_id" value={horseId} />
+
         {/* For admin, pass the horse's club_id; for club_admin, tests-actions can use profile clubId */}
         {profile.role === "admin" ? (
           <input type="hidden" name="club_id" value={horse.club_id} />

@@ -3,7 +3,8 @@
 import { requireAdmin } from "@/lib/auth/requireAdmin";
 import { useActionState } from "react";
 import { createClubAction } from "./actions";
-import type { ActionResult } from "../actionTypes";
+import type { ActionResult } from "@/lib/types/actions";
+
 
 type Club = { id: string; name: string; slug: string | null };
 

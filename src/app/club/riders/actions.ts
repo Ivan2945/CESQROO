@@ -4,6 +4,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
+import type { ActionResult } from "@/lib/types/actions";
 
 function getText(fd: FormData, key: string) {
   const v = fd.get(key);
@@ -159,17 +160,16 @@ export async function unlinkHorseFromRiderAction(riderId: string, horseId: strin
   revalidatePath(`/club/horses/${horseId}`);
 }
 
-import type { ActionResult } from "@/app/admin/actionTypes";
-
 // AdminQuickCreate wrapper (useActionState signature)
+
 export async function createRiderActionState(
-  _prev: ActionResult,
+  _prev: ActionResult<void>,
   formData: FormData
-): Promise<ActionResult> {
+): Promise<ActionResult<void>> {
   try {
-    await createRiderAction(formData); // calls your existing 1-arg action
-    return { ok: true, message: "Rider created.", data: undefined };
+    await createRiderAction(formData); // your existing "real" action
+    return { ok: true, data: undefined, message: "Created" };
   } catch (e: any) {
-    return { ok: false, message: e?.message ?? "Failed to create rider." };
+    return { ok: false, message: e?.message ?? "Failed to create rider" };
   }
 }

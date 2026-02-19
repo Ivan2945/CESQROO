@@ -2,7 +2,8 @@
 
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
 import { revalidatePath } from "next/cache";
-import type { ActionResult } from "../actionTypes"; // <-- note: from src/app/admin/clubs to src/app/admin
+import type { ActionResult } from "@/lib/types/actions";
+
 
 type Club = { id: string; name: string; slug: string | null };
 

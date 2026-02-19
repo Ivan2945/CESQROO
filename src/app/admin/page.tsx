@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
 import AdminQuickCreate from "./AdminQuickCreate";
-
 import { createClubAction } from "./clubs/actions";
 import { createRiderActionState } from "../club/riders/actions";
 import { createHorseActionState } from "../club/horses/actions";
 import { createHorseTestActionState } from "../club/horses/tests-actions";
+
 
 export default async function AdminHomePage() {
   const { supabase, profile } = await requireClubAdmin();
@@ -20,12 +20,12 @@ export default async function AdminHomePage() {
     );
   }
 
-  const { data: clubs, error } = await supabase
-    .from("clubs")
-    .select("id, name")
-    .order("name", { ascending: true });
+ const { data: clubs, error } = await supabase
+  .from("clubs")
+  .select("id, name, slug")
+  .order("name", { ascending: true });
 
-  if (error) throw new Error(error.message);
+if (error) throw new Error(error.message);
 
 
   return (

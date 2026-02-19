@@ -2,13 +2,31 @@
 
 import React, { useEffect, useMemo, useState } from "react";
 import { useActionState } from "react";
-
 import { useFormStatus } from "react-dom";
-import type { ActionResult } from "./actionTypes";
+import type { ActionResult } from "@/lib/types/actions";
 
-type Club = { id: string; name: string | null };
+type Club = { id: string; name: string; slug: string | null };
 type Panel = "club" | "rider" | "horse" | "test";
 
+type Props = {
+  clubs: Club[];
+  createClubAction: (
+    prevState: ActionResult<Club>,
+    formData: FormData
+  ) => Promise<ActionResult<Club>>;
+  createRiderAction: (
+    prevState: ActionResult<void>,
+    formData: FormData
+  ) => Promise<ActionResult<void>>;
+  createHorseAction: (
+    prevState: ActionResult<void>,
+    formData: FormData
+  ) => Promise<ActionResult<void>>;
+  createHorseTestAction: (
+    prevState: ActionResult<void>,
+    formData: FormData
+  ) => Promise<ActionResult<void>>;
+};
 
 function SubmitButton({ children }: { children: React.ReactNode }) {
   const { pending } = useFormStatus();
@@ -28,7 +46,7 @@ function Message({ state }: { state: ActionResult<any> }) {
   return (
     <p style={{ margin: 0, opacity: 0.85 }}>
       {state.ok ? "✅ " : "⚠️ "}
-      {state.message}
+      {state.message ?? (state.ok ? "Saved." : "Something went wrong.")}
     </p>
   );
 }
@@ -39,23 +57,14 @@ export default function AdminQuickCreate({
   createRiderAction,
   createHorseAction,
   createHorseTestAction,
-}: {
-  clubs: Club[];
-  createClubAction: (
-    prevState: ActionResult<{ id: string; name: string; slug: string | null }>,
-    formData: FormData
-  ) => Promise<ActionResult<{ id: string; name: string; slug: string | null }>>;
- createRiderAction: (prevState: ActionResult, formData: FormData) => Promise<ActionResult>;
-createHorseAction: (prevState: ActionResult, formData: FormData) => Promise<ActionResult>;
-createHorseTestAction: (prevState: ActionResult, formData: FormData) => Promise<ActionResult>;
-
-}) {
-
+}: Props) {
   const [open, setOpen] = useState<Panel | null>(null);
 
   // Shared club selection for the "test" panel to load horses
   const [testClubId, setTestClubId] = useState<string>("");
-  const [horses, setHorses] = useState<Array<{ id: string; name: string | null }>>([]);
+  const [horses, setHorses] = useState<Array<{ id: string; name: string | null }>>(
+    []
+  );
   const [horsesLoading, setHorsesLoading] = useState(false);
 
   const buttonStyle: React.CSSProperties = useMemo(
@@ -82,6 +91,17 @@ createHorseTestAction: (prevState: ActionResult, formData: FormData) => Promise<
 
   const inputStyle: React.CSSProperties = useMemo(
     () => ({ display: "block", width: "100%", padding: 8 }),
+    []
+  );
+
+  const selectStyle: React.CSSProperties = useMemo(
+    () => ({
+      padding: "10px 12px",
+      border: "1px solid #ddd",
+      borderRadius: 10,
+      fontWeight: 600,
+      minWidth: 220,
+    }),
     []
   );
 
@@ -113,7 +133,7 @@ createHorseTestAction: (prevState: ActionResult, formData: FormData) => Promise<
           </option>
           {clubs.map((c) => (
             <option key={c.id} value={c.id}>
-              {c.name ?? c.id}
+              {c.name}
             </option>
           ))}
         </select>
@@ -133,8 +153,14 @@ createHorseTestAction: (prevState: ActionResult, formData: FormData) => Promise<
 
       setHorsesLoading(true);
       try {
-        const res = await fetch(`/api/admin/horses?club_id=${encodeURIComponent(testClubId)}`);
-        const json = (await res.json()) as { ok: boolean; horses?: any[]; message?: string };
+        const res = await fetch(
+          `/api/admin/horses?club_id=${encodeURIComponent(testClubId)}`
+        );
+        const json = (await res.json()) as {
+          ok: boolean;
+          horses?: any[];
+          message?: string;
+        };
 
         if (cancelled) return;
 
@@ -155,14 +181,51 @@ createHorseTestAction: (prevState: ActionResult, formData: FormData) => Promise<
   }, [testClubId]);
 
   // Hook up useActionState for each form so we can show success/errors
-  const [clubState, clubFormAction] = useActionState(createClubAction, null);
-  const [riderState, riderFormAction] = useActionState(createRiderAction, null);
-  const [horseState, horseFormAction] = useActionState(createHorseAction, null);
-  const [testState, testFormAction] = useActionState(createHorseTestAction, null);
+  const [clubState, clubFormAction] = useActionState<ActionResult<Club>, FormData>(
+    createClubAction,
+    null
+  );
+  const [riderState, riderFormAction] = useActionState<ActionResult<void>, FormData>(
+    createRiderAction,
+    null
+  );
+  const [horseState, horseFormAction] = useActionState<ActionResult<void>, FormData>(
+    createHorseAction,
+    null
+  );
+  const [testState, testFormAction] = useActionState<ActionResult<void>, FormData>(
+    createHorseTestAction,
+    null
+  );
+
+  const panelOptions: Array<{ value: Panel; label: string }> = [
+    { value: "club", label: "Add Club" },
+    { value: "rider", label: "Add Rider" },
+    { value: "horse", label: "Add Horse" },
+    { value: "test", label: "Add Medical Test" },
+  ];
 
   return (
     <div style={{ marginTop: 12 }}>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+      {/* Panel selector dropdown */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          <span style={{ fontWeight: 700 }}>Quick Create</span>
+          <select
+            value={open ?? ""}
+            onChange={(e) => setOpen((e.target.value as Panel) || null)}
+            style={selectStyle}
+          >
+            <option value="">Select action…</option>
+            {panelOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {/* Optional quick buttons */}
         <button type="button" style={buttonStyle} onClick={() => toggle("club")}>
           + Add Club
         </button>
@@ -175,6 +238,12 @@ createHorseTestAction: (prevState: ActionResult, formData: FormData) => Promise<
         <button type="button" style={buttonStyle} onClick={() => toggle("test")}>
           + Add Test
         </button>
+
+        {open && (
+          <button type="button" style={{ ...buttonStyle, opacity: 0.85 }} onClick={() => setOpen(null)}>
+            Close
+          </button>
+        )}
       </div>
 
       {/* Add Club */}
@@ -284,16 +353,17 @@ createHorseTestAction: (prevState: ActionResult, formData: FormData) => Promise<
           <h3 style={{ marginTop: 0 }}>Add Medical Test</h3>
 
           <form action={testFormAction} style={{ display: "grid", gap: 10 }}>
-            <ClubSelect
-              value={testClubId}
-              onChange={(v) => {
-                setTestClubId(v);
-              }}
-            />
+            <ClubSelect value={testClubId} onChange={(v) => setTestClubId(v)} />
 
             <label>
               Horse
-              <select name="horse_id" required defaultValue="" style={inputStyle} disabled={!testClubId}>
+              <select
+                name="horse_id"
+                required
+                defaultValue=""
+                style={inputStyle}
+                disabled={!testClubId}
+              >
                 <option value="" disabled>
                   {testClubId
                     ? horsesLoading

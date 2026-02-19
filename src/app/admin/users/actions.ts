@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@supabase/supabase-js";
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
-import type { ActionResult } from "../actionTypes";
+import type { ActionResult } from "@/lib/types/actions";
+
 
 export type UserRole = "admin" | "club_admin" | "user";
 

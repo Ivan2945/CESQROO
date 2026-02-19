@@ -1,7 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
-import type { ActionResult } from "../actionTypes";
+import type { ActionResult } from "@/lib/types/actions";
+
 import { createUserAction, type CreatedUser } from "./actions";
 
 export default function AdminUsersPage() {

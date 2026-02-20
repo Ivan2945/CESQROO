@@ -7,13 +7,13 @@ import {
 } from "@/lib/labs/cogginsSenasica";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic"; // avoids any caching weirdness during debugging
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-// Keep normalization identical to your parser’s intent
 function normalizeName(s: string) {
   return (s || "")
     .normalize("NFD")
@@ -50,42 +50,143 @@ type PreviewItem =
       result?: string | null;
     };
 
+async function readBodyStoragePath(req: Request): Promise<string | null> {
+  const ct = req.headers.get("content-type") || "";
+
+  // JSON
+  if (ct.includes("application/json")) {
+    const body = await req.json().catch(() => null);
+    return body?.storage_path ?? null;
+  }
+
+  // multipart/form-data
+  if (ct.includes("multipart/form-data")) {
+    const fd = await req.formData().catch(() => null);
+    const sp = fd?.get("storage_path");
+    return typeof sp === "string" ? sp : null;
+  }
+
+  // fallback: try json (some clients omit content-type)
+  const body = await req.json().catch(() => null);
+  return body?.storage_path ?? null;
+}
+
 export async function POST(req: Request) {
+  const t0 = Date.now();
+
   try {
-    const { storage_path } = await req.json();
+    const storage_path = await readBodyStoragePath(req);
+
     if (!storage_path) {
-      return NextResponse.json({ error: "storage_path required" }, { status: 400 });
+      return NextResponse.json(
+        { error: "storage_path required", hint: "Send JSON {storage_path} or multipart form field storage_path" },
+        { status: 400 }
+      );
     }
 
-    // 1) Download PDF from Supabase Storage
-    const { data, error } = await supabaseAdmin.storage.from("lab-pdfs").download(storage_path);
-    if (error || !data) throw new Error(`Supabase download failed: ${error?.message ?? "no data"}`);
+    // --- 1) Download PDF from Supabase Storage ---
+    console.log("[preview-upload] storage_path:", storage_path);
+
+    const tDl = Date.now();
+    const { data, error } = await supabaseAdmin.storage
+      .from("lab-pdfs")
+      .download(storage_path);
+
+    if (error || !data) {
+      throw new Error(`Supabase download failed: ${error?.message ?? "no data"}`);
+    }
 
     const pdfBuffer = Buffer.from(await data.arrayBuffer());
+    console.log("[preview-upload] downloaded bytes:", pdfBuffer.length, "ms:", Date.now() - tDl);
 
-    // 2) OCR
-    const text = await ocrSpacePdfToText({
-      pdfBuffer,
-      filename: storage_path.split("/").pop() || "upload.pdf",
-      apiKey: process.env.OCR_SPACE_API_KEY || "helloworld",
-      language: "spa",
-    });
+    if (pdfBuffer.length < 1000) {
+      return NextResponse.json(
+        { error: "Downloaded PDF is unexpectedly small", storage_path, bytes: pdfBuffer.length },
+        { status: 422 }
+      );
+    }
+
+    // --- 2) OCR ---
+    const apiKey = process.env.OCR_SPACE_API_KEY;
+    if (!apiKey) {
+      // Important: do NOT silently use "helloworld" in prod; it hides the real root cause.
+      return NextResponse.json(
+        { error: "OCR_SPACE_API_KEY missing on server environment" },
+        { status: 500 }
+      );
+    }
+
+    const filename = storage_path.split("/").pop() || "upload.pdf";
+
+    const tOcr = Date.now();
+    let text = "";
+    try {
+      text = await ocrSpacePdfToText({
+        pdfBuffer,
+        filename,
+        apiKey,
+        language: "spa",
+      });
+    } catch (err: any) {
+      console.error("[preview-upload] OCR failed:", err);
+      return NextResponse.json(
+        {
+          error: "OCR failed",
+          message: err?.message ?? String(err),
+          stack: err?.stack ?? null,
+          storage_path,
+          filename,
+          pdfBytes: pdfBuffer.length,
+          msTotal: Date.now() - t0,
+          msOcr: Date.now() - tOcr,
+        },
+        { status: 500 }
+      );
+    }
+
+    console.log("[preview-upload] ocr chars:", text?.length ?? 0, "ms:", Date.now() - tOcr);
 
     if (!text || text.length < 200) {
       return NextResponse.json({
         storage_path,
         testDate: null,
         items: [{ kind: "unmatched", reason: "ocr_text_empty" }],
+        ocrChars: text?.length ?? 0,
+        msTotal: Date.now() - t0,
       });
     }
 
-    // 3) Parse + date
-    const parsed = parseSenasicaCoggins(text);
-    const testDate = extractFechaResultadoYYYYMMDD(text); // YYYY-MM-DD or null
+    // --- 3) Parse + date ---
+    const tParse = Date.now();
+    let parsed: any[] = [];
+    let testDate: string | null = null;
 
-    // 4) Chip matches (bulk)
-    const chips = [...new Set(parsed.map((x: any) => x.chip).filter(Boolean))] as string[];
+    try {
+      parsed = parseSenasicaCoggins(text) ?? [];
+      testDate = extractFechaResultadoYYYYMMDD(text); // YYYY-MM-DD or null
+    } catch (err: any) {
+      console.error("[preview-upload] Parse failed:", err);
+      return NextResponse.json(
+        {
+          error: "Parse failed",
+          message: err?.message ?? String(err),
+          stack: err?.stack ?? null,
+          storage_path,
+          ocrChars: text.length,
+          ocrPreview: text.slice(0, 800), // small snippet for debugging
+          msTotal: Date.now() - t0,
+          msParse: Date.now() - tParse,
+        },
+        { status: 500 }
+      );
+    }
 
+    console.log("[preview-upload] parsed items:", parsed.length, "testDate:", testDate, "ms:", Date.now() - tParse);
+
+    // --- 4) Chip matches (bulk) ---
+    const chips = [...new Set(parsed.map((x: any) => x?.chip).filter(Boolean))] as string[];
+
+    const tChip = Date.now();
     const chipMatches =
       chips.length > 0
         ? (
@@ -96,10 +197,16 @@ export async function POST(req: Request) {
           ).data ?? []
         : [];
 
+    console.log("[preview-upload] chips:", chips.length, "chipMatches:", chipMatches.length, "ms:", Date.now() - tChip);
+
     const horseByChip = new Map(chipMatches.map((h: any) => [h.microchip, h]));
 
-    // 5) Name fallback matches (in-memory)
+    // --- 5) Name fallback matches (in-memory) ---
+    const tNames = Date.now();
     const horsesAll = (await supabaseAdmin.from("horses").select("id,name")).data ?? [];
+
+    console.log("[preview-upload] horsesAll:", horsesAll.length, "ms:", Date.now() - tNames);
+
     const byNameNorm = new Map<string, Candidate[]>();
     for (const h of horsesAll) {
       const nn = normalizeName(h.name);
@@ -109,9 +216,9 @@ export async function POST(req: Request) {
     const items: PreviewItem[] = [];
 
     for (const item of parsed) {
-      const chip = item.chip ?? null;
-      const name = item.name ?? null;
-      const result = item.result ?? null;
+      const chip = item?.chip ?? null;
+      const name = item?.name ?? null;
+      const result = item?.result ?? null;
 
       // Chip-first
       if (chip) {
@@ -181,8 +288,21 @@ export async function POST(req: Request) {
       });
     }
 
-    return NextResponse.json({ storage_path, testDate, items });
+    return NextResponse.json({
+      storage_path,
+      testDate,
+      items,
+      msTotal: Date.now() - t0,
+    });
   } catch (e: any) {
-    return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 });
+    console.error("[preview-upload] Unhandled error:", e);
+    return NextResponse.json(
+      {
+        error: e?.message ?? "Unknown error",
+        stack: e?.stack ?? null,
+        msTotal: Date.now() - t0,
+      },
+      { status: 500 }
+    );
   }
 }

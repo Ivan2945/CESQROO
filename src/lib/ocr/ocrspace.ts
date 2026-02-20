@@ -1,57 +1,54 @@
 // src/lib/ocr/ocrspace.ts
-import FormData from "form-data";
 
 export async function ocrSpacePdfToText(params: {
   pdfBuffer: Buffer;
   filename: string;
   apiKey: string;
-  language?: string; // "spa" is good for SENASICA Spanish labels
+  language?: string; // default "spa"
 }) {
-  const form = new FormData();
+  if (!params.apiKey) throw new Error("OCR_SPACE_API_KEY missing");
 
+  const form = new FormData();
   form.append("apikey", params.apiKey);
   form.append("language", params.language ?? "spa");
   form.append("isOverlayRequired", "false");
   form.append("filetype", "PDF");
 
-  // IMPORTANT: In Node, append Buffer directly (avoid Blob/File typing issues)
-  form.append("file", params.pdfBuffer, {
-    filename: params.filename,
-    contentType: "application/pdf",
-  });
+  // ✅ Build-safe conversion: Buffer -> Uint8Array (BlobPart-compatible)
+  const bytes = new Uint8Array(params.pdfBuffer);
+  const blob = new Blob([bytes], { type: "application/pdf" });
 
-  // DEBUG — remove after testing
-  console.log("OCR filename:", params.filename);
-  console.log("OCR buffer length:", params.pdfBuffer?.length);
-  console.log("OCR key present:", !!params.apiKey);
-  console.log("OCR key prefix:", params.apiKey?.slice(0, 4));
+  form.append("file", blob, params.filename);
 
   const res = await fetch("https://api.ocr.space/parse/image", {
     method: "POST",
-    headers: form.getHeaders(), // required for multipart boundary
-    body: form as any,
+    body: form,
   });
 
+  const bodyText = await res.text().catch(() => "");
+  console.log("[OCR.Space] status:", res.status);
+  console.log("[OCR.Space] body preview:", bodyText.slice(0, 500));
+
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(`OCR.Space HTTP ${res.status}${body ? `: ${body}` : ""}`);
+    throw new Error(`OCR.Space HTTP ${res.status}: ${bodyText.slice(0, 800)}`);
   }
 
-  const json: any = await res.json();
+  let json: any;
+  try {
+    json = JSON.parse(bodyText);
+  } catch {
+    throw new Error(`OCR.Space non-JSON response: ${bodyText.slice(0, 800)}`);
+  }
 
   if (json?.IsErroredOnProcessing) {
-    const msg =
-      (Array.isArray(json?.ErrorMessage) ? json.ErrorMessage.join("; ") : json?.ErrorMessage) ||
-      json?.ErrorDetails ||
-      "unknown";
-    throw new Error(`OCR.Space error: ${msg}`);
+    const msg = Array.isArray(json.ErrorMessage)
+      ? json.ErrorMessage.join(" | ")
+      : json.ErrorMessage ?? "unknown";
+    throw new Error(`OCR.Space processing error: ${msg}`);
   }
 
-  const parsedResults = json?.ParsedResults ?? [];
-  const text = parsedResults
-    .map((r: any) => r?.ParsedText ?? "")
-    .join("\n")
-    .trim();
+  const text =
+    json?.ParsedResults?.map((r: any) => r?.ParsedText ?? "").join("\n") ?? "";
 
-  return text;
+  return text.trim();
 }

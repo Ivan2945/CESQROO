@@ -175,7 +175,7 @@ const linkedById = new Map<string, RiderRow>(
 
       {/* Horse edit */}
     <form
-  action={createHorseTestAction}
+  action={updateHorseAction.bind(null, horseId)}
   style={{ display: "grid", gap: 10, maxWidth: 520, marginTop: 10 }}
 >
   <input type="hidden" name="horse_id" value={horseId} />

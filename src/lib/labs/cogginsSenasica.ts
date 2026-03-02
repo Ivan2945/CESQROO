@@ -59,35 +59,65 @@ export function extractFechaResultadoYYYYMMDD(text: string): string | null {
 }
 
 /* =========================================================
-   HORSE BLOCK PARSING
+   HORSE BLOCK PARSING (supports both formats)
    ========================================================= */
 
 export function parseSenasicaCoggins(text: string) {
   if (!text) return [];
 
-  // Split on each horse identification block
-  const parts = text.split(/Identificaci[oó]n\.\-/i).slice(1);
+  // Match BOTH variants:
+  // 1) Identificación.-   (with/without accent)
+  // 2) IDENTIFICACION:    (all caps, colon)
+  const headerRe = /Identificaci[oó]n\.\-|IDENTIFICACION\s*:/gi;
 
-  const results = parts.map((p) => {
-    // Horse name is first token until comma or newline
-    const nameRaw =
-      (p.match(/^\s*([^\n,]+)/) || [])[1]?.trim() || null;
+  const matches = Array.from(text.matchAll(headerRe));
+  if (!matches.length) return [];
+
+  const results: Array<{
+    chip: string | null;
+    name: string | null;
+    name_norm: string | null;
+    result: string | null;
+    test_type: "AIE";
+  }> = [];
+
+  for (let i = 0; i < matches.length; i++) {
+    const m = matches[i];
+    const header = m[0]; // exact matched header text
+    const start = (m.index ?? 0) + header.length;
+    const end =
+      i + 1 < matches.length ? (matches[i + 1].index ?? text.length) : text.length;
+
+    const block = text.slice(start, end);
+
+    // Name extraction depends on which header we matched
+    let nameRaw: string | null = null;
+
+    // Variant B: IDENTIFICACION: horsename;
+    if (/^IDENTIFICACION\s*:/i.test(header)) {
+      // We slice after "IDENTIFICACION:" already, so the horse name begins
+      // at block start and ends at the first ";"
+      nameRaw = (block.match(/^\s*([^;\n]+?)\s*;/) || [])[1]?.trim() || null;
+    } else {
+      // Variant A: Identificación.-  (original approach)
+      nameRaw = (block.match(/^\s*([^\n,]+)/) || [])[1]?.trim() || null;
+    }
 
     // First 15-digit number in block (microchip)
-    const chip = (p.match(/\b\d{15}\b/) || [])[0] || null;
+    const chip = (block.match(/\b\d{15}\b/) || [])[0] || null;
 
     // Result (NEGATIVO / POSITIVO)
     const result =
-      (p.match(/\b(NEGATIVO|POSITIVO)\b/i) || [])[1]?.toUpperCase() || null;
+      (block.match(/\b(NEGATIVO|POSITIVO)\b/i) || [])[1]?.toUpperCase() || null;
 
-    return {
+    results.push({
       chip,
       name: nameRaw,
       name_norm: nameRaw ? normalizeName(nameRaw) : null,
       result,
       test_type: "AIE",
-    };
-  });
+    });
+  }
 
   return results;
 }
@@ -114,9 +144,7 @@ export async function matchAndUpsertCoggins(params: {
      CHIP MATCHING (bulk query)
      --------------------------------------------------------- */
 
-  const chips = [
-    ...new Set(parsed.map((x) => x.chip).filter(Boolean)),
-  ] as string[];
+  const chips = [...new Set(parsed.map((x) => x.chip).filter(Boolean))] as string[];
 
   const chipMatches =
     chips.length > 0
@@ -128,25 +156,19 @@ export async function matchAndUpsertCoggins(params: {
         ).data ?? []
       : [];
 
-  const horseByChip = new Map(
-    chipMatches.map((h: any) => [h.microchip, h])
-  );
+  const horseByChip = new Map(chipMatches.map((h: any) => [h.microchip, h]));
 
   /* ---------------------------------------------------------
      NAME MATCHING (fallback)
      --------------------------------------------------------- */
 
-  const horsesAll =
-    (await supabase.from("horses").select("id,name")).data ?? [];
+  const horsesAll = (await supabase.from("horses").select("id,name")).data ?? [];
 
   const horsesByNameNorm = new Map<string, any[]>();
 
   for (const h of horsesAll) {
     const nn = normalizeName(h.name);
-    horsesByNameNorm.set(nn, [
-      ...(horsesByNameNorm.get(nn) || []),
-      h,
-    ]);
+    horsesByNameNorm.set(nn, [...(horsesByNameNorm.get(nn) || []), h]);
   }
 
   /* ---------------------------------------------------------
@@ -173,17 +195,13 @@ export async function matchAndUpsertCoggins(params: {
 
     // 2) Fallback to name
     else if (item.name_norm) {
-      const candidates =
-        horsesByNameNorm.get(item.name_norm) || [];
+      const candidates = horsesByNameNorm.get(item.name_norm) || [];
 
       if (candidates.length === 1) {
         horse = candidates[0];
       } else {
         manual_check.push({
-          reason:
-            candidates.length > 1
-              ? "ambiguous_name"
-              : "name_not_found",
+          reason: candidates.length > 1 ? "ambiguous_name" : "name_not_found",
           chip: null,
           name: item.name,
           result: item.result,
@@ -221,11 +239,9 @@ export async function matchAndUpsertCoggins(params: {
      --------------------------------------------------------- */
 
   if (rowsToUpsert.length) {
-    await supabase
-      .from("horse_tests")
-      .upsert(rowsToUpsert, {
-        onConflict: "horse_id,test_type,test_date",
-      });
+    await supabase.from("horse_tests").upsert(rowsToUpsert, {
+      onConflict: "horse_id,test_type,test_date",
+    });
   }
 
   return {

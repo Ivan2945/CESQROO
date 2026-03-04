@@ -51,11 +51,13 @@ export default async function AppHeader() {
 
   const adminItems = [
     { href: "/admin", label: "Home" },
-    { href: "/club", label: "Dashboard" },
-    { href: "/admin/clubs", label: "Clubs" },	
+    { href: "/admin/clubs", label: "Clubs" },
+    { href: "/admin/users", label: "Users" },
+    { href: "/club", label: "Dashboard" },	
     { href: "/club/riders", label: "Riders" },
     { href: "/club/horses", label: "Horses" },
     { href: "/club/tests", label: "Medical Tests" },
+    { href: "/admin/payments", label: "Payments" },
   ];
 
   const clubItems = [
@@ -63,6 +65,7 @@ export default async function AppHeader() {
     { href: "/club/riders", label: "Riders" },
     { href: "/club/horses", label: "Horses" },
     { href: "/club/tests", label: "Medical Tests" },
+    { href: "/club/payments", label: "Payments" },
   ];
 
   const items = isAdmin ? adminItems : clubItems;

@@ -1,381 +1,407 @@
-// src/app/api/labs/preview-upload/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import crypto from "crypto";
 import { ocrSpacePdfToText } from "@/lib/ocr/ocrspace";
 import {
   parseSenasicaCoggins,
   extractFechaResultadoYYYYMMDD,
 } from "@/lib/labs/cogginsSenasica";
+import { cleanChip15, cleanDigits, normalizeHorseName } from "@/lib/ocr/cleanup";
 
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic"; // avoids any caching weirdness during debugging
+export const dynamic = "force-dynamic";
 
 const supabaseAdmin = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-function normalizeName(s: string) {
-  return (s || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-    .replace(/[^A-Z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+type Candidate = { id: string; name: string; microchip?: string | null };
+
+type StagingRow = {
+  id: string;
+  batch_id: string;
+  storage_path: string | null;
+  raw_horse_name: string | null;
+  chip: string | null;
+  reg_number: string | null; // Clave Interna (10 digits) - metadata only
+  result: string | null;
+  test_type: string | null;
+  test_date: string | null;
+  horse_id: string | null;
+  match_kind: "matched" | "ambiguous" | "unmatched";
+  candidates: Candidate[] | null;
+  committed_at: string | null;
+};
+
+async function downloadPdf(storage_path: string) {
+  const { data, error } = await supabaseAdmin.storage
+    .from("lab-pdfs")
+    .download(storage_path);
+
+  if (error || !data) {
+    throw new Error(`Supabase download failed: ${error?.message ?? "no data"}`);
+  }
+  const pdfBuffer = Buffer.from(await data.arrayBuffer());
+  if (pdfBuffer.length < 1000) {
+    throw new Error(`Downloaded PDF too small (${pdfBuffer.length} bytes)`);
+  }
+  return pdfBuffer;
 }
 
-type Candidate = { id: string; name: string };
+function normalizeHorsesForMatching(horses: any[]) {
+  return (horses ?? []).map((h) => ({
+    id: h.id as string,
+    name: h.name as string,
+    microchip: (h.microchip ?? null) as string | null,
+    microchip_norm: cleanChip15(h.microchip),
+    name_norm: normalizeHorseName(h.name),
+  }));
+}
 
-type PreviewItem =
-  | {
-      kind: "matched";
-      horse_id: string;
-      horse_name: string;
-      chip?: string | null;
-      name?: string | null;
-      result?: string | null;
-    }
-  | {
-      kind: "ambiguous";
-      chip?: string | null;
-      name?: string | null;
-      result?: string | null;
-      candidates: Candidate[];
-    }
-  | {
-      kind: "unmatched";
-      reason: string;
-      chip?: string | null;
-      name?: string | null;
-      result?: string | null;
+async function buildPreviewAndStage(params: { storage_path: string; club_id?: string }) {
+  const t0 = Date.now();
+
+  const pdfBuffer = await downloadPdf(params.storage_path);
+
+  const apiKey = process.env.OCR_SPACE_API_KEY;
+  if (!apiKey) throw new Error("OCR_SPACE_API_KEY missing on server environment");
+
+  const filename = params.storage_path.split("/").pop() || "upload.pdf";
+
+  const text = await ocrSpacePdfToText({
+    pdfBuffer,
+    filename,
+    apiKey,
+    language: "spa",
+  });
+
+  // If OCR returns nothing usable, still create a batch placeholder
+  if (!text || text.length < 200) {
+    const batchId = crypto.randomUUID();
+
+    await supabaseAdmin.from("horse_tests_ocr_staging").insert([
+      {
+        batch_id: batchId,
+        storage_path: params.storage_path,
+        source_file: filename,
+        match_kind: "unmatched",
+        candidates: null,
+        raw_horse_name: null,
+        chip: null,
+        reg_number: null,
+        result: null,
+        test_type: "AIE",
+        test_date: null,
+      },
+    ]);
+
+    return {
+      batchId,
+      testDate: null,
+      rows: [],
+      summary: {
+        total: 0,
+        matched: 0,
+        ambiguous: 0,
+        unmatched: 1,
+        missingDate: 0,
+      },
+      msTotal: Date.now() - t0,
     };
-
-async function readBodyStoragePath(req: Request): Promise<string | null> {
-  const ct = req.headers.get("content-type") || "";
-
-  // JSON
-  if (ct.includes("application/json")) {
-    const body = await req.json().catch(() => null);
-    return body?.storage_path ?? null;
   }
 
-  // multipart/form-data
-  if (ct.includes("multipart/form-data")) {
-    const fd = await req.formData().catch(() => null);
-    const sp = fd?.get("storage_path");
-    return typeof sp === "string" ? sp : null;
+  const parsedRaw = parseSenasicaCoggins(text) ?? [];
+  const extractedDate = extractFechaResultadoYYYYMMDD(text); // YYYY-MM-DD or null
+
+  // ✅ CLUB-SCOPED HORSES QUERY
+  // Assumes horses has club_id
+  let horsesQuery = supabaseAdmin.from("horses").select("id,name,microchip");
+  if (params.club_id) horsesQuery = horsesQuery.eq("club_id", params.club_id);
+
+  const horsesAll = (await horsesQuery).data ?? [];
+  const horsesNorm = normalizeHorsesForMatching(horsesAll);
+
+  // Build indexes
+  const horseByChip = new Map<string, any>();
+  for (const h of horsesNorm) {
+    if (h.microchip_norm && !horseByChip.has(h.microchip_norm)) {
+      horseByChip.set(h.microchip_norm, h);
+    }
   }
 
-  // fallback: try json (some clients omit content-type)
-  const body = await req.json().catch(() => null);
-  return body?.storage_path ?? null;
+  const candidatesByNameNorm = new Map<string, Candidate[]>();
+  for (const h of horsesNorm) {
+    if (!h.name_norm) continue;
+    const arr = candidatesByNameNorm.get(h.name_norm) ?? [];
+    arr.push({ id: h.id, name: h.name, microchip: h.microchip });
+    candidatesByNameNorm.set(h.name_norm, arr);
+  }
+
+  const batchId = crypto.randomUUID();
+  const filename2 = params.storage_path.split("/").pop() || "upload.pdf";
+
+  const inserts: any[] = [];
+  let matched = 0;
+  let ambiguous = 0;
+  let unmatched = 0;
+  let missingDate = 0;
+
+  for (const item of parsedRaw) {
+    const rawName = (item?.name ?? null) as string | null;
+    const rawChip = (item?.chip ?? null) as string | null;
+    const rawClave = (item?.clave_interna ?? null) as string | null;
+    const result = (item?.result ?? null) as string | null;
+
+    // ✅ Cleaned values (deterministic)
+    const chip = cleanChip15(rawChip);        // used for matching
+    const reg_number = cleanDigits(rawClave); // stored only (NOT matching)
+    const nameNorm = rawName ? normalizeHorseName(rawName) : null;
+
+    let horse_id: string | null = null;
+    let match_kind: "matched" | "ambiguous" | "unmatched" = "unmatched";
+    let candidates: Candidate[] | null = null;
+
+    // 1) CHIP match
+    if (chip) {
+      const h = horseByChip.get(chip) ?? null;
+      if (h) {
+        horse_id = h.id;
+        match_kind = "matched";
+      }
+    }
+
+    // 2) NAME fallback
+    if (!horse_id && nameNorm) {
+      const cands = candidatesByNameNorm.get(nameNorm) ?? [];
+      if (cands.length === 1) {
+        horse_id = cands[0].id;
+        match_kind = "matched";
+      } else if (cands.length > 1) {
+        match_kind = "ambiguous";
+        candidates = cands.slice(0, 30);
+      }
+    }
+
+    if (match_kind === "matched") matched += 1;
+    else if (match_kind === "ambiguous") ambiguous += 1;
+    else unmatched += 1;
+
+    const test_date = extractedDate ?? null;
+    if (!test_date) missingDate += 1;
+
+    inserts.push({
+      batch_id: batchId,
+      storage_path: params.storage_path,
+      source_file: filename2,
+      raw_horse_name: rawName,
+      chip,
+      reg_number,
+      result,
+      test_type: "AIE",
+      test_date,
+      horse_id,
+      match_kind,
+      candidates,
+    });
+  }
+
+  if (!inserts.length) {
+    inserts.push({
+      batch_id: batchId,
+      storage_path: params.storage_path,
+      source_file: filename2,
+      raw_horse_name: null,
+      chip: null,
+      reg_number: null,
+      result: null,
+      test_type: "AIE",
+      test_date: extractedDate ?? null,
+      horse_id: null,
+      match_kind: "unmatched",
+      candidates: null,
+    });
+    unmatched = 1;
+    missingDate = extractedDate ? 0 : 1;
+  }
+
+  const { error: insErr } = await supabaseAdmin.from("horse_tests_ocr_staging").insert(inserts);
+  if (insErr) throw new Error(insErr.message);
+
+  const { data: rows, error: selErr } = await supabaseAdmin
+    .from("horse_tests_ocr_staging")
+    .select(
+      "id,batch_id,storage_path,raw_horse_name,chip,reg_number,result,test_type,test_date,horse_id,match_kind,candidates,committed_at"
+    )
+    .eq("batch_id", batchId)
+    .order("created_at", { ascending: true });
+
+  if (selErr) throw new Error(selErr.message);
+
+  return {
+    batchId,
+    testDate: extractedDate,
+    rows: (rows ?? []) as StagingRow[],
+    summary: {
+      total: inserts.length,
+      matched,
+      ambiguous,
+      unmatched,
+      missingDate,
+    },
+    msTotal: Date.now() - t0,
+  };
+}
+
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const batchId = url.searchParams.get("batchId");
+  const q = url.searchParams.get("q"); // horse search
+  const clubId = url.searchParams.get("clubId") || url.searchParams.get("club_id") || null;
+
+  // ✅ club-scoped horse search for dropdown
+  if (q && q.trim().length >= 2) {
+    const term = q.trim();
+
+    let hq = supabaseAdmin
+      .from("horses")
+      .select("id,name,microchip")
+      .or(`name.ilike.%${term}%,microchip.ilike.%${term}%`)
+      .order("name", { ascending: true })
+      .limit(25);
+
+    if (clubId) hq = hq.eq("club_id", clubId);
+
+    const { data, error } = await hq;
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ horses: data ?? [] });
+  }
+
+  if (!batchId) {
+    return NextResponse.json({ error: "batchId required" }, { status: 400 });
+  }
+
+  const { data, error } = await supabaseAdmin
+    .from("horse_tests_ocr_staging")
+    .select(
+      "id,batch_id,storage_path,raw_horse_name,chip,reg_number,result,test_type,test_date,horse_id,match_kind,candidates,committed_at"
+    )
+    .eq("batch_id", batchId)
+    .order("created_at", { ascending: true });
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  const rows = (data ?? []) as StagingRow[];
+  const summary = {
+    total: rows.length,
+    matched: rows.filter((r) => r.match_kind === "matched").length,
+    ambiguous: rows.filter((r) => r.match_kind === "ambiguous").length,
+    unmatched: rows.filter((r) => r.match_kind === "unmatched").length,
+    missingDate: rows.filter((r) => !r.test_date).length,
+  };
+
+  const testDate = rows.find((r) => r.test_date)?.test_date ?? null;
+
+  return NextResponse.json({ batchId, testDate, rows, summary });
 }
 
 export async function POST(req: Request) {
-  const t0 = Date.now();
-
   try {
-    const storage_path = await readBodyStoragePath(req);
+    const body = await req.json().catch(() => null);
+    const storage_path = body?.storage_path as string | undefined;
+    const club_id = body?.club_id as string | undefined;
 
     if (!storage_path) {
-      return NextResponse.json(
-        {
-          error: "storage_path required",
-          hint: "Send JSON {storage_path} or multipart form field storage_path",
-        },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "storage_path required" }, { status: 400 });
     }
 
-    // --- 1) Download PDF from Supabase Storage ---
-    console.log("[preview-upload] storage_path:", storage_path);
-
-    const tDl = Date.now();
-    const { data, error } = await supabaseAdmin.storage
-      .from("lab-pdfs")
-      .download(storage_path);
-
-    if (error || !data) {
-      throw new Error(
-        `Supabase download failed: ${error?.message ?? "no data"}`
-      );
-    }
-
-    const pdfBuffer = Buffer.from(await data.arrayBuffer());
-    console.log(
-      "[preview-upload] downloaded bytes:",
-      pdfBuffer.length,
-      "ms:",
-      Date.now() - tDl
-    );
-
-    if (pdfBuffer.length < 1000) {
-      return NextResponse.json(
-        {
-          error: "Downloaded PDF is unexpectedly small",
-          storage_path,
-          bytes: pdfBuffer.length,
-        },
-        { status: 422 }
-      );
-    }
-
-    // --- 2) OCR ---
-    const apiKey = process.env.OCR_SPACE_API_KEY;
-    if (!apiKey) {
-      return NextResponse.json(
-        { error: "OCR_SPACE_API_KEY missing on server environment" },
-        { status: 500 }
-      );
-    }
-
-    const filename = storage_path.split("/").pop() || "upload.pdf";
-
-    const tOcr = Date.now();
-    let text = "";
-    try {
-      text = await ocrSpacePdfToText({
-        pdfBuffer,
-        filename,
-        apiKey,
-        language: "spa",
-      });
-    } catch (err: any) {
-      console.error("[preview-upload] OCR failed:", err);
-      return NextResponse.json(
-        {
-          error: "OCR failed",
-          message: err?.message ?? String(err),
-          stack: err?.stack ?? null,
-          storage_path,
-          filename,
-          pdfBytes: pdfBuffer.length,
-          msTotal: Date.now() - t0,
-          msOcr: Date.now() - tOcr,
-        },
-        { status: 500 }
-      );
-    }
-
-    console.log(
-      "[preview-upload] ocr chars:",
-      text?.length ?? 0,
-      "ms:",
-      Date.now() - tOcr
-    );
-
-    if (!text || text.length < 200) {
-      return NextResponse.json({
-        storage_path,
-        testDate: null,
-        items: [{ kind: "unmatched", reason: "ocr_text_empty" }],
-        ocrChars: text?.length ?? 0,
-        msTotal: Date.now() - t0,
-      });
-    }
-
-    // --- 3) Parse + date ---
-    const tParse = Date.now();
-    let parsed: any[] = [];
-    let testDate: string | null = null;
-
-    try {
-      parsed = parseSenasicaCoggins(text) ?? [];
-      testDate = extractFechaResultadoYYYYMMDD(text); // YYYY-MM-DD or null
-    } catch (err: any) {
-      console.error("[preview-upload] Parse failed:", err);
-      return NextResponse.json(
-        {
-          error: "Parse failed",
-          message: err?.message ?? String(err),
-          stack: err?.stack ?? null,
-          storage_path,
-          ocrChars: text.length,
-          ocrPreview: text.slice(0, 800),
-          msTotal: Date.now() - t0,
-          msParse: Date.now() - tParse,
-        },
-        { status: 500 }
-      );
-    }
-
-    console.log(
-      "[preview-upload] parsed items:",
-      parsed.length,
-      "testDate:",
-      testDate,
-      "ms:",
-      Date.now() - tParse
-    );
-
-    // --- 4) Chip matches (bulk) ---
-    const chips = [
-      ...new Set(parsed.map((x: any) => x?.chip).filter(Boolean)),
-    ] as string[];
-
-    const tChip = Date.now();
-    const chipMatches =
-      chips.length > 0
-        ? (
-            await supabaseAdmin
-              .from("horses")
-              .select("id,microchip,name")
-              .in("microchip", chips)
-          ).data ?? []
-        : [];
-
-    console.log(
-      "[preview-upload] chips:",
-      chips.length,
-      "chipMatches:",
-      chipMatches.length,
-      "ms:",
-      Date.now() - tChip
-    );
-
-    const horseByChip = new Map(chipMatches.map((h: any) => [h.microchip, h]));
-
-    // --- 5) Name fallback matches (in-memory) ---
-    const tNames = Date.now();
-    const horsesAll =
-      (await supabaseAdmin.from("horses").select("id,name")).data ?? [];
-
-    console.log(
-      "[preview-upload] horsesAll:",
-      horsesAll.length,
-      "ms:",
-      Date.now() - tNames
-    );
-
-    const byNameNorm = new Map<string, Candidate[]>();
-    for (const h of horsesAll) {
-      const nn = normalizeName(h.name);
-      byNameNorm.set(nn, [
-        ...(byNameNorm.get(nn) || []),
-        { id: h.id, name: h.name },
-      ]);
-    }
-
-    const items: PreviewItem[] = [];
-
-    for (const item of parsed) {
-      const chip = item?.chip ?? null;
-      const name = item?.name ?? null;
-      const result = item?.result ?? null;
-
-      // Chip-first (with fallback to name)
-      if (chip) {
-        const h = horseByChip.get(chip);
-
-        if (h) {
-          items.push({
-            kind: "matched",
-            horse_id: h.id,
-            horse_name: h.name,
-            chip,
-            name,
-            result,
-          });
-          continue;
-        }
-
-        // ✅ chip not found → try name fallback BEFORE marking unmatched
-        if (name) {
-          const nn = normalizeName(name);
-          const candidates = byNameNorm.get(nn) || [];
-
-          if (candidates.length === 1) {
-            items.push({
-              kind: "matched",
-              horse_id: candidates[0].id,
-              horse_name: candidates[0].name,
-              chip,
-              name,
-              result,
-            });
-            continue;
-          } else if (candidates.length > 1) {
-            items.push({
-              kind: "ambiguous",
-              chip,
-              name,
-              result,
-              candidates,
-            });
-            continue;
-          }
-        }
-
-        items.push({
-          kind: "unmatched",
-          reason: name ? "chip_not_found_name_not_found" : "chip_not_found",
-          chip,
-          name,
-          result,
-        });
-        continue;
-      }
-
-      // Name fallback (no chip present)
-      if (name) {
-        const nn = normalizeName(name);
-        const candidates = byNameNorm.get(nn) || [];
-
-        if (candidates.length === 1) {
-          items.push({
-            kind: "matched",
-            horse_id: candidates[0].id,
-            horse_name: candidates[0].name,
-            chip: null,
-            name,
-            result,
-          });
-        } else if (candidates.length > 1) {
-          items.push({
-            kind: "ambiguous",
-            chip: null,
-            name,
-            result,
-            candidates,
-          });
-        } else {
-          items.push({
-            kind: "unmatched",
-            reason: "name_not_found",
-            chip: null,
-            name,
-            result,
-          });
-        }
-        continue;
-      }
-
-      // No chip + no name
-      items.push({
-        kind: "unmatched",
-        reason: "no_chip_no_name",
-        chip: null,
-        name: null,
-        result,
-      });
-    }
-
-    return NextResponse.json({
-      storage_path,
-      testDate,
-      items,
-      msTotal: Date.now() - t0,
-    });
+    const out = await buildPreviewAndStage({ storage_path, club_id });
+    return NextResponse.json(out);
   } catch (e: any) {
-    console.error("[preview-upload] Unhandled error:", e);
-    return NextResponse.json(
-      {
-        error: e?.message ?? "Unknown error",
-        stack: e?.stack ?? null,
-        msTotal: Date.now() - t0,
-      },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 });
+  }
+}
+
+export async function PATCH(req: Request) {
+  try {
+    const body = await req.json().catch(() => null);
+    const batchId = body?.batchId as string | undefined;
+
+    if (!batchId) {
+      return NextResponse.json({ error: "batchId required" }, { status: 400 });
+    }
+
+    // Batch apply missing date
+    if (body?.applyMissingDate) {
+      const testDate = body.applyMissingDate as string;
+      const scope = (body.scope as "all" | "matched" | undefined) ?? "all";
+
+      let q = supabaseAdmin
+        .from("horse_tests_ocr_staging")
+        .update({ test_date: testDate })
+        .eq("batch_id", batchId)
+        .is("test_date", null)
+        .is("committed_at", null);
+
+      if (scope === "matched") q = q.eq("match_kind", "matched");
+
+      const { error } = await q;
+      if (error) throw new Error(error.message);
+
+      return NextResponse.json({ ok: true });
+    }
+
+    const rowId = body?.rowId as string | undefined;
+    if (!rowId) {
+      return NextResponse.json({ error: "rowId required for row updates" }, { status: 400 });
+    }
+
+    // ✅ Set horse (validate horse is within club scope if club_id provided)
+    if (body?.horseId) {
+      const horseId = body.horseId as string;
+      const club_id = (body?.club_id as string | undefined) ?? undefined;
+
+      let hq = supabaseAdmin.from("horses").select("id,club_id").eq("id", horseId).maybeSingle();
+      const { data: horse, error: hErr } = await hq;
+
+      if (hErr) throw new Error(hErr.message);
+      if (!horse) return NextResponse.json({ error: "Horse not found" }, { status: 400 });
+
+      if (club_id && horse.club_id !== club_id) {
+        return NextResponse.json(
+          { error: "Horse not in selected club scope" },
+          { status: 400 }
+        );
+      }
+
+      const { error } = await supabaseAdmin
+        .from("horse_tests_ocr_staging")
+        .update({
+          horse_id: horseId,
+          match_kind: "matched",
+          candidates: null,
+        })
+        .eq("batch_id", batchId)
+        .eq("id", rowId);
+
+      if (error) throw new Error(error.message);
+    }
+
+    // Set date
+    if (body?.testDate) {
+      const testDate = body.testDate as string;
+
+      const { error } = await supabaseAdmin
+        .from("horse_tests_ocr_staging")
+        .update({ test_date: testDate })
+        .eq("batch_id", batchId)
+        .eq("id", rowId);
+
+      if (error) throw new Error(error.message);
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (e: any) {
+    return NextResponse.json({ error: e?.message ?? "Unknown error" }, { status: 500 });
   }
 }

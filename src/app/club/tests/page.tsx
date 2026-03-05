@@ -1,4 +1,5 @@
 // src/app/club/tests/page.tsx
+import React from "react";
 import Link from "next/link";
 import TestsActions from "./TestsActions.client";
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
@@ -42,6 +43,7 @@ function badgeStyle(status: "expired" | "expiring" | "valid") {
 export default async function TestsDashboardPage() {
   const { supabase, clubId, profile } = await requireClubAdmin();
 
+  // Club admins MUST have a club assigned.
   if (!clubId && profile.role !== "admin") {
     return (
       <>
@@ -55,7 +57,9 @@ export default async function TestsDashboardPage() {
   const today = todayISO();
   const in30 = addDaysISO(30);
 
-  // CURRENT tests
+  // -------------------------------------------------------
+  // CURRENT tests (scoped)
+  // -------------------------------------------------------
   let query = supabase
     .from("horse_tests")
     .select(
@@ -82,20 +86,28 @@ export default async function TestsDashboardPage() {
   const { data: tests, error } = await query;
   if (error) throw new Error(error.message);
 
-  const expired = (tests ?? []).filter((t) => t.expires_on < today);
-  const expiringSoon = (tests ?? []).filter((t) => t.expires_on >= today && t.expires_on <= in30);
-  const validLater = (tests ?? []).filter((t) => t.expires_on > in30);
+  const expired = (tests ?? []).filter((t: any) => t.expires_on < today);
+  const expiringSoon = (tests ?? []).filter((t: any) => t.expires_on >= today && t.expires_on <= in30);
+  const validLater = (tests ?? []).filter((t: any) => t.expires_on > in30);
 
-  // Horses list for Quick Add dropdown
-  let hq = supabase
-    .from("horses")
-    .select("id,name,microchip,status")
-    .order("name", { ascending: true });
-
+  // -------------------------------------------------------
+  // Horses list (scoped) for Quick Add / helper UI
+  // -------------------------------------------------------
+  let hq = supabase.from("horses").select("id,name,microchip,status").order("name", { ascending: true });
   hq = applyClubScope(hq, profile, clubId);
 
   const { data: horses, error: horsesErr } = await hq;
   if (horsesErr) throw new Error(horsesErr.message);
+
+  // -------------------------------------------------------
+  // Admin-only: Clubs list for dropdown (server-side avoids RLS issues in browser)
+  // -------------------------------------------------------
+  const clubs =
+    profile.role === "admin"
+      ? (
+          await supabase.from("clubs").select("id,name").order("name", { ascending: true })
+        ).data ?? []
+      : [];
 
   return (
     <>
@@ -104,7 +116,8 @@ export default async function TestsDashboardPage() {
         Today: <b>{today}</b> • Expiring window through: <b>{in30}</b>
       </p>
 
-      <TestsActions horses={horses ?? []} />
+      {/* Import/Upload Actions */}
+      <TestsActions horses={(horses ?? []) as any[]} profile={profile as any} clubs={clubs as any[]} />
 
       <Section title={`Expired (${expired.length})`} items={expired} today={today} in30={in30} />
       <Section title={`Expiring in 30 days (${expiringSoon.length})`} items={expiringSoon} today={today} in30={in30} />

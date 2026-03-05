@@ -1,440 +1,408 @@
-// src/app/club/tests/TestsActions.client.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
+import { supabase } from "@/lib/supabaseBrowser";
 
-type Candidate = { id: string; name: string };
-type HorseOption = { id: string; name: string; microchip?: string | null; status?: string | null };
+type ClubRow = { id: string; name: string };
 
-type PreviewItem =
-  | {
-      kind: "matched";
-      horse_id: string;
-      horse_name: string;
-      chip?: string | null;
-      name?: string | null;
-      result?: string | null;
-    }
-  | {
-      kind: "ambiguous";
-      chip?: string | null;
-      name?: string | null;
-      result?: string | null;
-      candidates: Candidate[];
-    }
-  | {
-      kind: "unmatched";
-      reason: string;
-      chip?: string | null;
-      name?: string | null;
-      result?: string | null;
-    };
-
-type PreviewResponse = {
-  storage_path: string;
-  testDate: string | null;
-  items: PreviewItem[];
+type ProfileLite = {
+  role: string; // "admin" | "club_admin" | ...
 };
 
-export default function TestsActions({ horses }: { horses: HorseOption[] }) {
-  const [file, setFile] = useState<File | null>(null);
+type HorseRow = {
+  id: string;
+  name: string;
+  microchip: string | null;
+  status: string | null;
+};
+
+type PreviewRow = {
+  id: string;
+  batch_id: string;
+  storage_path: string;
+  raw_horse_name: string | null;
+  chip: string | null;
+  reg_number: string | null; // ✅ ADD THIS
+  result: string | null;
+  test_type: string | null;
+  test_date: string | null;
+  horse_id: string | null;
+  match_kind: string | null;
+  candidates: any;
+  committed_at: string | null;
+};
+
+export default function TestsActions(props: {
+  horses: HorseRow[];
+  profile: ProfileLite;
+  clubs?: ClubRow[]; // server-provided for admin dropdown
+}) {
+  const { horses, profile, clubs = [] } = props;
+
+  const isAdmin = profile?.role === "admin";
+
   const [busy, setBusy] = useState(false);
-  const [preview, setPreview] = useState<PreviewResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const [approvedMatched, setApprovedMatched] = useState<Record<number, boolean>>({});
-  const [ambiguousSelection, setAmbiguousSelection] = useState<Record<number, string>>({});
+  const [file, setFile] = useState<File | null>(null);
+  const [storagePath, setStoragePath] = useState<string | null>(null);
 
-  // Quick Add state
-  const [quickHorseId, setQuickHorseId] = useState("");
-  const [quickType, setQuickType] = useState("AIE");
-  const [quickDate, setQuickDate] = useState(() => new Date().toISOString().slice(0, 10));
-  const [quickResult, setQuickResult] = useState<string>("NEGATIVO");
-  const [quickReg, setQuickReg] = useState<string>("");
+  const [selectedClubId, setSelectedClubId] = useState<string>("");
+  const [batchId, setBatchId] = useState<string | null>(null);
+  const [preview, setPreview] = useState<PreviewRow[]>([]);
+  const [batchDate, setBatchDate] = useState<string>("");
+  const [manualMatches, setManualMatches] = useState<Record<string, string>>({});
 
-  const grouped = useMemo(() => {
-    const items = preview?.items ?? [];
-    return {
-      matched: items.map((it, idx) => ({ it, idx })).filter((x) => x.it.kind === "matched"),
-      ambiguous: items.map((it, idx) => ({ it, idx })).filter((x) => x.it.kind === "ambiguous"),
-      unmatched: items.map((it, idx) => ({ it, idx })).filter((x) => x.it.kind === "unmatched"),
-    };
-  }, [preview]);
 
-  async function uploadPdf(): Promise<string> {
-    const fd = new FormData();
-    fd.append("file", file!);
 
-    const up = await fetch("/api/labs/upload", { method: "POST", body: fd });
-    const upJson = await up.json();
-    if (!up.ok) throw new Error(upJson.error || "Upload failed");
-    return upJson.storage_path as string;
+function setManual(rowId: string, horseId: string) {
+  setManualMatches((m) => ({ ...m, [rowId]: horseId }));
+}
+
+  async function getAccessToken(): Promise<string> {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw new Error(error.message);
+    const token = data.session?.access_token;
+    if (!token) throw new Error("Not authenticated (missing session access token).");
+    return token;
   }
 
-  async function runPreview(storage_path: string) {
+  function requireAdminClubSelected() {
+    if (isAdmin && !selectedClubId) {
+      throw new Error("Please select a club first.");
+    }
+  }
+
+
+ async function uploadPdf(): Promise<string> {
+  if (!file) throw new Error("Please choose a PDF first.");
+
+  const token = await getAccessToken();
+
+  const form = new FormData();
+  form.append("file", file);
+  form.append("filename", file.name);
+
+  const res = await fetch("/api/labs/upload", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: form,
+  });
+
+  const out = await res.json();
+  if (!res.ok) throw new Error(out?.error ?? "Upload failed.");
+  if (!out?.storage_path) throw new Error("Upload succeeded but storage_path missing.");
+
+  return out.storage_path;
+}
+
+  async function runPreview(sp: string) {
+    requireAdminClubSelected();
+
+    const token = await getAccessToken();
+
     const res = await fetch("/api/labs/preview-upload", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ storage_path }),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        storage_path: sp,
+        ...(isAdmin ? { club_id: selectedClubId } : {}),
+      }),
     });
-    const json = await res.json();
-    if (!res.ok) throw new Error(json.error || "Preview failed");
-    return json as PreviewResponse;
+
+    const out = await res.json();
+    if (!res.ok) throw new Error(out?.error ?? "Preview failed.");
+
+    // Expecting preview-upload to return batch_id, plus rows/preview
+    const bid: string | null =
+      (typeof out?.batch_id === "string" && out.batch_id) ||
+      (typeof out?.batchId === "string" && out.batchId) ||
+      null;
+
+    const rows: PreviewRow[] = (out?.rows ?? out?.preview ?? []) as PreviewRow[];
+
+    setBatchId(bid);
+    setPreview(rows);
+    setManualMatches({});
+
+    return out;
   }
 
-  async function onUploadAndPreview(e: React.FormEvent) {
-    e.preventDefault();
-    if (!file) return;
+  async function commitPreview(bid: string) {
+    requireAdminClubSelected();
 
-    setBusy(true);
-    setError(null);
-    setPreview(null);
-    setApprovedMatched({});
-    setAmbiguousSelection({});
+    const token = await getAccessToken();
 
+    const res = await fetch("/api/labs/commit-preview", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+  	batch_id: bid,
+ 	overrides: manualMatches,
+  	...(isAdmin ? { club_id: selectedClubId } : {}),
+	}),
+    });
+
+    const out = await res.json();
+    if (!res.ok) throw new Error(out?.error ?? "Commit failed.");
+
+    return out;
+  }
+
+  async function onUploadAndPreview() {
     try {
-      const storage_path = await uploadPdf();
-      const p = await runPreview(storage_path);
-      setPreview(p);
+      setBusy(true);
+      setError(null);
 
-      // default approve all matched
-      const defaults: Record<number, boolean> = {};
-      p.items.forEach((it, idx) => {
-        if (it.kind === "matched") defaults[idx] = true;
-      });
-      setApprovedMatched(defaults);
-    } catch (err: any) {
-      setError(err.message ?? "Unknown error");
+      requireAdminClubSelected();
+
+      const sp = await uploadPdf();
+      setStoragePath(sp);
+
+      await runPreview(sp);
+    } catch (e: any) {
+      setError(e?.message ?? "Unknown error");
     } finally {
       setBusy(false);
     }
   }
 
   async function onCommit() {
-    if (!preview) return;
-
-    setBusy(true);
-    setError(null);
-
     try {
-      const approvals: Array<{ horse_id: string; result?: string | null }> = [];
+      setBusy(true);
+      setError(null);
 
-      preview.items.forEach((it, idx) => {
-        if (it.kind === "matched") {
-          if (approvedMatched[idx]) approvals.push({ horse_id: it.horse_id, result: it.result });
-        } else if (it.kind === "ambiguous") {
-          const chosen = ambiguousSelection[idx];
-          if (chosen) approvals.push({ horse_id: chosen, result: it.result });
-        }
-      });
+      requireAdminClubSelected();
 
-      const res = await fetch("/api/labs/commit-preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          storage_path: preview.storage_path,
-          testDate: preview.testDate,
-          test_type: "AIE",
-          approvals,
-        }),
-      });
+      if (!batchId) throw new Error("Missing batch id. Run Preview first.");
 
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Commit failed");
+      const out = await commitPreview(batchId);
 
-      window.location.reload();
-    } catch (err: any) {
-      setError(err.message ?? "Unknown error");
+      alert(`Committed. Parsed: ${out?.parsed ?? "?"}, Matched: ${out?.matched ?? "?"}`);
+    } catch (e: any) {
+      setError(e?.message ?? "Unknown error");
     } finally {
       setBusy(false);
     }
   }
 
-  async function onQuickAdd(e: React.FormEvent) {
-    e.preventDefault();
-    if (!quickHorseId || !quickDate) return;
+async function applyMissingDateToBatch(dateISO: string) {
+  if (!batchId) throw new Error("Missing batch id.");
+  if (!dateISO) throw new Error("Please choose a date first.");
 
-    setBusy(true);
-    setError(null);
+  const token = await getAccessToken();
 
-    try {
-      const res = await fetch("/api/tests/manual-add", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          horse_id: quickHorseId,
-          test_type: quickType,
-          test_date: quickDate,
-          result: quickResult || null,
-          reg_number: quickReg.trim() || null,
-        }),
-      });
+  const res = await fetch("/api/labs/preview-upload", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      batchId,
+      applyMissingDate: dateISO,
+      scope: "all",
+    }),
+  });
 
-      const json = await res.json();
-      if (!res.ok) throw new Error(json.error || "Manual add failed");
+  const out = await res.json();
+  if (!res.ok) throw new Error(out?.error ?? "Failed to apply date.");
 
-      window.location.reload();
-    } catch (err: any) {
-      setError(err.message ?? "Unknown error");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const canCommit = useMemo(() => {
-    if (!preview) return false;
-    const hasAnyApprovedMatched = Object.values(approvedMatched).some(Boolean);
-    const hasAnyAmbigSelected = Object.values(ambiguousSelection).some(Boolean);
-    return hasAnyApprovedMatched || hasAnyAmbigSelected;
-  }, [preview, approvedMatched, ambiguousSelection]);
+  setPreview((prev) =>
+    prev.map((r) => (r.test_date ? r : { ...r, test_date: dateISO }))
+  );
+}
 
   return (
-    <section style={{ marginTop: 14, padding: 12, border: "1px solid #e8e8e8", borderRadius: 12 }}>
-      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <form onSubmit={onUploadAndPreview} style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-          <input type="file" accept="application/pdf" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+    <section style={{ marginTop: 12, padding: 12, border: "1px solid rgba(0,0,0,0.12)", borderRadius: 12 }}>
+      <h3 style={{ marginTop: 0 }}>Import SENASICA Tests (PDF)</h3>
 
-          <button
-            type="submit"
-            disabled={!file || busy}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 10,
-              border: "1px solid #ccc",
-              background: busy ? "#f5f5f5" : "white",
-              cursor: busy ? "not-allowed" : "pointer",
-              fontWeight: 800,
-            }}
+      {/* Admin-only club selector */}
+      {isAdmin && (
+        <div style={{ marginBottom: 12 }}>
+          <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 6 }}>Club (admin only)</div>
+          <select
+            value={selectedClubId}
+            onChange={(e) => setSelectedClubId(e.target.value)}
+            disabled={busy}
+            style={{ padding: 8, borderRadius: 8, width: "100%" }}
           >
-            {busy ? "Working..." : "Upload PDF (Preview)"}
-          </button>
-        </form>
-
-        <div style={{ opacity: 0.7 }}>
-          Upload supports scanned PDFs (OCR). Matches by chip, falls back to name.
+            <option value="">Select a club…</option>
+            {clubs.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          {!clubs.length ? (
+            <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>
+              No clubs loaded (admin). If this is unexpected, confirm the server page is fetching clubs.
+            </div>
+          ) : null}
         </div>
+      )}
+
+      {/* File input */}
+      <div style={{ display: "grid", gap: 8 }}>
+        <input
+          type="file"
+          accept="application/pdf"
+          disabled={busy}
+          onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        />
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+       
+<button
+  type="button"
+  onClick={onUploadAndPreview}
+  disabled={busy || !file || (isAdmin && !selectedClubId)}
+  style={{ padding: "8px 12px", borderRadius: 10 }}
+>
+  {busy ? "Working…" : "Upload + Preview"}
+</button>
+
+<button
+  type="button"
+  onClick={onCommit}
+  disabled={busy || !batchId || (isAdmin && !selectedClubId)}
+  style={{ padding: "8px 12px", borderRadius: 10 }}
+>
+  Commit
+</button>
+
+</div>
+
+        {/* Status */}
+        <div style={{ fontSize: 12, opacity: 0.85 }}>
+          <div>
+            <b>Horses loaded:</b> {horses.length}
+          </div>
+          <div>
+            <b>Storage path:</b> {storagePath ?? "-"}
+          </div>
+          <div>
+            <b>Batch id:</b> {batchId ?? "-"}
+          </div>
+          <div>
+            <b>Preview rows:</b> {preview.length}
+          </div>
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div style={{ padding: 10, border: "1px solid rgba(255,0,0,0.45)", borderRadius: 10 }}>
+            <b>Error:</b> {error}
+          </div>
+        )}
+{/* Batch date tools */}
+{preview.length > 0 && (
+  <div style={{ display: "flex", gap: 10, alignItems: "end", flexWrap: "wrap", marginTop: 10 }}>
+    <div style={{ display: "grid", gap: 6 }}>
+      <div style={{ fontSize: 12, opacity: 0.8 }}>
+        Batch test date (apply to missing rows)
       </div>
 
-      {/* Quick Add */}
-      <div style={{ marginTop: 12, paddingTop: 12, borderTop: "1px solid #eee" }}>
-        <h4 style={{ margin: "0 0 8px 0" }}>Quick add test</h4>
+      <input
+        type="date"
+        value={batchDate}
+        onChange={(e) => setBatchDate(e.target.value)}
+        disabled={busy}
+        style={{ padding: 8, borderRadius: 8 }}
+      />
+    </div>
 
-        <form
-          onSubmit={onQuickAdd}
-          style={{
-            display: "grid",
-            gap: 10,
-            gridTemplateColumns: "1.6fr 0.8fr 0.9fr 0.9fr 1fr",
-            alignItems: "end",
-          }}
-        >
-          <label style={{ display: "grid", gap: 4 }}>
-            <span>Horse</span>
-            <select value={quickHorseId} onChange={(e) => setQuickHorseId(e.target.value)} required style={{ padding: 8 }}>
-              <option value="">Select horse…</option>
-              {horses.map((h) => (
-                <option key={h.id} value={h.id}>
-                  {h.name}
-                  {h.microchip ? ` • ${h.microchip}` : ""}
-                  {h.status ? ` (${h.status})` : ""}
-                </option>
-              ))}
-            </select>
-          </label>
+    <button
+      type="button"
+      disabled={busy || !batchId || !batchDate}
+      onClick={async () => {
+        try {
+          setBusy(true);
+          setError(null);
+          await applyMissingDateToBatch(batchDate);
+        } catch (e: any) {
+          setError(e?.message ?? "Unknown error");
+        } finally {
+          setBusy(false);
+        }
+      }}
+      style={{ padding: "8px 12px", borderRadius: 10 }}
+    >
+      Apply date to missing
+    </button>
 
-          <label style={{ display: "grid", gap: 4 }}>
-            <span>Type</span>
-            <select value={quickType} onChange={(e) => setQuickType(e.target.value)} style={{ padding: 8 }}>
-              <option value="AIE">AIE</option>
-              <option value="OTHER">OTHER</option>
-            </select>
-          </label>
-
-          <label style={{ display: "grid", gap: 4 }}>
-            <span>Date</span>
-            <input type="date" value={quickDate} onChange={(e) => setQuickDate(e.target.value)} required style={{ padding: 8 }} />
-          </label>
-
-          <label style={{ display: "grid", gap: 4 }}>
-            <span>Result</span>
-            <select value={quickResult} onChange={(e) => setQuickResult(e.target.value)} style={{ padding: 8 }}>
-              <option value="">—</option>
-              <option value="NEGATIVO">NEGATIVO</option>
-              <option value="POSITIVO">POSITIVO</option>
-            </select>
-          </label>
-
-          <label style={{ display: "grid", gap: 4 }}>
-            <span>Reg #</span>
-            <input value={quickReg} onChange={(e) => setQuickReg(e.target.value)} placeholder="optional" style={{ padding: 8 }} />
-          </label>
-
-          <div style={{ gridColumn: "1 / -1", display: "flex", gap: 10, alignItems: "center" }}>
-            <button
-              type="submit"
-              disabled={busy || !quickHorseId || !quickDate}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 10,
-                border: "1px solid #ccc",
-                background: busy ? "#f5f5f5" : "white",
-                cursor: busy ? "not-allowed" : "pointer",
-                fontWeight: 800,
-              }}
-            >
-              {busy ? "Saving..." : "Save test"}
-            </button>
-
-            <span style={{ opacity: 0.7 }}>Older dates than current will be ignored.</span>
-          </div>
-        </form>
-      </div>
-
-      {error ? (
-        <div style={{ marginTop: 10, padding: 10, border: "1px solid rgba(255,0,0,0.25)", borderRadius: 10 }}>
-          <b>Error:</b> {error}
-        </div>
-      ) : null}
-
-      {preview ? (
-        <div style={{ marginTop: 12 }}>
-          <div style={{ padding: 10, border: "1px solid #eee", borderRadius: 10 }}>
-            <div>
-              <b>Detected test date:</b> {preview.testDate ?? "(not found)"}
-            </div>
-            <div style={{ opacity: 0.75, marginTop: 4 }}>
-              <code>{preview.storage_path}</code>
-            </div>
-          </div>
-
-          <h4 style={{ marginTop: 12, marginBottom: 6 }}>Matched</h4>
-          {grouped.matched.length ? (
-            <table cellPadding={8} style={{ borderCollapse: "collapse", width: "100%" }}>
+    <div style={{ fontSize: 12, opacity: 0.75 }}>
+      {preview.filter((r) => !r.test_date).length} row(s) missing date
+    </div>
+  </div>
+)}
+        {/* Preview table (lightweight) */}
+        {preview.length > 0 && (
+          <div style={{ overflowX: "auto" }}>
+            <table cellPadding={8} style={{ borderCollapse: "collapse", width: "100%", marginTop: 6 }}>
               <thead>
-                <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
-                  <th>Approve</th>
-                  <th>Horse</th>
-                  <th>Chip</th>
-                  <th>Result</th>
-                </tr>
-              </thead>
+  <tr style={{ textAlign: "left", borderBottom: "1px solid #ddd" }}>
+    <th>Horse (raw)</th>
+    <th>Chip</th>
+    <th>Reg #</th>
+    <th>Date</th>
+    <th>Match</th>
+    <th>Horse ID / Manual</th>
+  </tr>
+</thead>
               <tbody>
-                {grouped.matched.map(({ it, idx }) => {
-                  const m = it as Extract<PreviewItem, { kind: "matched" }>;
-                  return (
-                    <tr key={idx} style={{ borderBottom: "1px solid #f3f3f3" }}>
-                      <td>
-                        <input
-                          type="checkbox"
-                          checked={!!approvedMatched[idx]}
-                          onChange={(e) => setApprovedMatched((p) => ({ ...p, [idx]: e.target.checked }))}
-                        />
-                      </td>
-                      <td>{m.horse_name}</td>
-                      <td>
-                        <code>{m.chip ?? "-"}</code>
-                      </td>
-                      <td>
-                        <code>{m.result ?? "-"}</code>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
+  {preview.slice(0, 200).map((r) => (
+    <tr key={r.id} style={{ borderBottom: "1px solid #f0f0f0" }}>
+  <td>{r.raw_horse_name ?? ""}</td>
+
+  <td>{r.chip ?? ""}</td>
+
+  <td>{r.reg_number ?? ""}</td>
+
+  <td>{r.test_date ?? ""}</td>
+
+  <td>{r.match_kind ?? (r.horse_id ? "matched" : "unmatched")}</td>
+
+  <td>
+    {r.horse_id ? (
+      r.horse_id
+    ) : (
+      <select
+        value={manualMatches[r.id] ?? ""}
+        onChange={(e) => setManual(r.id, e.target.value)}
+        disabled={busy}
+        style={{ padding: 6, borderRadius: 8, width: "100%" }}
+      >
+        <option value="">— manual match —</option>
+
+        {horses.map((h) => (
+          <option key={h.id} value={h.id}>
+            {h.name}
+            {h.microchip ? ` (${h.microchip})` : ""}
+          </option>
+        ))}
+      </select>
+    )}
+  </td>
+</tr>
+  ))}
+</tbody>
             </table>
-          ) : (
-            <div style={{ opacity: 0.75 }}>No matched items.</div>
-          )}
 
-          <h4 style={{ marginTop: 12, marginBottom: 6 }}>Ambiguous</h4>
-          {grouped.ambiguous.length ? (
-            <div style={{ display: "grid", gap: 10 }}>
-              {grouped.ambiguous.map(({ it, idx }) => {
-                const a = it as Extract<PreviewItem, { kind: "ambiguous" }>;
-                return (
-                  <div key={idx} style={{ padding: 10, border: "1px solid #eee", borderRadius: 10 }}>
-                    <div style={{ marginBottom: 6 }}>
-                      <b>PDF name:</b> <code>{a.name ?? "(none)"}</code>{" "}
-                      {a.chip ? (
-                        <>
-                          • <b>chip:</b> <code>{a.chip}</code>
-                        </>
-                      ) : null}{" "}
-                      {a.result ? (
-                        <>
-                          • <b>result:</b> <code>{a.result}</code>
-                        </>
-                      ) : null}
-                    </div>
-
-                    <select
-                      value={ambiguousSelection[idx] ?? ""}
-                      onChange={(e) => setAmbiguousSelection((p) => ({ ...p, [idx]: e.target.value }))}
-                    >
-                      <option value="">Select horse…</option>
-                      {a.candidates.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div style={{ opacity: 0.75 }}>No ambiguous items.</div>
-          )}
-
-          <h4 style={{ marginTop: 12, marginBottom: 6 }}>Unmatched</h4>
-          {grouped.unmatched.length ? (
-            <ul style={{ marginTop: 6, paddingLeft: 18 }}>
-              {grouped.unmatched.map(({ it, idx }) => {
-                const u = it as Extract<PreviewItem, { kind: "unmatched" }>;
-                return (
-                  <li key={idx} style={{ marginBottom: 6 }}>
-                    <b>{u.reason}</b>{" "}
-                    {u.name ? (
-                      <>
-                        • name: <code>{u.name}</code>
-                      </>
-                    ) : null}{" "}
-                    {u.chip ? (
-                      <>
-                        • chip: <code>{u.chip}</code>
-                      </>
-                    ) : null}{" "}
-                    {u.result ? (
-                      <>
-                        • result: <code>{u.result}</code>
-                      </>
-                    ) : null}
-                  </li>
-                );
-              })}
-            </ul>
-          ) : (
-            <div style={{ opacity: 0.75 }}>No unmatched items.</div>
-          )}
-
-          <div style={{ marginTop: 12 }}>
-            <button
-              onClick={onCommit}
-              disabled={!canCommit || busy}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 10,
-                border: "1px solid #ccc",
-                background: busy ? "#f5f5f5" : "white",
-                cursor: busy ? "not-allowed" : "pointer",
-                fontWeight: 900,
-              }}
-            >
-              {busy ? "Saving..." : "Commit approved tests"}
-            </button>
+            {preview.length > 200 ? (
+              <div style={{ fontSize: 12, opacity: 0.7, marginTop: 6 }}>Showing first 200 rows…</div>
+            ) : null}
           </div>
-        </div>
-      ) : null}
+        )}
+      </div>
     </section>
   );
 }

@@ -1,5 +1,7 @@
 // Types for the event sign-up feature.
 
+import type { EventConfig } from "@/lib/events/config";
+
 export type EventRow = {
   id: string;
   name: string;
@@ -8,6 +10,7 @@ export type EventRow = {
   sunday_date: string | null;
   is_open: boolean;
   created_at: string;
+  config: EventConfig;
 };
 
 export type ClubOption = {
@@ -47,8 +50,7 @@ export type EntryInput = {
   newHorseName: string;
   height: string;
   section: string;
-  saturday: boolean;
-  sunday: boolean;
+  days: string[];
   circuit: boolean;
   discount: boolean;
 };
@@ -64,4 +66,39 @@ export type RegisterPayload = {
     email: string;
   };
   entries: EntryInput[];
+};
+
+// ---- Edit flow (club + email gated) ------------------------------------
+
+export type ExistingEntry = {
+  id: string;
+  submission_id: string;
+  rider_id: string | null;
+  horse_id: string | null;
+  rider_name: string;
+  horse_name: string;
+  height: string;
+  section: string;
+  days: string[] | null;
+  circuit: boolean;
+  discount: boolean;
+};
+
+export type LookupPayload = { clubId: string; email: string };
+
+export type LookupResult = {
+  clubId: string;
+  clubName: string;
+  submissionId: string; // submission new entries get attached to
+  entries: ExistingEntry[];
+  riders: RosterRider[];
+  horses: RosterHorse[];
+};
+
+export type UpdatePayload = {
+  clubId: string;
+  email: string;
+  deletedEntryIds: string[];
+  updatedEntries: (EntryInput & { id: string })[];
+  addedEntries: EntryInput[];
 };

@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { normalizeConfig } from "@/lib/events/config";
+import { DeleteSubmissionButton, DeleteEntryButton } from "./DeleteButtons";
 
 export const dynamic = "force-dynamic";
 
@@ -22,15 +24,10 @@ type Entry = {
   horse_name: string;
   height: string;
   section: string;
-  saturday: boolean;
-  sunday: boolean;
+  days: string[] | null;
   circuit: boolean;
   discount: boolean;
 };
-
-function days(e: Entry) {
-  return [e.saturday && "Sáb", e.sunday && "Dom"].filter(Boolean).join(" + ") || "—";
-}
 
 export default async function AdminEventDetail({
   params,
@@ -42,10 +39,11 @@ export default async function AdminEventDetail({
 
   const { data: event, error: evErr } = await supabaseAdmin
     .from("events")
-    .select("id, name, slug, is_open")
+    .select("id, name, slug, is_open, config")
     .eq("id", id)
     .single();
   if (evErr || !event) throw new Error("Evento no encontrado.");
+  const config = normalizeConfig(event.config);
 
   // Submissions for this event (scoped to club when not admin)
   let subQuery = supabaseAdmin
@@ -61,7 +59,7 @@ export default async function AdminEventDetail({
   if (subIds.length) {
     const { data: ent } = await supabaseAdmin
       .from("event_entries")
-      .select("id, submission_id, rider_name, horse_name, height, section, saturday, sunday, circuit, discount")
+      .select("id, submission_id, rider_name, horse_name, height, section, days, circuit, discount")
       .in("submission_id", subIds);
     entries = (ent as Entry[]) ?? [];
   }
@@ -79,7 +77,14 @@ export default async function AdminEventDetail({
       <Link href="/admin/events" className="text-sm text-blue-600 dark:text-blue-400">
         ← Eventos
       </Link>
-      <h2 className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">{event.name}</h2>
+      <div className="mt-2 flex items-center gap-3">
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{event.name}</h2>
+        {isAdmin && (
+          <Link href={`/admin/events/${event.id}/config`} className="text-sm font-semibold text-blue-600">
+            Configurar
+          </Link>
+        )}
+      </div>
       <p className="mb-5 text-sm text-slate-500 dark:text-slate-400">
         {(submissions ?? []).length} club(es) · {totalEntries} participación(es) ·{" "}
         <span className="font-mono">/signup/{event.slug}</span>
@@ -98,6 +103,11 @@ export default async function AdminEventDetail({
                   <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
                     {rows.length} jinete(s)
                   </span>
+                  {isAdmin && (
+                    <span className="ml-auto">
+                      <DeleteSubmissionButton submissionId={s.id} eventId={event.id} clubName={s.club_name} />
+                    </span>
+                  )}
                 </div>
                 <p className="mb-3 text-xs text-slate-500">
                   {[s.representative && `Rep: ${s.representative}`, s.coach && `Coach: ${s.coach}`, s.phone, s.email]
@@ -105,7 +115,7 @@ export default async function AdminEventDetail({
                     .join(" · ")}
                 </p>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
+                  <table className="w-full text-sm text-slate-900">
                     <thead>
                       <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
                         <th className="py-2 pr-3">Jinete</th>
@@ -113,8 +123,9 @@ export default async function AdminEventDetail({
                         <th className="py-2 pr-3">Altura</th>
                         <th className="py-2 pr-3">Sección</th>
                         <th className="py-2 pr-3">Días</th>
-                        <th className="py-2 pr-3">Circuito</th>
-                        <th className="py-2 pr-3">Descuento</th>
+                        {config.fields.circuit && <th className="py-2 pr-3">Circuito</th>}
+                        {config.fields.discount && <th className="py-2 pr-3">Descuento</th>}
+                        {isAdmin && <th className="py-2 pr-3"></th>}
                       </tr>
                     </thead>
                     <tbody>
@@ -124,9 +135,14 @@ export default async function AdminEventDetail({
                           <td className="py-2 pr-3">{e.horse_name}</td>
                           <td className="py-2 pr-3">{e.height}</td>
                           <td className="py-2 pr-3">{e.section}</td>
-                          <td className="py-2 pr-3">{days(e)}</td>
-                          <td className="py-2 pr-3">{e.circuit ? "Sí" : "No"}</td>
-                          <td className="py-2 pr-3">{e.discount ? "Sí" : "No"}</td>
+                          <td className="py-2 pr-3">{(e.days ?? []).join(" + ") || "—"}</td>
+                          {config.fields.circuit && <td className="py-2 pr-3">{e.circuit ? "Sí" : "No"}</td>}
+                          {config.fields.discount && <td className="py-2 pr-3">{e.discount ? "Sí" : "No"}</td>}
+                          {isAdmin && (
+                            <td className="py-2 pr-3 text-right">
+                              <DeleteEntryButton entryId={e.id} eventId={event.id} />
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>

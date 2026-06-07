@@ -70,6 +70,7 @@ export async function createRiderAction(formData: FormData) {
     club_id,
     first_name,
     last_name,
+    full_name: `${first_name} ${last_name}`,
     email,
     phone,
     rider_number,
@@ -99,7 +100,7 @@ export async function updateRiderAction(riderId: string, formData: FormData) {
 
   const { error } = await supabase
     .from("riders")
-    .update({ first_name, last_name, email, phone, rider_number, status })
+    .update({ first_name, last_name, full_name: `${first_name} ${last_name}`, email, phone, rider_number, status })
     .eq("id", riderId)
     .eq("club_id", club_id);
 

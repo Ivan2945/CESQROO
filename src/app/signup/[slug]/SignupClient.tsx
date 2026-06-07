@@ -1,36 +1,44 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { HEIGHTS, sectionsForHeight } from "@/lib/events/categories";
+import { useEffect, useRef, useState } from "react";
+import { normalizeConfig, sectionsForHeight } from "@/lib/events/config";
 import type { ClubOption, EventRow, RosterRider, RosterHorse, EntryInput } from "@/lib/types/events";
+import { Combobox } from "./Combobox";
 
 const OTHER = "__other__";
-const NEW = "__new__";
 
 type EntryState = {
-  riderSel: string; // existing rider id, NEW, or ""
+  // Rider: either an existing rider (riderId) or a new one (riderNew + names)
+  riderId: string | null;
+  riderQuery: string; // text shown in the rider box
+  riderNew: boolean;
   newRiderFirst: string;
   newRiderLast: string;
-  horseSel: string; // existing horse id, NEW, or ""
+  // Horse: either an existing horse (horseId) or a new one (horseNew + name)
+  horseId: string | null;
+  horseQuery: string;
+  horseNew: boolean;
   newHorseName: string;
   height: string;
   section: string;
-  saturday: boolean;
-  sunday: boolean;
+  days: string[];
   circuit: boolean;
   discount: boolean;
 };
 
 const emptyEntry = (): EntryState => ({
-  riderSel: "",
+  riderId: null,
+  riderQuery: "",
+  riderNew: false,
   newRiderFirst: "",
   newRiderLast: "",
-  horseSel: "",
+  horseId: null,
+  horseQuery: "",
+  horseNew: false,
   newHorseName: "",
   height: "",
   section: "",
-  saturday: false,
-  sunday: false,
+  days: [],
   circuit: false,
   discount: false,
 });
@@ -38,7 +46,7 @@ const emptyEntry = (): EntryState => ({
 const card = "rounded-xl border border-slate-200 bg-white p-6 shadow-sm";
 const label = "block text-sm font-semibold text-slate-700 mb-1.5";
 const input =
-  "w-full rounded-lg border border-slate-300 px-3 py-2 text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100";
+  "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100";
 const req = <span className="text-red-600">*</span>;
 
 export default function SignupClient({ slug }: { slug: string }) {
@@ -59,7 +67,25 @@ export default function SignupClient({ slug }: { slug: string }) {
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
 
+  type SubmittedRow = {
+    rider: string;
+    horse: string;
+    height: string;
+    section: string;
+    days: string[];
+    circuit: boolean;
+    discount: boolean;
+  };
+  const [lastSubmission, setLastSubmission] = useState<{ clubName: string; rows: SubmittedRow[] } | null>(null);
+  const confirmRef = useRef<HTMLDivElement | null>(null);
+
   const isOther = clubId === OTHER;
+  const config = normalizeConfig(event?.config);
+
+  // Scroll the confirmation summary into view once it appears
+  useEffect(() => {
+    if (lastSubmission) confirmRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [lastSubmission]);
 
   // ---- Load event + clubs ----
   useEffect(() => {
@@ -78,6 +104,7 @@ export default function SignupClient({ slug }: { slug: string }) {
   function onClubChange(value: string) {
     setClubId(value);
     setEntries([emptyEntry()]); // reset entries when club changes
+    setLastSubmission(null); // hide any previous confirmation
     if (value === OTHER) {
       setContact({ representative: "", coach: "", phone: "", email: "" });
       setRiders([]);
@@ -113,7 +140,7 @@ export default function SignupClient({ slug }: { slug: string }) {
       es.map((e, idx) => {
         if (idx !== i) return e;
         const next = { ...e, ...patch };
-        if ("height" in patch && !sectionsForHeight(next.height).includes(next.section as never)) {
+        if ("height" in patch && !sectionsForHeight(config, next.height).includes(next.section)) {
           next.section = "";
         }
         return next;
@@ -123,6 +150,13 @@ export default function SignupClient({ slug }: { slug: string }) {
   const addEntry = () => setEntries((es) => [...es, emptyEntry()]);
   const removeEntry = (i: number) =>
     setEntries((es) => (es.length === 1 ? es : es.filter((_, idx) => idx !== i)));
+  function toggleDay(i: number, day: string) {
+    setEntries((es) =>
+      es.map((e, idx) =>
+        idx === i ? { ...e, days: e.days.includes(day) ? e.days.filter((d) => d !== day) : [...e.days, day] } : e
+      )
+    );
+  }
 
   // ---- Submit ----
   async function onSubmit(ev: React.FormEvent) {
@@ -135,25 +169,40 @@ export default function SignupClient({ slug }: { slug: string }) {
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i];
       const n = i + 1;
-      const hasRider = e.riderSel === NEW ? e.newRiderFirst.trim() && e.newRiderLast.trim() : !!e.riderSel;
-      const hasHorse = e.horseSel === NEW ? !!e.newHorseName.trim() : !!e.horseSel;
+      const hasRider = e.riderNew ? e.newRiderFirst.trim() && e.newRiderLast.trim() : !!e.riderId;
+      const hasHorse = e.horseNew ? !!e.newHorseName.trim() : !!e.horseId;
       if (!hasRider) return setStatus({ type: "err", msg: `Participación ${n}: seleccione o cree un jinete.` });
       if (!hasHorse) return setStatus({ type: "err", msg: `Participación ${n}: seleccione o cree un caballo.` });
       if (!e.height || !e.section) return setStatus({ type: "err", msg: `Participación ${n}: elija altura y sección.` });
-      if (!e.saturday && !e.sunday)
+      if (e.days.length === 0)
         return setStatus({ type: "err", msg: `Participación ${n}: elija al menos un día.` });
     }
 
+    // Build a display summary (resolving names) to show after a successful save
+    const summaryRows: SubmittedRow[] = entries.map((e) => {
+      const rider = e.riderNew ? `${e.newRiderFirst.trim()} ${e.newRiderLast.trim()}`.trim() : e.riderQuery;
+      const horse = e.horseNew ? e.newHorseName.trim() : e.horseQuery;
+      return {
+        rider,
+        horse,
+        height: e.height,
+        section: e.section,
+        days: e.days,
+        circuit: e.circuit,
+        discount: e.discount,
+      };
+    });
+    const summaryClubName = isOther ? newClubName.trim() : clubs.find((c) => c.id === clubId)?.name ?? "";
+
     const payloadEntries: EntryInput[] = entries.map((e) => ({
-      riderId: e.riderSel === NEW || !e.riderSel ? null : e.riderSel,
+      riderId: e.riderNew ? null : e.riderId,
       newRiderFirst: e.newRiderFirst.trim(),
       newRiderLast: e.newRiderLast.trim(),
-      horseId: e.horseSel === NEW || !e.horseSel ? null : e.horseSel,
+      horseId: e.horseNew ? null : e.horseId,
       newHorseName: e.newHorseName.trim(),
       height: e.height,
       section: e.section,
-      saturday: e.saturday,
-      sunday: e.sunday,
+      days: e.days,
       circuit: e.circuit,
       discount: e.discount,
     }));
@@ -176,13 +225,13 @@ export default function SignupClient({ slug }: { slug: string }) {
 
       const extra = result.clubCreated ? " Su club se guardó para futuros eventos." : "";
       setStatus({ type: "ok", msg: `¡Inscripción enviada! Se registraron ${result.count} participación(es).${extra}` });
+      setLastSubmission({ clubName: summaryClubName, rows: summaryRows });
       setEntries([emptyEntry()]);
       setClubId("");
       setNewClubName("");
       setContact({ representative: "", coach: "", phone: "", email: "" });
       setRiders([]);
       setHorses([]);
-      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
       setStatus({ type: "err", msg: "Error al guardar: " + (e as Error).message });
     } finally {
@@ -206,6 +255,11 @@ export default function SignupClient({ slug }: { slug: string }) {
         <h1 className="mt-1 text-3xl font-bold text-slate-900 dark:text-white">{event?.name}</h1>
         <p className="mt-1 text-slate-600 dark:text-slate-300">
           Seleccione su club, revise los datos de contacto y agregue una fila por cada participación.
+        </p>
+        <p className="mt-2 text-sm">
+          <a href={`/signup/${slug}/editar`} className="font-semibold text-blue-600 dark:text-blue-400">
+            ¿Ya te inscribiste? Editar tu inscripción →
+          </a>
         </p>
       </header>
 
@@ -313,7 +367,7 @@ export default function SignupClient({ slug }: { slug: string }) {
 
           <div className="space-y-4">
             {entries.map((e, i) => {
-              const allowed = e.height ? sectionsForHeight(e.height) : [];
+              const allowed = e.height ? sectionsForHeight(config, e.height) : [];
               return (
                 <div key={i} className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
                   <div className="mb-3 flex items-center justify-between">
@@ -331,23 +385,34 @@ export default function SignupClient({ slug }: { slug: string }) {
                     {/* Rider */}
                     <div>
                       <label className={label}>Jinete {req}</label>
-                      <select
-                        className={input}
-                        value={e.riderSel}
-                        onChange={(ev) => updateEntry(i, { riderSel: ev.target.value })}
+                      <Combobox
                         disabled={!clubId}
-                      >
-                        <option value="" disabled>
-                          Seleccione…
-                        </option>
-                        {riders.map((r) => (
-                          <option key={r.id} value={r.id}>
-                            {r.last_name}, {r.first_name}
-                          </option>
-                        ))}
-                        <option value={NEW}>➕ Crear nuevo jinete</option>
-                      </select>
-                      {e.riderSel === NEW && (
+                        placeholder="Escriba para buscar…"
+                        query={e.riderQuery}
+                        items={riders.map((r) => ({ id: r.id, label: `${r.last_name}, ${r.first_name}` }))}
+                        onQueryChange={(text) => updateEntry(i, { riderQuery: text, riderId: null, riderNew: false })}
+                        onSelectExisting={(id, lbl) =>
+                          updateEntry(i, {
+                            riderId: id,
+                            riderQuery: lbl,
+                            riderNew: false,
+                            newRiderFirst: "",
+                            newRiderLast: "",
+                          })
+                        }
+                        onCreateNew={(text) => {
+                          const parts = text.split(/\s+/);
+                          updateEntry(i, {
+                            riderNew: true,
+                            riderId: null,
+                            riderQuery: text,
+                            newRiderFirst: parts[0] ?? "",
+                            newRiderLast: parts.slice(1).join(" "),
+                          });
+                        }}
+                        createLabel={(t) => `Crear nuevo jinete: “${t}”`}
+                      />
+                      {e.riderNew && (
                         <div className="mt-2 grid grid-cols-2 gap-2">
                           <input
                             className={input}
@@ -368,29 +433,22 @@ export default function SignupClient({ slug }: { slug: string }) {
                     {/* Horse */}
                     <div>
                       <label className={label}>Caballo {req}</label>
-                      <select
-                        className={input}
-                        value={e.horseSel}
-                        onChange={(ev) => updateEntry(i, { horseSel: ev.target.value })}
+                      <Combobox
                         disabled={!clubId}
-                      >
-                        <option value="" disabled>
-                          Seleccione…
-                        </option>
-                        {horses.map((h) => (
-                          <option key={h.id} value={h.id}>
-                            {h.name}
-                          </option>
-                        ))}
-                        <option value={NEW}>➕ Crear nuevo caballo</option>
-                      </select>
-                      {e.horseSel === NEW && (
-                        <input
-                          className={input + " mt-2"}
-                          placeholder="Nombre del caballo"
-                          value={e.newHorseName}
-                          onChange={(ev) => updateEntry(i, { newHorseName: ev.target.value })}
-                        />
+                        placeholder="Escriba para buscar…"
+                        query={e.horseQuery}
+                        items={horses.map((h) => ({ id: h.id, label: h.name }))}
+                        onQueryChange={(text) => updateEntry(i, { horseQuery: text, horseId: null, horseNew: false })}
+                        onSelectExisting={(id, lbl) =>
+                          updateEntry(i, { horseId: id, horseQuery: lbl, horseNew: false, newHorseName: "" })
+                        }
+                        onCreateNew={(text) =>
+                          updateEntry(i, { horseNew: true, horseId: null, horseQuery: text, newHorseName: text })
+                        }
+                        createLabel={(t) => `Crear nuevo caballo: “${t}”`}
+                      />
+                      {e.horseNew && (
+                        <p className="mt-1.5 text-xs font-medium text-blue-700">Se creará un nuevo caballo: “{e.newHorseName}”.</p>
                       )}
                     </div>
 
@@ -405,7 +463,7 @@ export default function SignupClient({ slug }: { slug: string }) {
                         <option value="" disabled>
                           Seleccione…
                         </option>
-                        {HEIGHTS.map((h) => (
+                        {config.heights.map((h) => (
                           <option key={h} value={h}>
                             {h}
                           </option>
@@ -434,51 +492,60 @@ export default function SignupClient({ slug }: { slug: string }) {
                     </div>
                   </div>
 
-                  {/* Days */}
+                  {/* Days (from event config) */}
                   <div className="mt-3 flex flex-wrap items-center gap-3">
                     <span className="text-sm font-semibold text-slate-700">Días {req}</span>
-                    {(["saturday", "sunday"] as const).map((d) => (
-                      <label
-                        key={d}
-                        className={
-                          "inline-flex cursor-pointer items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-semibold " +
-                          (e[d]
-                            ? "border-blue-600 bg-blue-50 text-blue-800"
-                            : "border-slate-300 bg-white text-slate-700")
-                        }
-                      >
-                        <input
-                          type="checkbox"
-                          className="accent-blue-600"
-                          checked={e[d]}
-                          onChange={(ev) => updateEntry(i, { [d]: ev.target.checked } as Partial<EntryState>)}
-                        />
-                        {d === "saturday" ? "Sábado" : "Domingo"}
-                      </label>
-                    ))}
+                    {config.days.map((d) => {
+                      const on = e.days.includes(d);
+                      return (
+                        <label
+                          key={d}
+                          className={
+                            "inline-flex cursor-pointer items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-semibold " +
+                            (on
+                              ? "border-blue-600 bg-blue-50 text-blue-800"
+                              : "border-slate-300 bg-white text-slate-700")
+                          }
+                        >
+                          <input
+                            type="checkbox"
+                            className="accent-blue-600"
+                            checked={on}
+                            onChange={() => toggleDay(i, d)}
+                          />
+                          {d}
+                        </label>
+                      );
+                    })}
                   </div>
 
-                  {/* Toggles */}
-                  <div className="mt-3 flex flex-wrap gap-5">
-                    <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
-                      <input
-                        type="checkbox"
-                        className="accent-emerald-600"
-                        checked={e.circuit}
-                        onChange={(ev) => updateEntry(i, { circuit: ev.target.checked })}
-                      />
-                      Inscrito en el circuito
-                    </label>
-                    <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
-                      <input
-                        type="checkbox"
-                        className="accent-emerald-600"
-                        checked={e.discount}
-                        onChange={(ev) => updateEntry(i, { discount: ev.target.checked })}
-                      />
-                      Aplica descuento
-                    </label>
-                  </div>
+                  {/* Optional toggles (shown only if the event uses them) */}
+                  {(config.fields.circuit || config.fields.discount) && (
+                    <div className="mt-3 flex flex-wrap gap-5">
+                      {config.fields.circuit && (
+                        <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
+                          <input
+                            type="checkbox"
+                            className="accent-emerald-600"
+                            checked={e.circuit}
+                            onChange={(ev) => updateEntry(i, { circuit: ev.target.checked })}
+                          />
+                          Inscrito en el circuito
+                        </label>
+                      )}
+                      {config.fields.discount && (
+                        <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
+                          <input
+                            type="checkbox"
+                            className="accent-emerald-600"
+                            checked={e.discount}
+                            onChange={(ev) => updateEntry(i, { discount: ev.target.checked })}
+                          />
+                          Aplica descuento
+                        </label>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -505,6 +572,47 @@ export default function SignupClient({ slug }: { slug: string }) {
           </button>
         </div>
       </form>
+
+      {/* Bottom confirmation: banner + summary table of what was just sent */}
+      {lastSubmission && (
+        <div ref={confirmRef} className="mt-8 scroll-mt-6">
+          <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-800">
+            ¡Inscripción enviada! Se registraron {lastSubmission.rows.length} participación(es) para{" "}
+            {lastSubmission.clubName}.
+          </div>
+          <section className={card}>
+            <h2 className="mb-3 text-lg font-semibold text-slate-900">Resumen enviado</h2>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm text-slate-900">
+                <thead>
+                  <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                    <th className="py-2 pr-3">Jinete</th>
+                    <th className="py-2 pr-3">Caballo</th>
+                    <th className="py-2 pr-3">Altura</th>
+                    <th className="py-2 pr-3">Sección</th>
+                    <th className="py-2 pr-3">Días</th>
+                    {config.fields.circuit && <th className="py-2 pr-3">Circuito</th>}
+                    {config.fields.discount && <th className="py-2 pr-3">Descuento</th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {lastSubmission.rows.map((r, idx) => (
+                    <tr key={idx} className="border-b border-slate-100">
+                      <td className="py-2 pr-3">{r.rider}</td>
+                      <td className="py-2 pr-3">{r.horse}</td>
+                      <td className="py-2 pr-3">{r.height}</td>
+                      <td className="py-2 pr-3">{r.section}</td>
+                      <td className="py-2 pr-3">{r.days.join(" + ") || "—"}</td>
+                      {config.fields.circuit && <td className="py-2 pr-3">{r.circuit ? "Sí" : "No"}</td>}
+                      {config.fields.discount && <td className="py-2 pr-3">{r.discount ? "Sí" : "No"}</td>}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

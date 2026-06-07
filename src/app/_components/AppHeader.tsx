@@ -50,22 +50,24 @@ export default async function AppHeader() {
   }
 
   const adminItems = [
-    { href: "/admin", label: "Home" },
+    { href: "/admin", label: "Inicio" },
     { href: "/admin/clubs", label: "Clubs" },
-    { href: "/admin/users", label: "Users" },
+    { href: "/admin/users", label: "Usuarios" },
     { href: "/club", label: "Dashboard" },	
-    { href: "/club/riders", label: "Riders" },
-    { href: "/club/horses", label: "Horses" },
-    { href: "/club/tests", label: "Medical Tests" },
-    { href: "/admin/payments", label: "Payments" },
+    { href: "/club/riders", label: "Jinetes" },
+    { href: "/club/horses", label: "Caballos" },
+    { href: "/club/tests", label: "Coggins" },
+    { href: "/admin/payments", label: "Pagos" },
+    { href: "/admin/events", label: "Eventos" },
   ];
 
   const clubItems = [
     { href: "/club", label: "Club" },
-    { href: "/club/riders", label: "Riders" },
-    { href: "/club/horses", label: "Horses" },
-    { href: "/club/tests", label: "Medical Tests" },
-    { href: "/club/payments", label: "Payments" },
+    { href: "/club/riders", label: "Jinetes" },
+    { href: "/club/horses", label: "Caballos" },
+    { href: "/club/tests", label: "Coggins" },
+    { href: "/club/payments", label: "Pagos" },
+    { href: "/admin/events", label: "Eventos" },
   ];
 
   const items = isAdmin ? adminItems : clubItems;
@@ -116,7 +118,7 @@ export default async function AppHeader() {
               cursor: "pointer",
             }}
           >
-            Sign Out
+             Cerrar Sesión
           </button>
         </form>
       </div>

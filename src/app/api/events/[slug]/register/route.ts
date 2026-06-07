@@ -1,6 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { slugify } from "@/lib/events/slug";
-import { isValidPair } from "@/lib/events/categories";
+import { normalizeConfig, isValidPair, isValidDay } from "@/lib/events/config";
 import type { RegisterPayload, EntryInput } from "@/lib/types/events";
 
 export const dynamic = "force-dynamic";
@@ -28,13 +28,15 @@ export async function POST(
   // ---- Event must exist and be open ----
   const { data: event, error: evErr } = await supabaseAdmin
     .from("events")
-    .select("id, is_open")
+    .select("id, is_open, config")
     .eq("slug", slug)
     .single();
   if (evErr || !event) return bad("Evento no encontrado.", 404);
   if (!event.is_open) return bad("Las inscripciones para este evento están cerradas.", 403);
 
-  // ---- Validate entries ----
+  const config = normalizeConfig(event.config);
+
+  // ---- Validate entries against the event's configuration ----
   if (!Array.isArray(entries) || entries.length === 0) {
     return bad("Agregue al menos una participación.");
   }
@@ -45,11 +47,14 @@ export async function POST(
     const hasHorse = !!e.horseId || !!e.newHorseName?.trim();
     if (!hasRider) return bad(`Participación ${n}: seleccione o cree un jinete.`);
     if (!hasHorse) return bad(`Participación ${n}: seleccione o cree un caballo.`);
-    if (!isValidPair(e.height, e.section)) {
+    if (!isValidPair(config, e.height, e.section)) {
       return bad(`Participación ${n}: la combinación de altura y sección no es válida.`);
     }
-    if (!e.saturday && !e.sunday) {
-      return bad(`Participación ${n}: debe competir al menos un día (Sábado o Domingo).`);
+    if (!Array.isArray(e.days) || e.days.length === 0) {
+      return bad(`Participación ${n}: debe elegir al menos un día.`);
+    }
+    if (!e.days.every((d) => isValidDay(config, d))) {
+      return bad(`Participación ${n}: día no válido para este evento.`);
     }
   }
 
@@ -121,7 +126,12 @@ export async function POST(
       const last = e.newRiderLast.trim();
       const { data: nr, error } = await supabaseAdmin
         .from("riders")
-        .insert({ club_id: resolvedClubId, first_name: first, last_name: last })
+        .insert({
+          club_id: resolvedClubId,
+          first_name: first,
+          last_name: last,
+          full_name: `${first} ${last}`,
+        })
         .select("id")
         .single();
       if (error || !nr) return bad(`Participación ${n}: no se pudo crear el jinete: ${error?.message ?? ""}`);
@@ -178,10 +188,10 @@ export async function POST(
     horse_name: r.horse_name,
     height: r.entry.height,
     section: r.entry.section,
-    saturday: !!r.entry.saturday,
-    sunday: !!r.entry.sunday,
-    circuit: !!r.entry.circuit,
-    discount: !!r.entry.discount,
+    days: r.entry.days,
+    // Only honor optional fields if the event enables them
+    circuit: config.fields.circuit ? !!r.entry.circuit : false,
+    discount: config.fields.discount ? !!r.entry.discount : false,
   }));
 
   const { error: entErr } = await supabaseAdmin.from("event_entries").insert(rows);

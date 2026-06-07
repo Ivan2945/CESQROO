@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { EventRow } from "@/lib/types/events";
+import { createEventAction } from "./actions";
 
 export const dynamic = "force-dynamic";
 
@@ -28,24 +29,46 @@ export default async function AdminEventsPage() {
         {isAdmin ? "Todas las inscripciones." : "Inscripciones de su club."}
       </p>
 
+      {isAdmin && (
+        <form action={createEventAction} className="mb-5 flex gap-2">
+          <input
+            name="name"
+            required
+            placeholder="Nombre del nuevo evento…"
+            className="flex-1 rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100"
+          />
+          <button type="submit" className="rounded-lg bg-blue-600 px-4 font-semibold text-white hover:bg-blue-700">
+            + Nuevo evento
+          </button>
+        </form>
+      )}
+
       <div className="space-y-3">
         {(events as EventRow[] | null)?.length ? (
           (events as EventRow[]).map((ev) => (
-            <Link
+            <div
               key={ev.id}
-              href={`/admin/events/${ev.id}`}
-              className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4 hover:border-blue-400"
+              className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4"
             >
               <div>
-                <div className="font-semibold text-slate-900">{ev.name}</div>
+                <Link href={`/admin/events/${ev.id}`} className="font-semibold text-slate-900 hover:text-blue-700">
+                  {ev.name}
+                </Link>
                 <div className="text-xs text-slate-500">
                   /signup/{ev.slug} · {ev.is_open ? "Abierto" : "Cerrado"}
                 </div>
               </div>
-              <span className="rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
-                {counts.get(ev.id) ?? 0} participación(es)
-              </span>
-            </Link>
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
+                  {counts.get(ev.id) ?? 0} participación(es)
+                </span>
+                {isAdmin && (
+                  <Link href={`/admin/events/${ev.id}/config`} className="text-sm font-semibold text-blue-600">
+                    Configurar
+                  </Link>
+                )}
+              </div>
+            </div>
           ))
         ) : (
           <p className="text-slate-500 dark:text-slate-400">No hay eventos todavía.</p>

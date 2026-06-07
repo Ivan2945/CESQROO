@@ -81,17 +81,23 @@ export default function ConfigEditor({
   eventSlug,
   initialName,
   initialIsOpen,
+  initialSaturdayDate,
+  initialSundayDate,
   initialConfig,
 }: {
   eventId: string;
   eventSlug: string;
   initialName: string;
   initialIsOpen: boolean;
+  initialSaturdayDate: string | null;
+  initialSundayDate: string | null;
   initialConfig: EventConfig;
 }) {
   const router = useRouter();
   const [name, setName] = useState(initialName);
   const [isOpen, setIsOpen] = useState(initialIsOpen);
+  const [saturdayDate, setSaturdayDate] = useState(initialSaturdayDate ?? "");
+  const [sundayDate, setSundayDate] = useState(initialSundayDate ?? "");
   const [heights, setHeights] = useState<string[]>(initialConfig.heights);
   const [sections, setSections] = useState<string[]>(initialConfig.sections);
   const [days, setDays] = useState<string[]>(initialConfig.days);
@@ -135,7 +141,13 @@ export default function ConfigEditor({
     setStatus(null);
     setSaving(true);
     const config: EventConfig = { heights, sections, sectionsByHeight, days, fields };
-    const res = await saveEventConfigAction(eventId, { name, isOpen, config });
+    const res = await saveEventConfigAction(eventId, {
+      name,
+      isOpen,
+      saturdayDate: saturdayDate || null,
+      sundayDate: sundayDate || null,
+      config,
+    });
     setSaving(false);
     if (res && res.ok) {
       setStatus({ type: "ok", msg: res.message ?? "Guardado." });
@@ -183,7 +195,28 @@ export default function ConfigEditor({
             <input type="checkbox" className="accent-blue-600" checked={isOpen} onChange={(e) => setIsOpen(e.target.checked)} />
             Inscripciones abiertas
           </label>
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Fecha de inicio</label>
+            <input
+              type="date"
+              className={input + " w-full"}
+              value={saturdayDate}
+              onChange={(e) => setSaturdayDate(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Fecha de fin</label>
+            <input
+              type="date"
+              className={input + " w-full"}
+              value={sundayDate}
+              onChange={(e) => setSundayDate(e.target.value)}
+            />
+          </div>
         </div>
+        <p className="mt-2 text-xs text-slate-500">
+          Las fechas se muestran en la página pública de inscripciones. Déjelas en blanco si aún no las define.
+        </p>
       </section>
 
       {/* Heights / Sections / Days */}

@@ -18,7 +18,13 @@ async function isAdminUser() {
 
 export async function saveEventConfigAction(
   eventId: string,
-  payload: { name: string; isOpen: boolean; config: EventConfig }
+  payload: {
+    name: string;
+    isOpen: boolean;
+    saturdayDate: string | null;
+    sundayDate: string | null;
+    config: EventConfig;
+  }
 ): Promise<ActionResult<void>> {
   if (!(await isAdminUser())) {
     return { ok: false, message: "Solo un administrador puede editar la configuración." };
@@ -34,7 +40,13 @@ export async function saveEventConfigAction(
 
   const { error } = await supabaseAdmin
     .from("events")
-    .update({ name, is_open: payload.isOpen, config })
+    .update({
+      name,
+      is_open: payload.isOpen,
+      saturday_date: payload.saturdayDate || null,
+      sunday_date: payload.sundayDate || null,
+      config,
+    })
     .eq("id", eventId);
   if (error) return { ok: false, message: error.message };
 

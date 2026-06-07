@@ -76,17 +76,17 @@ export default async function AdminEventDetail({
 
   return (
     <div className="mx-auto max-w-5xl">
-      <Link href="/admin/events" className="text-sm text-blue-600">
+      <Link href="/admin/events" className="text-sm text-blue-600 dark:text-blue-400">
         ← Eventos
       </Link>
-      <h2 className="mt-2 text-2xl font-bold text-slate-900">{event.name}</h2>
-      <p className="mb-5 text-sm text-slate-500">
+      <h2 className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">{event.name}</h2>
+      <p className="mb-5 text-sm text-slate-500 dark:text-slate-400">
         {(submissions ?? []).length} club(es) · {totalEntries} participación(es) ·{" "}
         <span className="font-mono">/signup/{event.slug}</span>
       </p>
 
       {(submissions ?? []).length === 0 ? (
-        <p className="text-slate-500">Aún no hay inscripciones.</p>
+        <p className="text-slate-500 dark:text-slate-400">Aún no hay inscripciones.</p>
       ) : (
         <div className="space-y-5">
           {(submissions as Submission[]).map((s) => {

@@ -23,8 +23,8 @@ export default async function AdminEventsPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h2 className="mb-1 text-2xl font-bold text-slate-900">Eventos</h2>
-      <p className="mb-5 text-sm text-slate-500">
+      <h2 className="mb-1 text-2xl font-bold text-slate-900 dark:text-white">Eventos</h2>
+      <p className="mb-5 text-sm text-slate-500 dark:text-slate-400">
         {isAdmin ? "Todas las inscripciones." : "Inscripciones de su club."}
       </p>
 
@@ -48,7 +48,7 @@ export default async function AdminEventsPage() {
             </Link>
           ))
         ) : (
-          <p className="text-slate-500">No hay eventos todavía.</p>
+          <p className="text-slate-500 dark:text-slate-400">No hay eventos todavía.</p>
         )}
       </div>
     </div>

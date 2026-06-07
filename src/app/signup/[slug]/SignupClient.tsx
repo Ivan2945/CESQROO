@@ -191,7 +191,7 @@ export default function SignupClient({ slug }: { slug: string }) {
   }
 
   // ---- Render ----
-  if (loading) return <p className="text-slate-500">Cargando…</p>;
+  if (loading) return <p className="text-slate-500 dark:text-slate-400">Cargando…</p>;
   if (loadError)
     return (
       <div className="mx-auto max-w-lg rounded-lg border border-red-200 bg-red-50 p-4 text-red-800">
@@ -202,9 +202,9 @@ export default function SignupClient({ slug }: { slug: string }) {
   return (
     <div className="mx-auto max-w-4xl">
       <header className="mb-6">
-        <p className="text-xs font-semibold uppercase tracking-widest text-blue-600">Inscripción</p>
-        <h1 className="mt-1 text-3xl font-bold text-slate-900">{event?.name}</h1>
-        <p className="mt-1 text-slate-600">
+        <p className="text-xs font-semibold uppercase tracking-widest text-blue-600 dark:text-blue-400">Inscripción</p>
+        <h1 className="mt-1 text-3xl font-bold text-slate-900 dark:text-white">{event?.name}</h1>
+        <p className="mt-1 text-slate-600 dark:text-slate-300">
           Seleccione su club, revise los datos de contacto y agregue una fila por cada participación.
         </p>
       </header>
@@ -495,7 +495,7 @@ export default function SignupClient({ slug }: { slug: string }) {
         </section>
 
         <div className="flex items-center justify-between">
-          <span className="text-xs text-slate-500">Los datos se guardan al enviar.</span>
+          <span className="text-xs text-slate-500 dark:text-slate-400">Los datos se guardan al enviar.</span>
           <button
             type="submit"
             disabled={saving}

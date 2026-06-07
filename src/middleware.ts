@@ -4,7 +4,8 @@ import { NextResponse, type NextRequest } from "next/server";
 // public events landing at the root URL. Everything else passes through,
 // so paths like /signup/<slug> still work on the subdomain too.
 export function middleware(req: NextRequest) {
-  const host = req.headers.get("host") || "";
+  // Vercel often forwards the public host in x-forwarded-host.
+  const host = (req.headers.get("x-forwarded-host") || req.headers.get("host") || "").toLowerCase();
   if (host.startsWith("inscripciones.") && req.nextUrl.pathname === "/") {
     const url = req.nextUrl.clone();
     url.pathname = "/inscripciones";

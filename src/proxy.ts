@@ -2,7 +2,16 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
 export async function proxy(request: NextRequest) {
-  let response = NextResponse.next({
+  // Subdomain routing: on the "inscripciones" host, the bare root serves the
+  // public events landing. (Vercel forwards the public host as x-forwarded-host.)
+  const host = (request.headers.get("x-forwarded-host") || request.headers.get("host") || "").toLowerCase();
+  if (host.startsWith("inscripciones.") && request.nextUrl.pathname === "/") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/inscripciones";
+    return NextResponse.rewrite(url);
+  }
+
+  const response = NextResponse.next({
     request: { headers: request.headers },
   });
 

@@ -47,7 +47,7 @@ export default function PaymentFormClient(props: {
           }}
           style={{ width: "100%" }}
         >
-          <option value="">Select a club…</option>
+          <option value="">Elegir Club...</option>
           {props.clubs.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name}
@@ -57,7 +57,7 @@ export default function PaymentFormClient(props: {
       </label>
 
       <label>
-        Rider (optional)
+        Jinete (opcional)
         <select
           name="payer_rider_id"
           value={riderId}
@@ -66,7 +66,7 @@ export default function PaymentFormClient(props: {
           style={{ width: "100%" }}
         >
           <option value="">
-            {clubId ? "No rider (club-level payment)" : "Select a club first…"}
+            {clubId ? "Sin Jinete (pago de club)" : "Elegir Club Primero…"}
           </option>
           {ridersForClub.map((r) => {
             const label =
@@ -84,7 +84,7 @@ export default function PaymentFormClient(props: {
       </label>
 
       <label>
-        Amount (MXN)
+        Monto (MXN)
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontWeight: 700 }}>$</span>
           <input
@@ -99,26 +99,26 @@ export default function PaymentFormClient(props: {
       </label>
 
       <label>
-        Paid on
+        Pagado el dia:
         <input name="paid_on" type="date" />
       </label>
 
       <label>
-        Method
-        <input name="method" placeholder="transfer / cash / ..." />
+        Forma de pago:
+        <input name="method" placeholder="transfer / efectivo / ..." />
       </label>
 
       <label>
-        Reference
-        <input name="reference" placeholder="transaction id / receipt" />
+        Recibo/Ref:
+        <input name="reference" placeholder="Recibo / Referencia" />
       </label>
 
       <label>
-        Note
+        Nota:
         <textarea name="note" rows={3} />
       </label>
 
-      <button type="submit">Save payment</button>
+      <button type="submit">Guardar Pago</button>
     </form>
   );
 }

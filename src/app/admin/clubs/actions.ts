@@ -35,5 +35,5 @@ export async function createClubAction(
   revalidatePath("/admin");
   revalidatePath("/admin/clubs");
 
-  return { ok: true, message: "Club created.", data };
+  return { ok: true, message: "Club Creado", data };
 }

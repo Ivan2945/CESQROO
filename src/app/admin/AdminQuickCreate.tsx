@@ -41,7 +41,7 @@ function SubmitButton({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Message({ state }: { state: ActionResult<any> }) {
+function Message({ state }: { state: ActionResult<unknown> }) {
   if (!state) return null;
   return (
     <p style={{ margin: 0, opacity: 0.85 }}>
@@ -91,17 +91,6 @@ export default function AdminQuickCreate({
 
   const inputStyle: React.CSSProperties = useMemo(
     () => ({ display: "block", width: "100%", padding: 8 }),
-    []
-  );
-
-  const selectStyle: React.CSSProperties = useMemo(
-    () => ({
-      padding: "10px 12px",
-      border: "1px solid #ddd",
-      borderRadius: 10,
-      fontWeight: 600,
-      minWidth: 220,
-    }),
     []
   );
 
@@ -158,7 +147,7 @@ export default function AdminQuickCreate({
         );
         const json = (await res.json()) as {
           ok: boolean;
-          horses?: any[];
+          horses?: Array<{ id: string; name: string | null }>;
           message?: string;
         };
 
@@ -198,45 +187,24 @@ export default function AdminQuickCreate({
     null
   );
 
-  const panelOptions: Array<{ value: Panel; label: string }> = [
-    { value: "club", label: "Add Club" },
-    { value: "rider", label: "Add Rider" },
-    { value: "horse", label: "Add Horse" },
-    { value: "test", label: "Add Medical Test" },
-  ];
-
   return (
     <div style={{ marginTop: 12 }}>
       {/* Panel selector dropdown */}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
-          <span style={{ fontWeight: 700 }}>Quick Create</span>
-          <select
-            value={open ?? ""}
-            onChange={(e) => setOpen((e.target.value as Panel) || null)}
-            style={selectStyle}
-          >
-            <option value="">Select action…</option>
-            {panelOptions.map((o) => (
-              <option key={o.value} value={o.value}>
-                {o.label}
-              </option>
-            ))}
-          </select>
-        </label>
+    
 
         {/* Optional quick buttons */}
         <button type="button" style={buttonStyle} onClick={() => toggle("club")}>
-          + Add Club
+          + Agregar Club
         </button>
         <button type="button" style={buttonStyle} onClick={() => toggle("rider")}>
-          + Add Rider
+          + Agregar Jinete
         </button>
         <button type="button" style={buttonStyle} onClick={() => toggle("horse")}>
-          + Add Horse
+          + Agregar Caballo
         </button>
         <button type="button" style={buttonStyle} onClick={() => toggle("test")}>
-          + Add Test
+          + Agregar Coggins
         </button>
 
         {open && (
@@ -246,10 +214,10 @@ export default function AdminQuickCreate({
         )}
       </div>
 
-      {/* Add Club */}
+      {/* Agregar Club */}
       {open === "club" && (
         <div style={cardStyle}>
-          <h3 style={{ marginTop: 0 }}>Add Club</h3>
+          <h3 style={{ marginTop: 0 }}>Agregar Club</h3>
 
           <form action={clubFormAction} style={{ display: "grid", gap: 10 }}>
             <label>
@@ -257,27 +225,27 @@ export default function AdminQuickCreate({
               <input name="name" required style={inputStyle} />
             </label>
 
-            <SubmitButton>Create Club</SubmitButton>
+            <SubmitButton>Crear Club</SubmitButton>
             <Message state={clubState} />
           </form>
         </div>
       )}
 
-      {/* Add Rider */}
+      {/* Agregar Jinete */}
       {open === "rider" && (
         <div style={cardStyle}>
-          <h3 style={{ marginTop: 0 }}>Add Rider</h3>
+          <h3 style={{ marginTop: 0 }}>Agregar Jinete</h3>
 
           <form action={riderFormAction} style={{ display: "grid", gap: 10 }}>
             <ClubSelect />
 
             <label>
-              First name
+              Nombre
               <input name="first_name" required style={inputStyle} />
             </label>
 
             <label>
-              Last name
+              Apellido
               <input name="last_name" required style={inputStyle} />
             </label>
 
@@ -287,41 +255,41 @@ export default function AdminQuickCreate({
             </label>
 
             <label>
-              Phone
+              Telefono
               <input name="phone" style={inputStyle} />
             </label>
 
             <label>
-              Notes
+              Notas
               <textarea name="notes" rows={4} style={inputStyle} />
             </label>
 
-            <SubmitButton>Create Rider</SubmitButton>
+            <SubmitButton>Crear Jinete</SubmitButton>
             <Message state={riderState} />
           </form>
         </div>
       )}
 
-      {/* Add Horse */}
+      {/* Agregar Caballo */}
       {open === "horse" && (
         <div style={cardStyle}>
-          <h3 style={{ marginTop: 0 }}>Add Horse</h3>
+          <h3 style={{ marginTop: 0 }}>Agregar Caballo</h3>
 
           <form action={horseFormAction} style={{ display: "grid", gap: 10 }}>
             <ClubSelect />
 
             <label>
-              Name
+              Nombre
               <input name="name" required style={inputStyle} />
             </label>
 
             <label>
-              Sex
+              Sexo
               <input name="sex" placeholder="M/F/Gelding/etc" style={inputStyle} />
             </label>
 
             <label>
-              Birth year
+              Año de Nacimiento
               <input
                 name="birth_year"
                 type="number"
@@ -337,26 +305,26 @@ export default function AdminQuickCreate({
             </label>
 
             <label>
-              Notes
+              Notas
               <textarea name="notes" rows={4} style={inputStyle} />
             </label>
 
-            <SubmitButton>Create Horse</SubmitButton>
+            <SubmitButton>Crear Caballo</SubmitButton>
             <Message state={horseState} />
           </form>
         </div>
       )}
 
-      {/* Add Test */}
+      {/* Agregar Coggins */}
       {open === "test" && (
         <div style={cardStyle}>
-          <h3 style={{ marginTop: 0 }}>Add Medical Test</h3>
+          <h3 style={{ marginTop: 0 }}>Agregar Coggins</h3>
 
           <form action={testFormAction} style={{ display: "grid", gap: 10 }}>
             <ClubSelect value={testClubId} onChange={(v) => setTestClubId(v)} />
 
             <label>
-              Horse
+              Caballo
               <select
                 name="horse_id"
                 required
@@ -380,25 +348,25 @@ export default function AdminQuickCreate({
             </label>
 
             <label>
-              Test type
+              Tipo de Examen
               <input name="test_type" defaultValue="Mandatory 6-month test" style={inputStyle} />
             </label>
 
             <label>
-              Reg number (optional)
+              Folio Coggins
               <input name="reg_number" style={inputStyle} />
             </label>
 
             <label>
-              Test date
+              Fecha Resultado
               <input name="test_date" type="date" required style={inputStyle} />
             </label>
 
-            <SubmitButton>Add Test</SubmitButton>
+            <SubmitButton>Agregar Coggins</SubmitButton>
             <Message state={testState} />
 
             <p style={{ margin: 0, opacity: 0.7 }}>
-              Expiration is auto set to <b>test date + 180 days</b>.
+              Los resultados expiran  <b>180 días DESPUES de la fecha de Resultado</b>.
             </p>
           </form>
         </div>

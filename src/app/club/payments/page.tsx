@@ -2,7 +2,18 @@ import React from "react";
 import { redirect } from "next/navigation";
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
 
-function money(n: any) {
+type Payment = {
+  id: string;
+  amount: number | null;
+  paid_on: string | null;
+  method: string | null;
+  reference: string | null;
+  note: string | null;
+  payer_rider_id: string | null;
+  created_at: string | null;
+};
+
+function money(n: number | null | undefined) {
   const x = Number(n ?? 0);
   return x.toFixed(2);
 }
@@ -40,27 +51,27 @@ export default async function ClubPaymentsPage() {
 
   return (
     <div style={{ padding: 24 }}>
-      <h2>Payments (MXN)</h2>
+      <h2>Pagos (MXN)</h2>
 
       <div style={{ display: "flex", gap: 24, marginTop: 12 }}>
-        <div><b>Due:</b> {money(bal?.amount_due_mxn)}</div>
-        <div><b>Paid:</b> {money(bal?.amount_paid_mxn)}</div>
-        <div><b>Balance:</b> {money(bal?.balance_owed_mxn)}</div>
+        <div><b>Cuenta:</b> {money(bal?.amount_due_mxn)}</div>
+        <div><b>Pagado:</b> {money(bal?.amount_paid_mxn)}</div>
+        <div><b>Pendiente:</b> {money(bal?.balance_owed_mxn)}</div>
       </div>
 
       <h3 style={{ marginTop: 24 }}>Payment history</h3>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr>
-            <th align="left">Date</th>
-            <th align="right">Amount</th>
-            <th align="left">Method</th>
-            <th align="left">Reference</th>
-            <th align="left">Note</th>
+            <th align="left">Fecha</th>
+            <th align="right">Monto</th>
+            <th align="left">Forma de Pago</th>
+            <th align="left">Recibo/Ref</th>
+            <th align="left">Nota</th>
           </tr>
         </thead>
         <tbody>
-          {(payments ?? []).map((p: any) => (
+          {(payments ?? []).map((p: Payment) => (
             <tr key={p.id} style={{ borderTop: "1px solid #eee" }}>
               <td>{p.paid_on ?? ""}</td>
               <td align="right">{money(p.amount)}</td>
@@ -72,7 +83,7 @@ export default async function ClubPaymentsPage() {
           {(payments ?? []).length === 0 && (
             <tr style={{ borderTop: "1px solid #eee" }}>
               <td colSpan={5} style={{ padding: 12, opacity: 0.7 }}>
-                No payments recorded yet.
+                Sin Pagos Hasta el Momento.
               </td>
             </tr>
           )}

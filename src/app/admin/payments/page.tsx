@@ -4,9 +4,27 @@ import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
 import { createPaymentAction } from "./actions";
 import PaymentFormClient from "./PaymentFormClient";
 
-function money(n: any) {
+type Club = { id: string; name: string };
+type Balance = {
+  club_id: string;
+  amount_due_mxn: number | null;
+  amount_paid_mxn: number | null;
+  balance_owed_mxn: number | null;
+};
+type Rider = {
+  id: string;
+  club_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  status?: string | null;
+};
+
+function money(n: number | null | undefined) {
   const x = Number(n ?? 0);
-  return x.toFixed(2);
+  return `$${x.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 export default async function AdminPaymentsPage() {
@@ -30,47 +48,87 @@ export default async function AdminPaymentsPage() {
     .order("last_name", { ascending: true });
   if (rErr) throw new Error(rErr.message);
 
-  const byClub = new Map<string, any>();
-  (balances ?? []).forEach((b: any) => byClub.set(b.club_id, b));
+  const byClub = new Map<string, Balance>();
+  (balances ?? []).forEach((b: Balance) => byClub.set(b.club_id, b));
+
+  const totals = (clubs ?? []).reduce(
+    (acc, c: Club) => {
+      const b = byClub.get(c.id) ?? {
+        amount_due_mxn: 0,
+        amount_paid_mxn: 0,
+        balance_owed_mxn: 0,
+      };
+
+      acc.due += Number(b.amount_due_mxn ?? 0);
+      acc.paid += Number(b.amount_paid_mxn ?? 0);
+      acc.balance += Number(b.balance_owed_mxn ?? 0);
+
+      return acc;
+    },
+    { due: 0, paid: 0, balance: 0 }
+  );
 
   return (
     <div style={{ padding: 24 }}>
-      <h2>Admin • Payments (MXN)</h2>
+      <h2>Admin • Pagos</h2>
 
-      <h3 style={{ marginTop: 16 }}>Club balances</h3>
+      <h3 style={{ marginTop: 16 }}>Edos. De Cuenta </h3>
       <table style={{ width: "100%", borderCollapse: "collapse" }}>
         <thead>
           <tr>
             <th align="left">Club</th>
-            <th align="right">Due</th>
-            <th align="right">Paid</th>
-            <th align="right">Balance</th>
+            <th align="right">Cuenta</th>
+            <th align="right">Pagado</th>
+            <th align="right">Saldo</th>
           </tr>
         </thead>
+
         <tbody>
-          {(clubs ?? []).map((c: any) => {
+          {(clubs ?? []).map((c: Club) => {
             const b = byClub.get(c.id) ?? {
               amount_due_mxn: 0,
               amount_paid_mxn: 0,
               balance_owed_mxn: 0,
             };
+
             return (
               <tr key={c.id} style={{ borderTop: "1px solid #eee" }}>
-                <td>{c.name}</td>
-                <td align="right">{money(b.amount_due_mxn)}</td>
-                <td align="right">{money(b.amount_paid_mxn)}</td>
-                <td align="right">{money(b.balance_owed_mxn)}</td>
+                <td style={{ padding: "8px 0" }}>{c.name}</td>
+                <td align="right" style={{ padding: "8px 0" }}>
+                  {money(b.amount_due_mxn)}
+                </td>
+                <td align="right" style={{ padding: "8px 0" }}>
+                  {money(b.amount_paid_mxn)}
+                </td>
+                <td align="right" style={{ padding: "8px 0" }}>
+                  {money(b.balance_owed_mxn)}
+                </td>
               </tr>
             );
           })}
         </tbody>
+
+        <tfoot>
+          <tr style={{ borderTop: "2px solid #ccc", fontWeight: 700 }}>
+            <td style={{ padding: "10px 0" }}>TOTAL</td>
+            <td align="right" style={{ padding: "10px 0" }}>
+              {money(totals.due)}
+            </td>
+            <td align="right" style={{ padding: "10px 0" }}>
+              {money(totals.paid)}
+            </td>
+            <td align="right" style={{ padding: "10px 0" }}>
+              {money(totals.balance)}
+            </td>
+          </tr>
+        </tfoot>
       </table>
 
-      <h3 style={{ marginTop: 28 }}>Add payment</h3>
+      <h3 style={{ marginTop: 28 }}>Agregar Pago</h3>
 
       <PaymentFormClient
-        clubs={(clubs ?? []) as any}
-        riders={(riders ?? []) as any}
+        clubs={(clubs ?? []) as Club[]}
+        riders={(riders ?? []) as Rider[]}
         action={createPaymentAction}
       />
     </div>

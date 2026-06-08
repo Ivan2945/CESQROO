@@ -67,12 +67,20 @@ export default async function InscripcionesLanding() {
                     </Link>
                   </p>
                 </div>
-                <Link
-                  href={`/signup/${ev.slug}`}
-                  className="inline-flex shrink-0 items-center justify-center rounded-lg bg-blue-600 px-5 py-2.5 font-semibold text-white hover:bg-blue-700"
-                >
-                  Inscribirse →
-                </Link>
+                <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+                  <Link
+                    href={`/signup/${ev.slug}`}
+                    className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-5 py-2.5 font-semibold text-white hover:bg-blue-700"
+                  >
+                    Inscribirse →
+                  </Link>
+                  <Link
+                    href={`/signup/${ev.slug}/extemporaneo`}
+                    className="inline-flex items-center justify-center rounded-lg border border-amber-300 bg-amber-50 px-5 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100"
+                  >
+                    Extemporáneos →
+                  </Link>
+                </div>
               </div>
             );
           })}

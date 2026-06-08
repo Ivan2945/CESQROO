@@ -93,31 +93,34 @@ function rowFor(variant: Variant, idx: number, e: ExportEntry): (string | number
   return [idx, e.club, e.rider, e.horse, cat];
 }
 
+// Column widths per sheet type, matching the original workbook.
+const COLW: Record<Variant, number[]> = {
+  impresion: [6, 20, 24, 18, 12],
+  results: [6, 18, 22, 14, 5, 24],
+  steward: [8, 22, 28, 20, 4, 4],
+};
+
 function renderSheet(ws: ExcelJS.Worksheet, classes: ClassBlock[], variant: Variant) {
   const headers = headersFor(variant);
-  ws.columns = headers.map((_h, i) => ({
-    width: i === 0 ? 8 : i === 1 ? 30 : i <= 3 ? 22 : 14,
-  }));
+  ws.columns = COLW[variant].map((w) => ({ width: w }));
   ws.pageSetup = { orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
 
   for (const cb of classes) {
     const t1 = ws.addRow([`Prueba ${cb.index}`]);
-    t1.font = { bold: true, size: 14 };
+    t1.font = { size: 10, bold: true };
     const t2 = ws.addRow([cb.height]);
-    t2.font = { bold: true, size: 12 };
+    t2.font = { size: 10, bold: true };
+    ws.addRow([]); // two blank rows before the header (matches the sheet)
     ws.addRow([]);
 
     const hr = ws.addRow(headers);
-    hr.font = { bold: true };
-    hr.eachCell((c: ExcelJS.Cell) => {
-      c.border = { bottom: { style: "thin" } };
-    });
+    hr.font = { size: 10, bold: true };
+    hr.alignment = { horizontal: "center" };
 
     cb.order.forEach((e, i) => {
       const row = ws.addRow(rowFor(variant, i + 1, e));
-      row.eachCell((c: ExcelJS.Cell) => {
-        c.border = { bottom: { style: "hair" } };
-      });
+      row.font = { size: 10 };
+      row.alignment = { horizontal: "center" };
     });
 
     ws.addRow([]);
@@ -135,6 +138,7 @@ export async function buildDayWorkbook(opts: {
   day: string;
   orderedHeights: string[];
   entries: ExportEntry[];
+  startNumber?: number; // first Prueba number (for continuous numbering across days)
 }): Promise<Buffer> {
   // Group entries by height (callers pass entries already filtered to the day).
   const byHeight = new Map<string, ExportEntry[]>();
@@ -144,11 +148,12 @@ export async function buildDayWorkbook(opts: {
     byHeight.set(e.height, arr);
   }
 
-  // Class running order: requested order first, then any remaining heights.
+  // Class running order: every requested class is included (even with no
+  // entries), then any leftover heights that had entries.
   const seen = new Set<string>();
   const sequence: string[] = [];
   for (const h of opts.orderedHeights) {
-    if (byHeight.has(h) && !seen.has(h)) {
+    if (!seen.has(h)) {
       sequence.push(h);
       seen.add(h);
     }
@@ -161,8 +166,9 @@ export async function buildDayWorkbook(opts: {
   }
 
   // One draw per class, shared across all four sheets so orders match.
+  const start = opts.startNumber ?? 1;
   const classes: ClassBlock[] = sequence.map((h, i) => ({
-    index: i + 1,
+    index: start + i,
     height: h,
     order: drawOrder(byHeight.get(h) ?? []),
   }));

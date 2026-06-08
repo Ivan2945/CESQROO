@@ -1,5 +1,6 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { normalizeConfig } from "@/lib/events/config";
 import { buildDayWorkbook, type ExportEntry } from "@/lib/events/exportWorkbook";
 
 export const runtime = "nodejs";
@@ -36,8 +37,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   const heightOrder = Array.isArray(body.heightOrder) ? body.heightOrder : [];
   if (!day) return Response.json({ error: "Seleccione un día." }, { status: 400 });
 
-  const { data: event } = await supabaseAdmin.from("events").select("id, name").eq("slug", slug).single();
+  const { data: event } = await supabaseAdmin.from("events").select("id, name, config").eq("slug", slug).single();
   if (!event) return Response.json({ error: "Evento no encontrado." }, { status: 404 });
+  const config = normalizeConfig(event.config);
 
   // Club name per submission
   const { data: subs } = await supabaseAdmin
@@ -64,11 +66,23 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       horseKey: r.horse_id ?? r.horse_name,
     }));
 
-  if (entries.length === 0) {
-    return Response.json({ error: `No hay participaciones para ${day}.` }, { status: 400 });
-  }
+  // Class running order: organizer's order first, then any remaining configured
+  // heights, so every class gets a list even with zero entries.
+  const requested = heightOrder.filter((h) => config.heights.includes(h));
+  const finalOrder = [...new Set([...requested, ...config.heights])];
 
-  const buffer = await buildDayWorkbook({ eventName: event.name, day, orderedHeights: heightOrder, entries });
+  // Continuous Prueba numbering across days: each day lists all configured
+  // classes, so day N starts after the previous days' classes.
+  const dayIdx = config.days.indexOf(day);
+  const startNumber = (dayIdx > 0 ? dayIdx : 0) * config.heights.length + 1;
+
+  const buffer = await buildDayWorkbook({
+    eventName: event.name,
+    day,
+    orderedHeights: finalOrder,
+    entries,
+    startNumber,
+  });
   const filename = `${safeFilename(event.name)} - ${safeFilename(day)}.xlsx`;
 
   return new Response(new Uint8Array(buffer), {

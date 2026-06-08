@@ -33,11 +33,11 @@ export default function ExportClient({
     return m;
   }, [entries, day]);
 
-  // Heights present on the selected day, initially in the event's config order.
+  // All configured classes, in the event's config order. Every class gets a
+  // list (even with 0 entries), so we don't filter by presence.
   const initialOrder = useMemo(() => {
-    const present = new Set(countsForDay.keys());
-    const ordered = heightOrder.filter((h) => present.has(h));
-    for (const h of present) if (!ordered.includes(h)) ordered.push(h);
+    const ordered = [...heightOrder];
+    for (const h of countsForDay.keys()) if (!ordered.includes(h)) ordered.push(h);
     return ordered;
   }, [countsForDay, heightOrder]);
 
@@ -120,7 +120,8 @@ export default function ExportClient({
 
         <h3 className="mt-6 text-sm font-semibold text-slate-700">Orden de las pruebas</h3>
         <p className="mb-3 text-xs text-slate-500">
-          Acomode las alturas en el orden en que correrán. {totalForDay} participación(es) este día.
+          Acomode las pruebas en el orden en que correrán. Se generan listas para todas las pruebas, incluso sin inscritos.{" "}
+          {totalForDay} participación(es) este día.
         </p>
 
         {order.length === 0 ? (

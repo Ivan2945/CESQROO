@@ -109,8 +109,26 @@ export default function ConfigEditor({
   const [days, setDays] = useState<string[]>(initialConfig.days);
   const [sectionsByHeight, setSectionsByHeight] = useState<Record<string, string[]>>(initialConfig.sectionsByHeight);
   const [fields, setFields] = useState(initialConfig.fields);
+  // Billing
+  const [nominationFee, setNominationFee] = useState(String(initialConfig.pricing.nominationFee));
+  const [entryFeeDefault, setEntryFeeDefault] = useState(String(initialConfig.pricing.entryFeeDefault));
+  const [priceByHeight, setPriceByHeight] = useState<Record<string, string>>(() => {
+    const o: Record<string, string> = {};
+    for (const h of initialConfig.heights) {
+      const v = initialConfig.pricing.entryFeeByHeight[h];
+      o[h] = v != null ? String(v) : "";
+    }
+    return o;
+  });
+  const [nominationExempt, setNominationExempt] = useState<string[]>(initialConfig.pricing.nominationExempt);
+  const [extempSections, setExtempSections] = useState<string[]>(initialConfig.extempSections);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
+
+  const copyFeeToAll = () =>
+    setPriceByHeight(() => Object.fromEntries(heights.map((h) => [h, entryFeeDefault])));
+  const toggleExempt = (key: string) =>
+    setNominationExempt((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
 
   // Keep height/section keys in sync when those lists change
   function setHeightsSynced(next: string[]) {
@@ -180,6 +198,12 @@ export default function ConfigEditor({
   async function save() {
     setStatus(null);
     setSaving(true);
+    const def = Number(entryFeeDefault) || 0;
+    const entryFeeByHeight: Record<string, number> = {};
+    for (const h of heights) {
+      const v = Number(priceByHeight[h]);
+      if (priceByHeight[h]?.trim() && Number.isFinite(v) && v !== def) entryFeeByHeight[h] = v;
+    }
     const config: EventConfig = {
       heights,
       sections,
@@ -187,6 +211,13 @@ export default function ConfigEditor({
       days,
       fields,
       header: { title: headerTitle, subtitle: headerSubtitle },
+      pricing: {
+        nominationFee: Number(nominationFee) || 0,
+        entryFeeDefault: def,
+        entryFeeByHeight,
+        nominationExempt,
+      },
+      extempSections,
     };
     const res = await saveEventConfigAction(eventId, {
       name,
@@ -402,6 +433,90 @@ export default function ConfigEditor({
             />
             Aplica descuento
           </label>
+        </div>
+      </section>
+
+      {/* Billing */}
+      <section className={card}>
+        <h3 className={h2}>Costos e inscripción</h3>
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Cuota de inscripción por defecto (MXN)</label>
+            <input
+              type="number"
+              className={input + " w-full"}
+              value={entryFeeDefault}
+              onChange={(e) => setEntryFeeDefault(e.target.value)}
+            />
+            <p className="mt-1 text-xs text-slate-500">Se cobra por cada vez que el jinete entra a pista (por día/prueba).</p>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Cuota de nominación (MXN)</label>
+            <input
+              type="number"
+              className={input + " w-full"}
+              value={nominationFee}
+              onChange={(e) => setNominationFee(e.target.value)}
+            />
+            <p className="mt-1 text-xs text-slate-500">Una vez por jinete por evento. Los miembros del circuito están exentos.</p>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <div className="mb-1 flex items-center gap-3">
+            <h4 className="text-sm font-semibold text-slate-700">Precio por clase (opcional)</h4>
+            <button type="button" onClick={copyFeeToAll} className="rounded bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-100">
+              Copiar cuota por defecto a todas
+            </button>
+          </div>
+          <p className="mb-2 text-xs text-slate-500">Déjelo en blanco para usar la cuota por defecto.</p>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            {heights.map((h) => (
+              <label key={h} className="flex items-center gap-2 text-sm text-slate-700">
+                <span className="w-16 shrink-0">{h}</span>
+                <input
+                  type="number"
+                  placeholder={entryFeeDefault}
+                  className={input + " w-full"}
+                  value={priceByHeight[h] ?? ""}
+                  onChange={(e) => setPriceByHeight((prev) => ({ ...prev, [h]: e.target.value }))}
+                />
+              </label>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <h4 className="text-sm font-semibold text-slate-700">Exenciones de nominación</h4>
+          <p className="mb-2 text-xs text-slate-500">
+            Un jinete queda exento si compite en cualquiera de estas alturas o secciones (además de los miembros del circuito).
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {[...heights, ...sections].map((key) => {
+              const on = nominationExempt.includes(key);
+              return (
+                <label
+                  key={key}
+                  className={
+                    "inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-sm " +
+                    (on ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-300 bg-white text-slate-600")
+                  }
+                >
+                  <input type="checkbox" className="accent-amber-600" checked={on} onChange={() => toggleExempt(key)} />
+                  {key}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="mt-4 max-w-xs">
+          <ListEditor
+            title="Secciones extemporáneas (solo admin)"
+            hint="Ej. Training, FC — para altas tardías"
+            items={extempSections}
+            onChange={setExtempSections}
+          />
         </div>
       </section>
 

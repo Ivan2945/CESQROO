@@ -12,6 +12,16 @@ export type EventConfig = {
   fields: { circuit: boolean; discount: boolean };
   // Branding shown on the PDF header (logo is stored separately on the event).
   header: { title: string; subtitle: string };
+  // Billing. entryFeeByHeight overrides the default for specific classes.
+  // nominationExempt lists heights and/or sections that exempt a rider.
+  pricing: {
+    nominationFee: number;
+    entryFeeDefault: number;
+    entryFeeByHeight: Record<string, number>;
+    nominationExempt: string[];
+  };
+  // Extra sections only an admin can use for late (extemporáneo) entries.
+  extempSections: string[];
 };
 
 // Sensible starting point used when creating a new event.
@@ -26,6 +36,8 @@ export const TEMPLATE_CONFIG: EventConfig = {
   days: ["Sábado", "Domingo"],
   fields: { circuit: true, discount: true },
   header: { title: "", subtitle: "" },
+  pricing: { nominationFee: 350, entryFeeDefault: 750, entryFeeByHeight: {}, nominationExempt: ["Cruces"] },
+  extempSections: ["Training", "FC"],
 };
 
 // Coerce an arbitrary stored value into a complete, safe EventConfig.
@@ -52,7 +64,33 @@ export function normalizeConfig(raw: unknown): EventConfig {
       title: typeof c.header?.title === "string" ? c.header.title : "",
       subtitle: typeof c.header?.subtitle === "string" ? c.header.subtitle : "",
     },
+    pricing: normalizePricing(c.pricing),
+    extempSections: Array.isArray(c.extempSections) ? c.extempSections.map(String) : ["Training", "FC"],
   };
+}
+
+function normalizePricing(raw: unknown): EventConfig["pricing"] {
+  const p = (raw ?? {}) as Partial<EventConfig["pricing"]>;
+  const byHeightRaw = (p.entryFeeByHeight && typeof p.entryFeeByHeight === "object" ? p.entryFeeByHeight : {}) as Record<
+    string,
+    unknown
+  >;
+  const entryFeeByHeight: Record<string, number> = {};
+  for (const k of Object.keys(byHeightRaw)) {
+    const v = Number(byHeightRaw[k]);
+    if (Number.isFinite(v)) entryFeeByHeight[k] = v;
+  }
+  return {
+    nominationFee: Number.isFinite(Number(p.nominationFee)) ? Number(p.nominationFee) : 350,
+    entryFeeDefault: Number.isFinite(Number(p.entryFeeDefault)) ? Number(p.entryFeeDefault) : 750,
+    entryFeeByHeight,
+    nominationExempt: Array.isArray(p.nominationExempt) ? p.nominationExempt.map(String) : ["Cruces"],
+  };
+}
+
+// Entry fee for a class (height), falling back to the default.
+export function entryFeeForHeight(config: EventConfig, height: string): number {
+  return config.pricing.entryFeeByHeight[height] ?? config.pricing.entryFeeDefault;
 }
 
 export function sectionsForHeight(config: EventConfig, height: string): string[] {

@@ -80,9 +80,14 @@ export default async function AdminEventDetail({
       <div className="mt-2 flex items-center gap-3">
         <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{event.name}</h2>
         {isAdmin && (
-          <Link href={`/admin/events/${event.id}/config`} className="text-sm font-semibold text-blue-600">
-            Configurar
-          </Link>
+          <>
+            <Link href={`/admin/events/${event.id}/config`} className="text-sm font-semibold text-blue-600">
+              Configurar
+            </Link>
+            <Link href={`/admin/events/${event.id}/export`} className="text-sm font-semibold text-emerald-600">
+              Exportar a Excel
+            </Link>
+          </>
         )}
       </div>
       <p className="mb-5 text-sm text-slate-500 dark:text-slate-400">

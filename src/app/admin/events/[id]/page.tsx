@@ -88,7 +88,7 @@ export default async function AdminEventDetail({
               Exportar a Excel
             </Link>
             <Link href={`/admin/events/${event.id}/import`} className="text-sm font-semibold text-blue-600">
-              Importar CSV
+              Importar
             </Link>
           </>
         )}

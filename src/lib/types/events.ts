@@ -26,11 +26,13 @@ export type RosterRider = {
   id: string;
   first_name: string;
   last_name: string;
+  club: string | null;
 };
 
 export type RosterHorse = {
   id: string;
   name: string;
+  club: string | null;
 };
 
 export type ClubRoster = {

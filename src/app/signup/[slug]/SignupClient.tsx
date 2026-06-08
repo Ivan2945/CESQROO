@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { normalizeConfig, sectionsForHeight } from "@/lib/events/config";
 import type { ClubOption, EventRow, RosterRider, RosterHorse, EntryInput } from "@/lib/types/events";
 import { Combobox } from "./Combobox";
@@ -107,31 +107,28 @@ export default function SignupClient({ slug }: { slug: string }) {
     setLastSubmission(null); // hide any previous confirmation
     if (value === OTHER) {
       setContact({ representative: "", coach: "", phone: "", email: "" });
-      setRiders([]);
-      setHorses([]);
-      return;
+    } else {
+      setNewClubName("");
+      const c = clubs.find((x) => x.id === value);
+      setContact({
+        representative: c?.representative || "",
+        coach: c?.coach || "",
+        phone: c?.phone || "",
+        email: c?.email || "",
+      });
     }
-    setNewClubName("");
-    const c = clubs.find((x) => x.id === value);
-    setContact({
-      representative: c?.representative || "",
-      coach: c?.coach || "",
-      phone: c?.phone || "",
-      email: c?.email || "",
-    });
-    // Load roster
-    setRosterLoading(true);
-    fetch(`/api/events/${slug}/roster?clubId=${encodeURIComponent(value)}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setRiders(data.riders ?? []);
-        setHorses(data.horses ?? []);
-      })
-      .catch(() => {
-        setRiders([]);
-        setHorses([]);
-      })
-      .finally(() => setRosterLoading(false));
+    // Load the full roster (all clubs) so any rider/horse can be picked.
+    if (riders.length === 0 && horses.length === 0) {
+      setRosterLoading(true);
+      fetch(`/api/events/${slug}/roster`)
+        .then((r) => r.json())
+        .then((data) => {
+          setRiders(data.riders ?? []);
+          setHorses(data.horses ?? []);
+        })
+        .catch(() => {})
+        .finally(() => setRosterLoading(false));
+    }
   }
 
   // ---- Entry helpers ----
@@ -147,6 +144,28 @@ export default function SignupClient({ slug }: { slug: string }) {
       })
     );
   }
+  // Combobox items: append the club only when a name appears for >1 club.
+  const riderItems = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of riders) {
+      const k = `${r.last_name}, ${r.first_name}`.toLowerCase();
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+    return riders.map((r) => {
+      const base = `${r.last_name}, ${r.first_name}`;
+      const dup = (counts.get(base.toLowerCase()) ?? 0) > 1;
+      return { id: r.id, label: dup && r.club ? `${base} — ${r.club}` : base };
+    });
+  }, [riders]);
+  const horseItems = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const h of horses) counts.set(h.name.toLowerCase(), (counts.get(h.name.toLowerCase()) ?? 0) + 1);
+    return horses.map((h) => {
+      const dup = (counts.get(h.name.toLowerCase()) ?? 0) > 1;
+      return { id: h.id, label: dup && h.club ? `${h.name} — ${h.club}` : h.name };
+    });
+  }, [horses]);
+
   const addEntry = () => setEntries((es) => [...es, emptyEntry()]);
   const removeEntry = (i: number) =>
     setEntries((es) => (es.length === 1 ? es : es.filter((_, idx) => idx !== i)));
@@ -389,7 +408,7 @@ export default function SignupClient({ slug }: { slug: string }) {
                         disabled={!clubId}
                         placeholder="Escriba para buscar…"
                         query={e.riderQuery}
-                        items={riders.map((r) => ({ id: r.id, label: `${r.last_name}, ${r.first_name}` }))}
+                        items={riderItems}
                         onQueryChange={(text) => updateEntry(i, { riderQuery: text, riderId: null, riderNew: false })}
                         onSelectExisting={(id, lbl) =>
                           updateEntry(i, {
@@ -437,7 +456,7 @@ export default function SignupClient({ slug }: { slug: string }) {
                         disabled={!clubId}
                         placeholder="Escriba para buscar…"
                         query={e.horseQuery}
-                        items={horses.map((h) => ({ id: h.id, label: h.name }))}
+                        items={horseItems}
                         onQueryChange={(text) => updateEntry(i, { horseQuery: text, horseId: null, horseNew: false })}
                         onSelectExisting={(id, lbl) =>
                           updateEntry(i, { horseId: id, horseQuery: lbl, horseNew: false, newHorseName: "" })

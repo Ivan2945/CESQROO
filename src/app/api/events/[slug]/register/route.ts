@@ -94,13 +94,20 @@ export async function POST(
     resolvedClubName = club.name;
   }
 
-  // ---- Load this club's existing riders/horses to validate picks & snapshot names ----
-  const [{ data: clubRiders }, { data: clubHorses }] = await Promise.all([
-    supabaseAdmin.from("riders").select("id, first_name, last_name").eq("club_id", resolvedClubId),
-    supabaseAdmin.from("horses").select("id, name").eq("club_id", resolvedClubId),
+  // ---- Look up the picked riders/horses by id (any club) for name snapshots.
+  // A club may enter riders/horses that belong to another club.
+  const pickedRiderIds = [...new Set(entries.map((e) => e.riderId).filter(Boolean))] as string[];
+  const pickedHorseIds = [...new Set(entries.map((e) => e.horseId).filter(Boolean))] as string[];
+  const [{ data: pickedRiders }, { data: pickedHorses }] = await Promise.all([
+    pickedRiderIds.length
+      ? supabaseAdmin.from("riders").select("id, first_name, last_name").in("id", pickedRiderIds)
+      : Promise.resolve({ data: [] as { id: string; first_name: string; last_name: string }[] }),
+    pickedHorseIds.length
+      ? supabaseAdmin.from("horses").select("id, name").in("id", pickedHorseIds)
+      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
   ]);
-  const riderMap = new Map((clubRiders ?? []).map((r) => [r.id, `${r.first_name} ${r.last_name}`.trim()]));
-  const horseMap = new Map((clubHorses ?? []).map((h) => [h.id, h.name]));
+  const riderMap = new Map((pickedRiders ?? []).map((r) => [r.id, `${r.first_name} ${r.last_name}`.trim()]));
+  const horseMap = new Map((pickedHorses ?? []).map((h) => [h.id, h.name]));
 
   // ---- Resolve each entry's rider & horse (creating new ones as needed) ----
   type Resolved = {
@@ -118,7 +125,7 @@ export async function POST(
     let rider_id: string;
     let rider_name: string;
     if (e.riderId) {
-      if (!riderMap.has(e.riderId)) return bad(`Participación ${n}: el jinete no pertenece a este club.`);
+      if (!riderMap.has(e.riderId)) return bad(`Participación ${n}: jinete no encontrado.`);
       rider_id = e.riderId;
       rider_name = riderMap.get(e.riderId)!;
     } else {
@@ -143,7 +150,7 @@ export async function POST(
     let horse_id: string;
     let horse_name: string;
     if (e.horseId) {
-      if (!horseMap.has(e.horseId)) return bad(`Participación ${n}: el caballo no pertenece a este club.`);
+      if (!horseMap.has(e.horseId)) return bad(`Participación ${n}: caballo no encontrado.`);
       horse_id = e.horseId;
       horse_name = horseMap.get(e.horseId)!;
     } else {

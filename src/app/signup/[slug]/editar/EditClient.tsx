@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { normalizeConfig, sectionsForHeight } from "@/lib/events/config";
 import type { ClubOption, EventRow, RosterRider, RosterHorse, ExistingEntry, EntryInput } from "@/lib/types/events";
 import { Combobox, card, fieldInput, fieldLabel } from "../Combobox";
@@ -82,6 +82,28 @@ export default function EditClient({ slug }: { slug: string }) {
   const [deletedIds, setDeletedIds] = useState<string[]>([]);
 
   const config = normalizeConfig(event?.config);
+
+  // Combobox items: append the club only when a name appears for >1 club.
+  const riderItems = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const r of riders) {
+      const k = `${r.last_name}, ${r.first_name}`.toLowerCase();
+      counts.set(k, (counts.get(k) ?? 0) + 1);
+    }
+    return riders.map((r) => {
+      const base = `${r.last_name}, ${r.first_name}`;
+      const dup = (counts.get(base.toLowerCase()) ?? 0) > 1;
+      return { id: r.id, label: dup && r.club ? `${base} — ${r.club}` : base };
+    });
+  }, [riders]);
+  const horseItems = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const h of horses) counts.set(h.name.toLowerCase(), (counts.get(h.name.toLowerCase()) ?? 0) + 1);
+    return horses.map((h) => {
+      const dup = (counts.get(h.name.toLowerCase()) ?? 0) > 1;
+      return { id: h.id, label: dup && h.club ? `${h.name} — ${h.club}` : h.name };
+    });
+  }, [horses]);
 
   useEffect(() => {
     fetch(`/api/events/${slug}`)
@@ -314,7 +336,7 @@ export default function EditClient({ slug }: { slug: string }) {
                         <Combobox
                           placeholder="Escriba para buscar…"
                           query={r.riderQuery}
-                          items={riders.map((x) => ({ id: x.id, label: `${x.last_name}, ${x.first_name}` }))}
+                          items={riderItems}
                           onQueryChange={(t) => updateRow(i, { riderQuery: t, riderId: null, riderNew: false })}
                           onSelectExisting={(id, lbl) =>
                             updateRow(i, { riderId: id, riderQuery: lbl, riderNew: false, newRiderFirst: "", newRiderLast: "" })
@@ -354,7 +376,7 @@ export default function EditClient({ slug }: { slug: string }) {
                         <Combobox
                           placeholder="Escriba para buscar…"
                           query={r.horseQuery}
-                          items={horses.map((x) => ({ id: x.id, label: x.name }))}
+                          items={horseItems}
                           onQueryChange={(t) => updateRow(i, { horseQuery: t, horseId: null, horseNew: false })}
                           onSelectExisting={(id, lbl) =>
                             updateRow(i, { horseId: id, horseQuery: lbl, horseNew: false, newHorseName: "" })

@@ -64,8 +64,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   // Resolve rider/horse to ids + snapshot names (creating new ones as needed)
   async function resolveRider(e: EntryInput): Promise<{ id: string; name: string } | { error: string }> {
     if (e.riderId) {
-      if (!riderMap.has(e.riderId)) return { error: "El jinete no pertenece a este club." };
-      return { id: e.riderId, name: riderMap.get(e.riderId)! };
+      let name = riderMap.get(e.riderId);
+      if (!name) {
+        const { data } = await supabaseAdmin.from("riders").select("first_name, last_name").eq("id", e.riderId).single();
+        if (!data) return { error: "jinete no encontrado." };
+        name = `${data.first_name} ${data.last_name}`.trim();
+        riderMap.set(e.riderId, name);
+      }
+      return { id: e.riderId, name };
     }
     const first = e.newRiderFirst.trim();
     const last = e.newRiderLast.trim();
@@ -80,8 +86,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   }
   async function resolveHorse(e: EntryInput): Promise<{ id: string; name: string } | { error: string }> {
     if (e.horseId) {
-      if (!horseMap.has(e.horseId)) return { error: "El caballo no pertenece a este club." };
-      return { id: e.horseId, name: horseMap.get(e.horseId)! };
+      let name = horseMap.get(e.horseId);
+      if (!name) {
+        const { data } = await supabaseAdmin.from("horses").select("name").eq("id", e.horseId).single();
+        if (!data) return { error: "caballo no encontrado." };
+        name = data.name;
+        horseMap.set(e.horseId, name);
+      }
+      return { id: e.horseId, name };
     }
     const name = e.newHorseName.trim();
     const { data, error } = await supabaseAdmin.from("horses").insert({ club_id: clubId, name }).select("id").single();

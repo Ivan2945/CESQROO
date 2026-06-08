@@ -2,31 +2,33 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
 
-// GET /api/events/[slug]/roster?clubId=<uuid>
-// Returns the existing riders & horses for a club, so the public form can
-// offer "pick existing" alongside "create new". Scoped to the one club id.
-export async function GET(req: Request) {
-  const { searchParams } = new URL(req.url);
-  const clubId = (searchParams.get("clubId") || "").trim();
-
-  if (!clubId) return Response.json({ riders: [], horses: [] });
-
-  const [{ data: riders, error: rErr }, { data: horses, error: hErr }] = await Promise.all([
-    supabaseAdmin
-      .from("riders")
-      .select("id, first_name, last_name")
-      .eq("club_id", clubId)
-      .order("last_name", { ascending: true }),
-    supabaseAdmin
-      .from("horses")
-      .select("id, name")
-      .eq("club_id", clubId)
-      .order("name", { ascending: true }),
+// GET /api/events/[slug]/roster
+// Returns ALL riders & horses (across every club), each tagged with its club
+// name, so the form can pick/reuse any rider/horse and disambiguate duplicates.
+export async function GET() {
+  const [{ data: riders, error: rErr }, { data: horses, error: hErr }, { data: clubs }] = await Promise.all([
+    supabaseAdmin.from("riders").select("id, first_name, last_name, club_id").order("last_name", { ascending: true }),
+    supabaseAdmin.from("horses").select("id, name, club_id").order("name", { ascending: true }),
+    supabaseAdmin.from("clubs").select("id, name"),
   ]);
 
   if (rErr || hErr) {
-    return Response.json({ error: "No se pudo cargar el roster del club." }, { status: 500 });
+    return Response.json({ error: "No se pudo cargar el roster." }, { status: 500 });
   }
 
-  return Response.json({ riders: riders ?? [], horses: horses ?? [] });
+  const clubName = new Map((clubs ?? []).map((c) => [c.id, c.name as string]));
+
+  return Response.json({
+    riders: (riders ?? []).map((r) => ({
+      id: r.id,
+      first_name: r.first_name,
+      last_name: r.last_name,
+      club: r.club_id ? clubName.get(r.club_id) ?? null : null,
+    })),
+    horses: (horses ?? []).map((h) => ({
+      id: h.id,
+      name: h.name,
+      club: h.club_id ? clubName.get(h.club_id) ?? null : null,
+    })),
+  });
 }

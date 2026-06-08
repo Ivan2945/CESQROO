@@ -1,0 +1,96 @@
+import { supabaseServer } from "@/lib/supabaseServer";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import { normalizeConfig } from "@/lib/events/config";
+import { buildClasses, type ExportEntry, type Variant } from "@/lib/events/exportWorkbook";
+import { buildDayPdf } from "@/lib/events/exportPdf";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+async function isAdminUser() {
+  const supabase = await supabaseServer();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return false;
+  const { data: isAdmin } = await supabase.rpc("is_admin");
+  return !!isAdmin;
+}
+
+function safeFilename(s: string) {
+  return s.replace(/[^\p{L}\p{N} _.-]/gu, "").replace(/\s+/g, " ").trim() || "export";
+}
+
+const LIST_LABEL: Record<string, string> = {
+  results: "Resultados",
+  steward: "Stewarding",
+  publico: "Publico",
+  impresion: "Impresion",
+};
+
+// POST /api/events/[slug]/export-pdf  { day, heightOrder, list }  (admin only)
+export async function POST(req: Request, { params }: { params: Promise<{ slug: string }> }) {
+  if (!(await isAdminUser())) {
+    return Response.json({ error: "Solo un administrador puede exportar." }, { status: 403 });
+  }
+  const { slug } = await params;
+
+  let body: { day?: string; heightOrder?: string[]; list?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return Response.json({ error: "Solicitud inválida." }, { status: 400 });
+  }
+  const day = (body.day || "").trim();
+  const list = (body.list || "results").trim();
+  const heightOrder = Array.isArray(body.heightOrder) ? body.heightOrder : [];
+  if (!day) return Response.json({ error: "Seleccione un día." }, { status: 400 });
+
+  const variant: Variant = list === "results" ? "results" : list === "steward" ? "steward" : "impresion";
+
+  const { data: event } = await supabaseAdmin.from("events").select("id, name, config").eq("slug", slug).single();
+  if (!event) return Response.json({ error: "Evento no encontrado." }, { status: 404 });
+  const config = normalizeConfig(event.config);
+
+  const { data: subs } = await supabaseAdmin
+    .from("event_submissions")
+    .select("id, club_name")
+    .eq("event_id", event.id);
+  const clubBySub = new Map((subs ?? []).map((s) => [s.id, s.club_name as string]));
+
+  const { data: rows } = await supabaseAdmin
+    .from("event_entries")
+    .select("submission_id, rider_id, horse_id, rider_name, horse_name, height, section, days")
+    .eq("event_id", event.id);
+
+  const entries: ExportEntry[] = (rows ?? [])
+    .filter((r) => Array.isArray(r.days) && (r.days as string[]).includes(day))
+    .map((r) => ({
+      club: clubBySub.get(r.submission_id) ?? "—",
+      rider: r.rider_name,
+      horse: r.horse_name,
+      height: r.height,
+      section: r.section,
+      riderKey: r.rider_id ?? r.rider_name,
+      horseKey: r.horse_id ?? r.horse_name,
+    }));
+
+  const requested = heightOrder.filter((h) => config.heights.includes(h));
+  const finalOrder = [...new Set([...requested, ...config.heights])];
+  const dayIdx = config.days.indexOf(day);
+  const startNumber = (dayIdx > 0 ? dayIdx : 0) * config.heights.length + 1;
+
+  const classes = buildClasses(entries, finalOrder, startNumber);
+  const pdf = await buildDayPdf({ eventName: event.name, day, classes, variant });
+
+  const label = LIST_LABEL[list] ?? "Lista";
+  const filename = `${safeFilename(event.name)} - ${safeFilename(day)} - ${label}.pdf`;
+
+  return new Response(new Uint8Array(pdf), {
+    status: 200,
+    headers: {
+      "Content-Type": "application/pdf",
+      "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+    },
+  });
+}

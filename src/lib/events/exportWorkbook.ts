@@ -77,16 +77,16 @@ export function drawOrder(entries: ExportEntry[]): ExportEntry[] {
   return best;
 }
 
-type ClassBlock = { index: number; height: string; order: ExportEntry[] };
-type Variant = "impresion" | "results" | "steward";
+export type ClassBlock = { index: number; height: string; order: ExportEntry[] };
+export type Variant = "impresion" | "results" | "steward";
 
-function headersFor(variant: Variant): string[] {
+export function headersFor(variant: Variant): string[] {
   if (variant === "results") return ["Orden", "Club", "Jinete", "Caballo", "CAT", "Resultado"];
   if (variant === "steward") return ["Orden", "Club", "Jinete", "Caballo", "E", "S"];
   return ["Orden", "Club", "Jinete", "Caballo", "Categoría"];
 }
 
-function rowFor(variant: Variant, idx: number, e: ExportEntry): (string | number)[] {
+export function rowFor(variant: Variant, idx: number, e: ExportEntry): (string | number)[] {
   const cat = e.section || "";
   if (variant === "results") return [idx, e.club, e.rider, e.horse, cat ? CAT_ABBREV[cat] ?? cat.slice(0, 2) : "", ""];
   if (variant === "steward") return [idx, e.club, e.rider, e.horse, "", ""];
@@ -105,42 +105,61 @@ function renderSheet(ws: ExcelJS.Worksheet, classes: ClassBlock[], variant: Vari
   ws.columns = COLW[variant].map((w) => ({ width: w }));
   ws.pageSetup = { orientation: "portrait", fitToPage: true, fitToWidth: 1, fitToHeight: 0 };
 
-  for (const cb of classes) {
+  // Write sheets (Results/Steward): dotted line between each row, solid only
+  // under the header, one class per printed page. Normal lists: solid under
+  // header only, with 1 blank before the header and 2 after each list.
+  const isWriteSheet = variant !== "impresion";
+  const dotted = { style: "dotted" as const };
+  const solid = { style: "thin" as const };
+  const blanksBefore = isWriteSheet ? 2 : 1;
+  const blanksAfter = isWriteSheet ? 1 : 2;
+
+  classes.forEach((cb, ci) => {
     const t1 = ws.addRow([`Prueba ${cb.index}`]);
     t1.font = { size: 10, bold: true };
     const t2 = ws.addRow([cb.height]);
     t2.font = { size: 10, bold: true };
-    ws.addRow([]); // two blank rows before the header (matches the sheet)
-    ws.addRow([]);
-
-    const border: Partial<ExcelJS.Borders> = {
-      top: { style: "thin" },
-      bottom: { style: "thin" },
-      left: { style: "thin" },
-      right: { style: "thin" },
-    };
+    for (let k = 0; k < blanksBefore; k++) ws.addRow([]);
 
     const hr = ws.addRow(headers);
     hr.font = { size: 10, bold: true };
     hr.alignment = { horizontal: "center" };
-    for (let c = 1; c <= headers.length; c++) hr.getCell(c).border = border;
+    for (let c = 1; c <= headers.length; c++) hr.getCell(c).border = { bottom: solid };
 
     cb.order.forEach((e, i) => {
       const row = ws.addRow(rowFor(variant, i + 1, e));
       row.font = { size: 10 };
       row.alignment = { horizontal: "center" };
-      // Border every column (incl. blank Resultado / E / S) like the table.
-      for (let c = 1; c <= headers.length; c++) row.getCell(c).border = border;
+      if (isWriteSheet) for (let c = 1; c <= headers.length; c++) row.getCell(c).border = { bottom: dotted };
     });
 
-    ws.addRow([]);
-    // Page break after each class so every class prints on its own page.
-    try {
-      ws.lastRow?.addPageBreak?.();
-    } catch {
-      /* page breaks are best-effort */
+    for (let k = 0; k < blanksAfter; k++) ws.addRow([]);
+
+    // One class per page (write sheets): break after each class except the last.
+    if (isWriteSheet && ci < classes.length - 1) {
+      try {
+        ws.lastRow?.addPageBreak?.();
+      } catch {
+        /* best-effort */
+      }
     }
+  });
+}
+
+// Group entries by height, order classes (all requested heights included even
+// when empty), and draw the start order for each. Shared by Excel + PDF.
+export function buildClasses(entries: ExportEntry[], orderedHeights: string[], startNumber = 1): ClassBlock[] {
+  const byHeight = new Map<string, ExportEntry[]>();
+  for (const e of entries) {
+    const arr = byHeight.get(e.height) ?? [];
+    arr.push(e);
+    byHeight.set(e.height, arr);
   }
+  const seen = new Set<string>();
+  const sequence: string[] = [];
+  for (const h of orderedHeights) if (!seen.has(h)) { sequence.push(h); seen.add(h); }
+  for (const h of byHeight.keys()) if (!seen.has(h)) { sequence.push(h); seen.add(h); }
+  return sequence.map((h, i) => ({ index: startNumber + i, height: h, order: drawOrder(byHeight.get(h) ?? []) }));
 }
 
 export async function buildDayWorkbook(opts: {
@@ -150,38 +169,7 @@ export async function buildDayWorkbook(opts: {
   entries: ExportEntry[];
   startNumber?: number; // first Prueba number (for continuous numbering across days)
 }): Promise<Buffer> {
-  // Group entries by height (callers pass entries already filtered to the day).
-  const byHeight = new Map<string, ExportEntry[]>();
-  for (const e of opts.entries) {
-    const arr = byHeight.get(e.height) ?? [];
-    arr.push(e);
-    byHeight.set(e.height, arr);
-  }
-
-  // Class running order: every requested class is included (even with no
-  // entries), then any leftover heights that had entries.
-  const seen = new Set<string>();
-  const sequence: string[] = [];
-  for (const h of opts.orderedHeights) {
-    if (!seen.has(h)) {
-      sequence.push(h);
-      seen.add(h);
-    }
-  }
-  for (const h of byHeight.keys()) {
-    if (!seen.has(h)) {
-      sequence.push(h);
-      seen.add(h);
-    }
-  }
-
-  // One draw per class, shared across all four sheets so orders match.
-  const start = opts.startNumber ?? 1;
-  const classes: ClassBlock[] = sequence.map((h, i) => ({
-    index: start + i,
-    height: h,
-    order: drawOrder(byHeight.get(h) ?? []),
-  }));
+  const classes = buildClasses(opts.entries, opts.orderedHeights, opts.startNumber ?? 1);
 
   const wb = new ExcelJS.Workbook();
   wb.creator = "CESQROO";

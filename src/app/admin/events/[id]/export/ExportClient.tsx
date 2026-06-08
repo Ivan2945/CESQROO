@@ -57,34 +57,44 @@ export default function ExportClient({
     setOrder(next);
   }
 
-  async function generate() {
+  async function download(url: string, payload: object, filename: string) {
     setError(null);
     setBusy(true);
     try {
-      const res = await fetch(`/api/events/${eventSlug}/export`, {
+      const res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ day, heightOrder: order }),
+        body: JSON.stringify(payload),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         throw new Error(data.error || "No se pudo generar el archivo.");
       }
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
+      const u = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = `${eventName} - ${day}.xlsx`;
+      a.href = u;
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       a.remove();
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(u);
     } catch (e) {
       setError((e as Error).message);
     } finally {
       setBusy(false);
     }
   }
+
+  const generate = () =>
+    download(`/api/events/${eventSlug}/export`, { day, heightOrder: order }, `${eventName} - ${day}.xlsx`);
+
+  const downloadPdf = (list: string, label: string) =>
+    download(
+      `/api/events/${eventSlug}/export-pdf`,
+      { day, heightOrder: order, list },
+      `${eventName} - ${day} - ${label}.pdf`
+    );
 
   const totalForDay = order.reduce((n, h) => n + (countsForDay.get(h) ?? 0), 0);
 
@@ -140,13 +150,42 @@ export default function ExportClient({
           </ol>
         )}
 
-        <button
-          onClick={generate}
-          disabled={busy || order.length === 0}
-          className="mt-6 rounded-lg bg-blue-600 px-5 py-2.5 font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-        >
-          {busy ? "Generando…" : "Generar y descargar Excel"}
-        </button>
+        <div className="mt-6">
+          <button
+            onClick={generate}
+            disabled={busy || order.length === 0}
+            className="rounded-lg bg-blue-600 px-5 py-2.5 font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+          >
+            {busy ? "Generando…" : "Excel (4 hojas)"}
+          </button>
+        </div>
+
+        <div className="mt-4">
+          <p className="mb-2 text-sm font-semibold text-slate-700">PDF para imprimir (una prueba por página)</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => downloadPdf("results", "Resultados")}
+              disabled={busy || order.length === 0}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            >
+              Resultados (PDF)
+            </button>
+            <button
+              onClick={() => downloadPdf("steward", "Stewarding")}
+              disabled={busy || order.length === 0}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            >
+              Stewarding (PDF)
+            </button>
+            <button
+              onClick={() => downloadPdf("publico", "Publico")}
+              disabled={busy || order.length === 0}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            >
+              Público (PDF)
+            </button>
+          </div>
+        </div>
       </section>
     </div>
   );

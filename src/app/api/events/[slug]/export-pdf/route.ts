@@ -2,7 +2,7 @@ import { supabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeConfig } from "@/lib/events/config";
 import { buildClasses, type ExportEntry, type Variant } from "@/lib/events/exportWorkbook";
-import { buildDayPdf } from "@/lib/events/exportPdf";
+import { buildDayPdf, buildMasterListPdf } from "@/lib/events/exportPdf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -25,6 +25,8 @@ const LIST_LABEL: Record<string, string> = {
   results: "Resultados",
   steward: "Stewarding",
   publico: "Publico",
+  publico_continuo: "Publico (continuo)",
+  master: "Master List",
   impresion: "Impresion",
 };
 
@@ -47,10 +49,33 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   if (!day) return Response.json({ error: "Seleccione un día." }, { status: 400 });
 
   const variant: Variant = list === "results" ? "results" : list === "steward" ? "steward" : "impresion";
+  const pageBreaks = list !== "publico_continuo"; // continuo = no page breaks (saves paper)
 
-  const { data: event } = await supabaseAdmin.from("events").select("id, name, config").eq("slug", slug).single();
+  const { data: event } = await supabaseAdmin
+    .from("events")
+    .select("id, name, config, saturday_date, sunday_date, pdf_logo")
+    .eq("slug", slug)
+    .single();
   if (!event) return Response.json({ error: "Evento no encontrado." }, { status: 404 });
   const config = normalizeConfig(event.config);
+
+  // Header date line: the day plus the event's date range (if set).
+  const fmt = (d: string) => {
+    try {
+      return new Date(d + "T00:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" });
+    } catch {
+      return d;
+    }
+  };
+  const range =
+    event.saturday_date && event.sunday_date
+      ? `${fmt(event.saturday_date)} – ${fmt(event.sunday_date)}`
+      : event.saturday_date
+        ? fmt(event.saturday_date)
+        : event.sunday_date
+          ? fmt(event.sunday_date)
+          : "";
+  const datesText = [day, range].filter(Boolean).join("   ·   ");
 
   const { data: subs } = await supabaseAdmin
     .from("event_submissions")
@@ -81,9 +106,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   const startNumber = (dayIdx > 0 ? dayIdx : 0) * config.heights.length + 1;
 
   const classes = buildClasses(entries, finalOrder, startNumber);
-  const pdf = await buildDayPdf({ eventName: event.name, day, classes, variant });
-
   const label = LIST_LABEL[list] ?? "Lista";
+  const header = {
+    title: config.header.title || event.name,
+    subtitle: config.header.subtitle || "",
+    datesText,
+    listLabel: label,
+    logo: event.pdf_logo ?? null,
+  };
+  const pdf =
+    list === "master"
+      ? await buildMasterListPdf({ eventName: event.name, day, classes, ...header })
+      : await buildDayPdf({ eventName: event.name, day, classes, variant, pageBreaks, ...header });
   const filename = `${safeFilename(event.name)} - ${safeFilename(day)} - ${label}.pdf`;
 
   return new Response(new Uint8Array(pdf), {

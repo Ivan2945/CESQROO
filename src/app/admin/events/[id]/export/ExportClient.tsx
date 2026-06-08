@@ -161,7 +161,7 @@ export default function ExportClient({
         </div>
 
         <div className="mt-4">
-          <p className="mb-2 text-sm font-semibold text-slate-700">PDF para imprimir (una prueba por página)</p>
+          <p className="mb-2 text-sm font-semibold text-slate-700">PDF — una prueba por página (web / oficiales)</p>
           <div className="flex flex-wrap gap-2">
             <button
               onClick={() => downloadPdf("results", "Resultados")}
@@ -183,6 +183,24 @@ export default function ExportClient({
               className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
             >
               Público (PDF)
+            </button>
+          </div>
+
+          <p className="mb-2 mt-4 text-sm font-semibold text-slate-700">PDF — continuo (imprimir / pegar, ahorra papel)</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => downloadPdf("publico_continuo", "Publico continuo")}
+              disabled={busy || order.length === 0}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            >
+              Público continuo (PDF)
+            </button>
+            <button
+              onClick={() => downloadPdf("master", "Master List")}
+              disabled={busy || order.length === 0}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60"
+            >
+              Master List (PDF)
             </button>
           </div>
         </div>

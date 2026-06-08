@@ -1,5 +1,4 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { slugify } from "@/lib/events/slug";
 import { normalizeConfig, isValidPair, isValidDay } from "@/lib/events/config";
 import type { RegisterPayload, EntryInput } from "@/lib/types/events";
 
@@ -67,15 +66,8 @@ export async function POST(
     const name = (newClubName || "").trim();
     if (!name) return bad("Escriba el nombre de su club.");
     const { data: club, error } = await supabaseAdmin
-      .from("clubs")
-      .insert({
-        name,
-        slug: slugify(name),
-        representative: contact?.representative || null,
-        coach: contact?.coach || null,
-        phone: contact?.phone || null,
-        email: contact?.email || null,
-      })
+      .from("show_clubs")
+      .insert({ name })
       .select("id, name")
       .single();
     if (error || !club) return bad("No se pudo crear el club: " + (error?.message ?? ""));
@@ -85,7 +77,7 @@ export async function POST(
   } else {
     if (!clubId) return bad("Seleccione un club.");
     const { data: club, error } = await supabaseAdmin
-      .from("clubs")
+      .from("show_clubs")
       .select("id, name")
       .eq("id", clubId)
       .single();
@@ -94,19 +86,20 @@ export async function POST(
     resolvedClubName = club.name;
   }
 
-  // ---- Look up the picked riders/horses by id (any club) for name snapshots.
-  // A club may enter riders/horses that belong to another club.
+  // ---- Look up the picked show riders/horses by id for name snapshots. ----
   const pickedRiderIds = [...new Set(entries.map((e) => e.riderId).filter(Boolean))] as string[];
   const pickedHorseIds = [...new Set(entries.map((e) => e.horseId).filter(Boolean))] as string[];
   const [{ data: pickedRiders }, { data: pickedHorses }] = await Promise.all([
     pickedRiderIds.length
-      ? supabaseAdmin.from("riders").select("id, first_name, last_name").in("id", pickedRiderIds)
-      : Promise.resolve({ data: [] as { id: string; first_name: string; last_name: string }[] }),
+      ? supabaseAdmin.from("show_riders").select("id, first_name, last_name, full_name").in("id", pickedRiderIds)
+      : Promise.resolve({ data: [] as { id: string; first_name: string; last_name: string; full_name: string }[] }),
     pickedHorseIds.length
-      ? supabaseAdmin.from("horses").select("id, name").in("id", pickedHorseIds)
+      ? supabaseAdmin.from("show_horses").select("id, name").in("id", pickedHorseIds)
       : Promise.resolve({ data: [] as { id: string; name: string }[] }),
   ]);
-  const riderMap = new Map((pickedRiders ?? []).map((r) => [r.id, `${r.first_name} ${r.last_name}`.trim()]));
+  const riderMap = new Map(
+    (pickedRiders ?? []).map((r) => [r.id, r.full_name || `${r.first_name ?? ""} ${r.last_name ?? ""}`.trim()])
+  );
   const horseMap = new Map((pickedHorses ?? []).map((h) => [h.id, h.name]));
 
   // ---- Resolve each entry's rider & horse (creating new ones as needed) ----
@@ -132,18 +125,13 @@ export async function POST(
       const first = e.newRiderFirst.trim();
       const last = e.newRiderLast.trim();
       const { data: nr, error } = await supabaseAdmin
-        .from("riders")
-        .insert({
-          club_id: resolvedClubId,
-          first_name: first,
-          last_name: last,
-          full_name: `${first} ${last}`,
-        })
+        .from("show_riders")
+        .insert({ first_name: first, last_name: last, full_name: `${first} ${last}`.trim() })
         .select("id")
         .single();
       if (error || !nr) return bad(`Participación ${n}: no se pudo crear el jinete: ${error?.message ?? ""}`);
       rider_id = nr.id;
-      rider_name = `${first} ${last}`;
+      rider_name = `${first} ${last}`.trim();
     }
 
     // Horse
@@ -156,8 +144,8 @@ export async function POST(
     } else {
       const hname = e.newHorseName.trim();
       const { data: nh, error } = await supabaseAdmin
-        .from("horses")
-        .insert({ club_id: resolvedClubId, name: hname })
+        .from("show_horses")
+        .insert({ name: hname })
         .select("id")
         .single();
       if (error || !nh) return bad(`Participación ${n}: no se pudo crear el caballo: ${error?.message ?? ""}`);

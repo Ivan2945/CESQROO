@@ -42,13 +42,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   const allowedSubIds = matched.map((s) => s.id);
   const targetSubmissionId = matched[0].id; // new entries attach here
 
-  // ---- Club roster (for validating existing picks & snapshot names) ----
-  const [{ data: clubRiders }, { data: clubHorses }] = await Promise.all([
-    supabaseAdmin.from("riders").select("id, first_name, last_name").eq("club_id", clubId),
-    supabaseAdmin.from("horses").select("id, name").eq("club_id", clubId),
-  ]);
-  const riderMap = new Map((clubRiders ?? []).map((r) => [r.id, `${r.first_name} ${r.last_name}`.trim()]));
-  const horseMap = new Map((clubHorses ?? []).map((h) => [h.id, h.name]));
+  // Name-snapshot caches; show riders/horses are looked up lazily by id.
+  const riderMap = new Map<string, string>();
+  const horseMap = new Map<string, string>();
 
   function validateEntry(e: EntryInput, n: number): string | null {
     const hasRider = !!e.riderId || (e.newRiderFirst?.trim() && e.newRiderLast?.trim());
@@ -64,39 +60,40 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   // Resolve rider/horse to ids + snapshot names (creating new ones as needed)
   async function resolveRider(e: EntryInput): Promise<{ id: string; name: string } | { error: string }> {
     if (e.riderId) {
-      let name = riderMap.get(e.riderId);
-      if (!name) {
-        const { data } = await supabaseAdmin.from("riders").select("first_name, last_name").eq("id", e.riderId).single();
-        if (!data) return { error: "jinete no encontrado." };
-        name = `${data.first_name} ${data.last_name}`.trim();
-        riderMap.set(e.riderId, name);
-      }
+      const cached = riderMap.get(e.riderId);
+      if (cached) return { id: e.riderId, name: cached };
+      const { data } = await supabaseAdmin
+        .from("show_riders")
+        .select("first_name, last_name, full_name")
+        .eq("id", e.riderId)
+        .single();
+      if (!data) return { error: "jinete no encontrado." };
+      const name = data.full_name || `${data.first_name ?? ""} ${data.last_name ?? ""}`.trim();
+      riderMap.set(e.riderId, name);
       return { id: e.riderId, name };
     }
     const first = e.newRiderFirst.trim();
     const last = e.newRiderLast.trim();
     const { data, error } = await supabaseAdmin
-      .from("riders")
-      .insert({ club_id: clubId, first_name: first, last_name: last, full_name: `${first} ${last}` })
+      .from("show_riders")
+      .insert({ first_name: first, last_name: last, full_name: `${first} ${last}`.trim() })
       .select("id")
       .single();
     if (error || !data) return { error: "No se pudo crear el jinete." };
-    riderMap.set(data.id, `${first} ${last}`);
-    return { id: data.id, name: `${first} ${last}` };
+    riderMap.set(data.id, `${first} ${last}`.trim());
+    return { id: data.id, name: `${first} ${last}`.trim() };
   }
   async function resolveHorse(e: EntryInput): Promise<{ id: string; name: string } | { error: string }> {
     if (e.horseId) {
-      let name = horseMap.get(e.horseId);
-      if (!name) {
-        const { data } = await supabaseAdmin.from("horses").select("name").eq("id", e.horseId).single();
-        if (!data) return { error: "caballo no encontrado." };
-        name = data.name;
-        horseMap.set(e.horseId, name);
-      }
-      return { id: e.horseId, name };
+      const cached = horseMap.get(e.horseId);
+      if (cached) return { id: e.horseId, name: cached };
+      const { data } = await supabaseAdmin.from("show_horses").select("name").eq("id", e.horseId).single();
+      if (!data) return { error: "caballo no encontrado." };
+      horseMap.set(e.horseId, data.name);
+      return { id: e.horseId, name: data.name };
     }
     const name = e.newHorseName.trim();
-    const { data, error } = await supabaseAdmin.from("horses").insert({ club_id: clubId, name }).select("id").single();
+    const { data, error } = await supabaseAdmin.from("show_horses").insert({ name }).select("id").single();
     if (error || !data) return { error: "No se pudo crear el caballo." };
     horseMap.set(data.id, name);
     return { id: data.id, name };

@@ -43,26 +43,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     .in("submission_id", subIds)
     .order("created_at", { ascending: true });
 
-  // All riders/horses (any club) so edits can pick/reuse across clubs too,
-  // each tagged with its club name for disambiguating duplicates.
-  const [{ data: riders }, { data: horses }, { data: clubs }] = await Promise.all([
-    supabaseAdmin.from("riders").select("id, first_name, last_name, club_id").order("last_name"),
-    supabaseAdmin.from("horses").select("id, name, club_id").order("name"),
-    supabaseAdmin.from("clubs").select("id, name"),
+  // All show riders/horses so edits can pick/reuse any of them.
+  const [{ data: riders }, { data: horses }] = await Promise.all([
+    supabaseAdmin.from("show_riders").select("id, first_name, last_name").order("last_name"),
+    supabaseAdmin.from("show_horses").select("id, name").order("name"),
   ]);
-  const clubName = new Map((clubs ?? []).map((c) => [c.id, c.name as string]));
 
   return Response.json({
     clubId,
     clubName: matched[0].club_name,
     submissionId: matched[0].id,
     entries: entries ?? [],
-    riders: (riders ?? []).map((r) => ({
-      id: r.id,
-      first_name: r.first_name,
-      last_name: r.last_name,
-      club: r.club_id ? clubName.get(r.club_id) ?? null : null,
-    })),
-    horses: (horses ?? []).map((h) => ({ id: h.id, name: h.name, club: h.club_id ? clubName.get(h.club_id) ?? null : null })),
+    riders: riders ?? [],
+    horses: horses ?? [],
   });
 }

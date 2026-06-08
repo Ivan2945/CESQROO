@@ -1,6 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { sectionsForHeight, type EventConfig } from "@/lib/events/config";
-import { slugify } from "@/lib/events/slug";
 
 // A row is a flat string map. Known field keys: club, representante, coach,
 // telefono, email, jinete, nombre, apellido, caballo, altura, seccion, dias,
@@ -111,8 +110,8 @@ export async function importEntries(
 
   if (errors.length > 0) return { ok: false, error: "El archivo tiene errores.", errors: errors.slice(0, 80) };
 
-  // ---- Resolve clubs ----
-  const { data: existingClubs } = await supabaseAdmin.from("clubs").select("id, name");
+  // ---- Resolve show clubs (match by name, create if missing) ----
+  const { data: existingClubs } = await supabaseAdmin.from("show_clubs").select("id, name");
   const clubByName = new Map<string, { id: string; name: string }>();
   for (const c of existingClubs ?? []) clubByName.set(fold(c.name), { id: c.id, name: c.name });
 
@@ -123,15 +122,8 @@ export async function importEntries(
   for (const [key, p] of uniqueClubs) {
     if (clubByName.has(key)) continue;
     const { data: created, error } = await supabaseAdmin
-      .from("clubs")
-      .insert({
-        name: p.club,
-        slug: slugify(p.club),
-        representative: p.representante || null,
-        coach: p.coach || null,
-        phone: p.telefono || null,
-        email: p.email || null,
-      })
+      .from("show_clubs")
+      .insert({ name: p.club })
       .select("id, name")
       .single();
     if (error || !created) return { ok: false, error: "No se pudo crear el club: " + (error?.message ?? "") };
@@ -139,35 +131,34 @@ export async function importEntries(
     clubsCreated++;
   }
 
-  // ---- Preload riders/horses ----
-  const clubIds = [...uniqueClubs.keys()].map((k) => clubByName.get(k)!.id);
+  // ---- Preload show riders/horses (matched globally by name) ----
   const [{ data: ridersDb }, { data: horsesDb }] = await Promise.all([
-    supabaseAdmin.from("riders").select("id, full_name, club_id").in("club_id", clubIds),
-    supabaseAdmin.from("horses").select("id, name, club_id").in("club_id", clubIds),
+    supabaseAdmin.from("show_riders").select("id, full_name"),
+    supabaseAdmin.from("show_horses").select("id, name"),
   ]);
   const riderCache = new Map<string, string>();
-  for (const r of ridersDb ?? []) riderCache.set(`${r.club_id}|${fold(r.full_name)}`, r.id);
+  for (const r of ridersDb ?? []) if (!riderCache.has(fold(r.full_name))) riderCache.set(fold(r.full_name), r.id);
   const horseCache = new Map<string, string>();
-  for (const h of horsesDb ?? []) horseCache.set(`${h.club_id}|${fold(h.name)}`, h.id);
+  for (const h of horsesDb ?? []) if (!horseCache.has(fold(h.name))) horseCache.set(fold(h.name), h.id);
 
-  async function resolveRider(clubId: string, first: string, last: string, fullName: string) {
-    const key = `${clubId}|${fold(fullName)}`;
+  async function resolveRider(first: string, last: string, fullName: string) {
+    const key = fold(fullName);
     const hit = riderCache.get(key);
     if (hit) return hit;
     const { data, error } = await supabaseAdmin
-      .from("riders")
-      .insert({ club_id: clubId, first_name: first, last_name: last, full_name: fullName })
+      .from("show_riders")
+      .insert({ first_name: first, last_name: last, full_name: fullName })
       .select("id")
       .single();
     if (error || !data) throw new Error("rider: " + (error?.message ?? ""));
     riderCache.set(key, data.id);
     return data.id as string;
   }
-  async function resolveHorse(clubId: string, name: string) {
-    const key = `${clubId}|${fold(name)}`;
+  async function resolveHorse(name: string) {
+    const key = fold(name);
     const hit = horseCache.get(key);
     if (hit) return hit;
-    const { data, error } = await supabaseAdmin.from("horses").insert({ club_id: clubId, name }).select("id").single();
+    const { data, error } = await supabaseAdmin.from("show_horses").insert({ name }).select("id").single();
     if (error || !data) throw new Error("horse: " + (error?.message ?? ""));
     horseCache.set(key, data.id);
     return data.id as string;
@@ -198,8 +189,8 @@ export async function importEntries(
       const groupRows = parsed.filter((p) => fold(p.club) === key);
       const entryRows = [];
       for (const p of groupRows) {
-        const riderId = await resolveRider(club.id, p.first, p.last, p.fullName);
-        const horseId = await resolveHorse(club.id, p.horse);
+        const riderId = await resolveRider(p.first, p.last, p.fullName);
+        const horseId = await resolveHorse(p.horse);
         entryRows.push({
           submission_id: sub.id,
           event_id: eventId,

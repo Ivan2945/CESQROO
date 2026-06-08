@@ -83,27 +83,11 @@ export default function EditClient({ slug }: { slug: string }) {
 
   const config = normalizeConfig(event?.config);
 
-  // Combobox items: append the club only when a name appears for >1 club.
-  const riderItems = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const r of riders) {
-      const k = `${r.last_name}, ${r.first_name}`.toLowerCase();
-      counts.set(k, (counts.get(k) ?? 0) + 1);
-    }
-    return riders.map((r) => {
-      const base = `${r.last_name}, ${r.first_name}`;
-      const dup = (counts.get(base.toLowerCase()) ?? 0) > 1;
-      return { id: r.id, label: dup && r.club ? `${base} — ${r.club}` : base };
-    });
-  }, [riders]);
-  const horseItems = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const h of horses) counts.set(h.name.toLowerCase(), (counts.get(h.name.toLowerCase()) ?? 0) + 1);
-    return horses.map((h) => {
-      const dup = (counts.get(h.name.toLowerCase()) ?? 0) > 1;
-      return { id: h.id, label: dup && h.club ? `${h.name} — ${h.club}` : h.name };
-    });
-  }, [horses]);
+  const riderItems = useMemo(
+    () => riders.map((r) => ({ id: r.id, label: `${r.last_name}, ${r.first_name}` })),
+    [riders]
+  );
+  const horseItems = useMemo(() => horses.map((h) => ({ id: h.id, label: h.name })), [horses]);
 
   useEffect(() => {
     fetch(`/api/events/${slug}`)

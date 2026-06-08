@@ -123,13 +123,13 @@ function renderSheet(ws: ExcelJS.Worksheet, classes: ClassBlock[], variant: Vari
 
     const hr = ws.addRow(headers);
     hr.font = { size: 10, bold: true };
-    hr.alignment = { horizontal: "center" };
+    hr.alignment = { horizontal: "center", shrinkToFit: true };
     for (let c = 1; c <= headers.length; c++) hr.getCell(c).border = { bottom: solid };
 
     cb.order.forEach((e, i) => {
       const row = ws.addRow(rowFor(variant, i + 1, e));
       row.font = { size: 10 };
-      row.alignment = { horizontal: "center" };
+      row.alignment = { horizontal: "center", shrinkToFit: true };
       if (isWriteSheet) for (let c = 1; c <= headers.length; c++) row.getCell(c).border = { bottom: dotted };
     });
 

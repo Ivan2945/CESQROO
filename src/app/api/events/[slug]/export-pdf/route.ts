@@ -59,23 +59,31 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   if (!event) return Response.json({ error: "Evento no encontrado." }, { status: 404 });
   const config = normalizeConfig(event.config);
 
-  // Header date line: the day plus the event's date range (if set).
-  const fmt = (d: string) => {
-    try {
-      return new Date(d + "T00:00:00").toLocaleDateString("es-MX", { day: "numeric", month: "long", year: "numeric" });
-    } catch {
-      return d;
-    }
+  // Header date line, e.g. "13 - 14 de Junio de 2026".
+  const part = (d: string) => {
+    const dt = new Date(d + "T00:00:00");
+    const month = dt.toLocaleDateString("es-MX", { month: "long" });
+    return { day: dt.getDate(), month: month.charAt(0).toUpperCase() + month.slice(1), year: dt.getFullYear() };
   };
-  const range =
-    event.saturday_date && event.sunday_date
-      ? `${fmt(event.saturday_date)} – ${fmt(event.sunday_date)}`
-      : event.saturday_date
-        ? fmt(event.saturday_date)
-        : event.sunday_date
-          ? fmt(event.sunday_date)
-          : "";
-  const datesText = [day, range].filter(Boolean).join("   ·   ");
+  const datesText = (() => {
+    const sat = event.saturday_date as string | null;
+    const sun = event.sunday_date as string | null;
+    try {
+      if (sat && sun) {
+        const a = part(sat);
+        const b = part(sun);
+        if (a.month === b.month && a.year === b.year) return `${a.day} - ${b.day} de ${a.month} de ${a.year}`;
+        if (a.year === b.year) return `${a.day} de ${a.month} - ${b.day} de ${b.month} de ${a.year}`;
+        return `${a.day} de ${a.month} de ${a.year} - ${b.day} de ${b.month} de ${b.year}`;
+      }
+      const one = sat || sun;
+      if (!one) return "";
+      const a = part(one);
+      return `${a.day} de ${a.month} de ${a.year}`;
+    } catch {
+      return "";
+    }
+  })();
 
   const { data: subs } = await supabaseAdmin
     .from("event_submissions")

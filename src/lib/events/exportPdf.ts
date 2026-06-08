@@ -93,22 +93,24 @@ async function createBrandedDoc(h: HeaderOpts) {
   }
 
   function drawPageHeader(page: PDFPage): number {
-    let textX = left;
     if (logoImg) {
       page.drawImage(logoImg, { x: left, y: PAGE_H - M - logoDims.h, width: logoDims.w, height: logoDims.h });
-      textX = left + logoDims.w + 12;
     }
+    const centerX = (left + right) / 2;
+    const centered = (text: string, size: number, f: PDFFont, color: Color, ty: number) => {
+      const tw = f.widthOfTextAtSize(text, size);
+      page.drawText(text, { x: centerX - tw / 2, y: PAGE_H - ty - size + 1, size, font: f, color });
+    };
     let ty = M;
     const title = (h.title && h.title.trim()) || h.eventName;
-    page.drawText(title, { x: textX, y: PAGE_H - ty - 14, size: 15, font: fontB, color: black });
-    ty += 18;
+    centered(title, 15, fontB, black, ty);
+    ty += 20;
     if (h.subtitle && h.subtitle.trim()) {
-      page.drawText(h.subtitle, { x: textX, y: PAGE_H - ty - 11, size: 10, font, color: gray });
+      centered(h.subtitle, 10, font, gray, ty);
       ty += 14;
     }
-    const meta = [h.datesText, h.listLabel].filter(Boolean).join("   ·   ");
-    if (meta) {
-      page.drawText(meta, { x: textX, y: PAGE_H - ty - 10, size: 10, font, color: gray });
+    if (h.datesText && h.datesText.trim()) {
+      centered(h.datesText, 10, font, gray, ty);
       ty += 14;
     }
     const headerBottom = Math.max(M + logoDims.h, ty);

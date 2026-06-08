@@ -99,6 +99,9 @@ export default async function AdminEventDetail({
             <Link href={`/signup/${event.slug}/extemporaneo`} className="text-sm font-semibold text-amber-600">
               Extemporáneo
             </Link>
+            <a href={`/api/events/${event.slug}/billing-pdf`} className="text-sm font-semibold text-emerald-600">
+              Estados de cuenta (PDF)
+            </a>
           </>
         )}
       </div>
@@ -122,7 +125,13 @@ export default async function AdminEventDetail({
                     {rows.length} jinete(s)
                   </span>
                   {isAdmin && (
-                    <span className="ml-auto">
+                    <span className="ml-auto inline-flex items-center gap-3">
+                      <a
+                        href={`/api/events/${event.slug}/billing-pdf?submission=${s.id}`}
+                        className="text-sm font-semibold text-emerald-600 hover:text-emerald-700"
+                      >
+                        PDF
+                      </a>
                       <DeleteSubmissionButton submissionId={s.id} eventId={event.id} clubName={s.club_name} />
                     </span>
                   )}

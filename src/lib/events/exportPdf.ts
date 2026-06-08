@@ -1,5 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type Color } from "pdf-lib";
 import { headersFor, rowFor, type ClassBlock, type Variant } from "@/lib/events/exportWorkbook";
+import type { Statement } from "@/lib/events/billing";
 
 const PAGE_W = 612; // US Letter, points
 const PAGE_H = 792;
@@ -195,6 +196,105 @@ export async function buildDayPdf(opts: {
       if (isWrite) hline(page, yTop + ROW, "dotted", d.left, d.right, d.gray);
       yTop += ROW;
     });
+  });
+
+  return Buffer.from(await d.pdf.save());
+}
+
+// Per-club billing statement (Estado de Cuenta): the club's entries plus the
+// charges breakdown. One club per page. Used for both single-club and all-club
+// exports (the caller decides which clubs to pass in).
+export type StatementClub = {
+  clubName: string;
+  contact?: string;
+  rows: Array<{
+    rider: string;
+    horse: string;
+    height: string;
+    section: string;
+    days: string[] | null;
+    circuit: boolean;
+    discount: boolean;
+    status?: string | null;
+    is_extemp?: boolean | null;
+  }>;
+  stmt: Statement;
+};
+
+export async function buildStatementsPdf(opts: {
+  eventName: string;
+  title?: string;
+  subtitle?: string;
+  datesText?: string;
+  logo?: string | null;
+  clubs: StatementClub[];
+}): Promise<Buffer> {
+  const d = await createBrandedDoc(opts);
+  const money = (n: number) => `$${Number(n || 0).toLocaleString("es-MX")}`;
+  const headers = ["#", "Jinete", "Caballo", "Altura", "Sección", "Días", "Notas"];
+  const { colW, colX } = colsFromWeights([0.6, 2.6, 2.4, 1.3, 1.7, 1.7, 1.4], d.left, d.right);
+
+  opts.clubs.forEach((club) => {
+    const page = d.pdf.addPage([PAGE_W, PAGE_H]);
+    let yTop = d.drawPageHeader(page);
+
+    // Club name + statement label
+    page.drawText(club.clubName, { x: d.left, y: PAGE_H - yTop - 14, size: 14, font: d.fontB, color: d.black });
+    const lbl = "Estado de Cuenta";
+    const lblW = d.fontB.widthOfTextAtSize(lbl, 11);
+    page.drawText(lbl, { x: d.right - lblW, y: PAGE_H - yTop - 13, size: 11, font: d.fontB, color: d.gray });
+    yTop += 20;
+    if (club.contact) {
+      page.drawText(club.contact, { x: d.left, y: PAGE_H - yTop - 11, size: 9, font: d.font, color: d.gray });
+      yTop += 16;
+    }
+    yTop += 6;
+
+    // Entries header
+    const drawHead = () => {
+      drawRow(page, headers, yTop, d.fontB, colX, colW, d.black);
+      hline(page, yTop + ROW, "solid", d.left, d.right, d.black);
+      yTop += ROW;
+    };
+    drawHead();
+
+    club.rows.forEach((e, i) => {
+      const cancelled = (e.status ?? "active") === "cancelled";
+      const notes = [e.is_extemp ? "EXT" : "", cancelled ? "CANCELADA" : ""].filter(Boolean).join(" · ");
+      const color = cancelled ? d.gray : d.black;
+      drawRow(
+        page,
+        [i + 1, e.rider, e.horse, e.height, e.section, (e.days ?? []).join(" + ") || "—", notes],
+        yTop,
+        d.font,
+        colX,
+        colW,
+        color
+      );
+      hline(page, yTop + ROW, "dotted", d.left, d.right, d.gray);
+      yTop += ROW;
+    });
+
+    // Charges breakdown
+    yTop += 16;
+    hline(page, yTop, "solid", d.left, d.right, d.gray);
+    yTop += 8;
+    const lineItem = (labelText: string, value: string, bold = false) => {
+      const f = bold ? d.fontB : d.font;
+      const size = bold ? 12 : 10;
+      page.drawText(labelText, { x: d.left, y: PAGE_H - yTop - size, size, font: f, color: d.black });
+      const vw = f.widthOfTextAtSize(value, size);
+      page.drawText(value, { x: d.right - vw, y: PAGE_H - yTop - size, size, font: f, color: d.black });
+      yTop += size + 8;
+    };
+    const s = club.stmt;
+    lineItem(`Inscripciones (${s.starts} salida${s.starts === 1 ? "" : "s"})`, money(s.entryFees));
+    lineItem(`Nominación (${s.nominationRiders} jinete${s.nominationRiders === 1 ? "" : "s"})`, money(s.nominationFees));
+    if (s.cancellationCharge > 0) lineItem("Cancelaciones", money(s.cancellationCharge));
+    yTop += 2;
+    hline(page, yTop, "solid", d.left, d.right, d.black);
+    yTop += 8;
+    lineItem("Total", money(s.total), true);
   });
 
   return Buffer.from(await d.pdf.save());

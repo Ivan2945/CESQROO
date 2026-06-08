@@ -4,7 +4,41 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
+import { supabaseServer } from "@/lib/supabaseServer";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { ActionResult } from "@/lib/types/actions";
+
+// Move a rider to another club (admin only). Calls the DB function
+// move_rider_to_club(rider, target_club, move_horses, dry_run).
+export async function moveRiderClubAction(
+  riderId: string,
+  targetClubId: string,
+  moveHorses: boolean,
+  dryRun: boolean
+): Promise<ActionResult<Record<string, unknown>>> {
+  const supabase = await supabaseServer();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "No autenticado." };
+  const { data: isAdmin } = await supabase.rpc("is_admin");
+  if (!isAdmin) return { ok: false, message: "Solo un administrador puede cambiar el club de un jinete." };
+  if (!targetClubId) return { ok: false, message: "Seleccione un club destino." };
+
+  const { data, error } = await supabaseAdmin.rpc("move_rider_to_club", {
+    p_rider: riderId,
+    p_target_club: targetClubId,
+    p_move_horses: moveHorses,
+    p_dry_run: dryRun,
+  });
+  if (error) return { ok: false, message: error.message };
+
+  if (!dryRun) {
+    revalidatePath(`/club/riders/${riderId}`);
+    revalidatePath("/club/riders");
+  }
+  return { ok: true, data: (data ?? {}) as Record<string, unknown>, message: dryRun ? "preview" : "ok" };
+}
 
 function getText(fd: FormData, key: string) {
   const v = fd.get(key);

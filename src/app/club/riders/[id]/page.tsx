@@ -7,6 +7,7 @@ import {
   unlinkHorseFromRiderAction,
   updateRiderAction,
 } from "../actions";
+import MoveRiderClub from "./MoveRiderClub";
 
 
 type RiderHorseLinkRow = {
@@ -65,6 +66,12 @@ export default async function RiderDetailPage({
 
   const { data: rider, error: riderErr } = await riderQuery;
   if (riderErr) throw new Error(riderErr.message);
+
+  // Clubs list for the "Cambiar de club" control (admin only).
+  const clubs =
+    profile.role === "admin"
+      ? ((await supabase.from("clubs").select("id, name").order("name", { ascending: true })).data ?? [])
+      : [];
 
   // Links (scoped)
   let linksQuery = supabase
@@ -202,6 +209,14 @@ const linkedById = new Map<string, HorseRow>(
           Save
         </button>
       </form>
+
+      {profile.role === "admin" ? (
+        <>
+          <hr style={{ margin: "18px 0" }} />
+          <h3 style={{ marginTop: 0 }}>Cambiar de club</h3>
+          <MoveRiderClub riderId={riderId} currentClubId={rider.club_id} clubs={clubs} />
+        </>
+      ) : null}
 
       <hr style={{ margin: "18px 0" }} />
 

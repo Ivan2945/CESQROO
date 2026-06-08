@@ -121,6 +121,8 @@ export default function ConfigEditor({
     return o;
   });
   const [nominationExempt, setNominationExempt] = useState<string[]>(initialConfig.pricing.nominationExempt);
+  const [cancelMode, setCancelMode] = useState<"credit" | "fee" | "no_refund">(initialConfig.pricing.cancellation.mode);
+  const [cancelFee, setCancelFee] = useState(String(initialConfig.pricing.cancellation.fee));
   const [extempSections, setExtempSections] = useState<string[]>(initialConfig.extempSections);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
@@ -216,6 +218,7 @@ export default function ConfigEditor({
         entryFeeDefault: def,
         entryFeeByHeight,
         nominationExempt,
+        cancellation: { mode: cancelMode, fee: Number(cancelFee) || 0 },
       },
       extempSections,
     };
@@ -508,6 +511,27 @@ export default function ConfigEditor({
               );
             })}
           </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Cancelaciones</label>
+            <select
+              value={cancelMode}
+              onChange={(e) => setCancelMode(e.target.value as "credit" | "fee" | "no_refund")}
+              className={input + " w-full"}
+            >
+              <option value="credit">Crédito total (sin cargo)</option>
+              <option value="fee">Cargo fijo por inicio cancelado</option>
+              <option value="no_refund">Sin reembolso (cobra completo)</option>
+            </select>
+          </div>
+          {cancelMode === "fee" && (
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">Cargo por cancelación (MXN)</label>
+              <input type="number" className={input + " w-full"} value={cancelFee} onChange={(e) => setCancelFee(e.target.value)} />
+            </div>
+          )}
         </div>
 
         <div className="mt-4 max-w-xs">

@@ -2,7 +2,31 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { deleteSubmissionAction, deleteEntryAction } from "./actions";
+import { deleteSubmissionAction, deleteEntryAction, setEntryStatusAction } from "./actions";
+
+export function CancelEntryButton({ entryId, eventId, cancelled }: { entryId: string; eventId: string; cancelled: boolean }) {
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={() =>
+        start(async () => {
+          const res = await setEntryStatusAction(entryId, eventId, cancelled ? "active" : "cancelled");
+          if (res && !res.ok) alert(res.message);
+          router.refresh();
+        })
+      }
+      className={
+        "text-xs font-semibold hover:underline disabled:opacity-50 " +
+        (cancelled ? "text-emerald-600" : "text-amber-600")
+      }
+    >
+      {pending ? "…" : cancelled ? "Restaurar" : "Cancelar"}
+    </button>
+  );
+}
 
 export function DeleteSubmissionButton({ submissionId, eventId, clubName }: { submissionId: string; eventId: string; clubName: string }) {
   const [pending, start] = useTransition();

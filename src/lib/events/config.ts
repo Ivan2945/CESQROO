@@ -19,6 +19,8 @@ export type EventConfig = {
     entryFeeDefault: number;
     entryFeeByHeight: Record<string, number>;
     nominationExempt: string[];
+    // What a cancelled start costs: full credit (free), a fixed fee kept, or no refund.
+    cancellation: { mode: "credit" | "fee" | "no_refund"; fee: number };
   };
   // Extra sections only an admin can use for late (extemporáneo) entries.
   extempSections: string[];
@@ -36,7 +38,13 @@ export const TEMPLATE_CONFIG: EventConfig = {
   days: ["Sábado", "Domingo"],
   fields: { circuit: true, discount: true },
   header: { title: "", subtitle: "" },
-  pricing: { nominationFee: 350, entryFeeDefault: 750, entryFeeByHeight: {}, nominationExempt: ["Cruces"] },
+  pricing: {
+    nominationFee: 350,
+    entryFeeDefault: 750,
+    entryFeeByHeight: {},
+    nominationExempt: ["Cruces"],
+    cancellation: { mode: "credit", fee: 0 },
+  },
   extempSections: ["Training", "FC"],
 };
 
@@ -80,11 +88,16 @@ function normalizePricing(raw: unknown): EventConfig["pricing"] {
     const v = Number(byHeightRaw[k]);
     if (Number.isFinite(v)) entryFeeByHeight[k] = v;
   }
+  const cMode = p.cancellation?.mode;
   return {
     nominationFee: Number.isFinite(Number(p.nominationFee)) ? Number(p.nominationFee) : 350,
     entryFeeDefault: Number.isFinite(Number(p.entryFeeDefault)) ? Number(p.entryFeeDefault) : 750,
     entryFeeByHeight,
     nominationExempt: Array.isArray(p.nominationExempt) ? p.nominationExempt.map(String) : ["Cruces"],
+    cancellation: {
+      mode: cMode === "fee" || cMode === "no_refund" ? cMode : "credit",
+      fee: Number.isFinite(Number(p.cancellation?.fee)) ? Number(p.cancellation?.fee) : 0,
+    },
   };
 }
 

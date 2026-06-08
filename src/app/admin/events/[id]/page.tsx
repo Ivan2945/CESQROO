@@ -2,7 +2,10 @@ import Link from "next/link";
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeConfig } from "@/lib/events/config";
-import { DeleteSubmissionButton, DeleteEntryButton } from "./DeleteButtons";
+import { computeStatement } from "@/lib/events/billing";
+import { DeleteSubmissionButton, DeleteEntryButton, CancelEntryButton } from "./DeleteButtons";
+
+const money = (n: number) => `$${n.toLocaleString("es-MX")}`;
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +23,7 @@ type Submission = {
 type Entry = {
   id: string;
   submission_id: string;
+  rider_id: string | null;
   rider_name: string;
   horse_name: string;
   height: string;
@@ -27,6 +31,7 @@ type Entry = {
   days: string[] | null;
   circuit: boolean;
   discount: boolean;
+  status: string | null;
 };
 
 export default async function AdminEventDetail({
@@ -59,7 +64,7 @@ export default async function AdminEventDetail({
   if (subIds.length) {
     const { data: ent } = await supabaseAdmin
       .from("event_entries")
-      .select("id, submission_id, rider_name, horse_name, height, section, days, circuit, discount")
+      .select("id, submission_id, rider_id, rider_name, horse_name, height, section, days, circuit, discount, status")
       .in("submission_id", subIds);
     entries = (ent as Entry[]) ?? [];
   }
@@ -104,6 +109,7 @@ export default async function AdminEventDetail({
         <div className="space-y-5">
           {(submissions as Submission[]).map((s) => {
             const rows = bySubmission.get(s.id) ?? [];
+            const stmt = computeStatement(rows, config);
             return (
               <section key={s.id} className="rounded-xl border border-slate-200 bg-white p-5">
                 <div className="mb-1 flex items-center gap-2">
@@ -137,24 +143,38 @@ export default async function AdminEventDetail({
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.map((e) => (
-                        <tr key={e.id} className="border-b border-slate-100">
-                          <td className="py-2 pr-3">{e.rider_name}</td>
-                          <td className="py-2 pr-3">{e.horse_name}</td>
-                          <td className="py-2 pr-3">{e.height}</td>
-                          <td className="py-2 pr-3">{e.section}</td>
-                          <td className="py-2 pr-3">{(e.days ?? []).join(" + ") || "—"}</td>
-                          {config.fields.circuit && <td className="py-2 pr-3">{e.circuit ? "Sí" : "No"}</td>}
-                          {config.fields.discount && <td className="py-2 pr-3">{e.discount ? "Sí" : "No"}</td>}
-                          {isAdmin && (
-                            <td className="py-2 pr-3 text-right">
-                              <DeleteEntryButton entryId={e.id} eventId={event.id} />
-                            </td>
-                          )}
-                        </tr>
-                      ))}
+                      {rows.map((e) => {
+                        const cancelled = (e.status ?? "active") === "cancelled";
+                        return (
+                          <tr key={e.id} className={"border-b border-slate-100 " + (cancelled ? "text-slate-400 line-through" : "")}>
+                            <td className="py-2 pr-3">{e.rider_name}</td>
+                            <td className="py-2 pr-3">{e.horse_name}</td>
+                            <td className="py-2 pr-3">{e.height}</td>
+                            <td className="py-2 pr-3">{e.section}</td>
+                            <td className="py-2 pr-3">{(e.days ?? []).join(" + ") || "—"}</td>
+                            {config.fields.circuit && <td className="py-2 pr-3">{e.circuit ? "Sí" : "No"}</td>}
+                            {config.fields.discount && <td className="py-2 pr-3">{e.discount ? "Sí" : "No"}</td>}
+                            {isAdmin && (
+                              <td className="py-2 pr-3 text-right">
+                                <span className="inline-flex gap-3">
+                                  <CancelEntryButton entryId={e.id} eventId={event.id} cancelled={cancelled} />
+                                  <DeleteEntryButton entryId={e.id} eventId={event.id} />
+                                </span>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
+                </div>
+
+                {/* Estado de cuenta */}
+                <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 border-t border-slate-200 pt-3 text-sm text-slate-700">
+                  <span>Inscripciones: <b>{stmt.starts}</b> × cuota = {money(stmt.entryFees)}</span>
+                  <span>Nominación: <b>{stmt.nominationRiders}</b> = {money(stmt.nominationFees)}</span>
+                  {stmt.cancellationCharge > 0 && <span>Cancelaciones: {money(stmt.cancellationCharge)}</span>}
+                  <span className="font-bold text-slate-900">Total: {money(stmt.total)}</span>
                 </div>
               </section>
             );

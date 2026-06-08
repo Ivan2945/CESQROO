@@ -44,3 +44,18 @@ export async function deleteEntryAction(
   revalidatePath("/admin/events");
   return { ok: true, data: undefined, message: "Participación eliminada." };
 }
+
+// Cancel / restore a participation (keeps the row, affects billing).
+export async function setEntryStatusAction(
+  entryId: string,
+  eventId: string,
+  status: "active" | "cancelled"
+): Promise<ActionResult<void>> {
+  if (!(await isAdminUser())) return { ok: false, message: "Solo un administrador puede cambiar el estado." };
+
+  const { error } = await supabaseAdmin.from("event_entries").update({ status }).eq("id", entryId);
+  if (error) return { ok: false, message: error.message };
+
+  revalidatePath(`/admin/events/${eventId}`);
+  return { ok: true, data: undefined, message: status === "cancelled" ? "Cancelada." : "Restaurada." };
+}

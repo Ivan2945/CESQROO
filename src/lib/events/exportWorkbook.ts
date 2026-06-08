@@ -113,14 +113,24 @@ function renderSheet(ws: ExcelJS.Worksheet, classes: ClassBlock[], variant: Vari
     ws.addRow([]); // two blank rows before the header (matches the sheet)
     ws.addRow([]);
 
+    const border: Partial<ExcelJS.Borders> = {
+      top: { style: "thin" },
+      bottom: { style: "thin" },
+      left: { style: "thin" },
+      right: { style: "thin" },
+    };
+
     const hr = ws.addRow(headers);
     hr.font = { size: 10, bold: true };
     hr.alignment = { horizontal: "center" };
+    for (let c = 1; c <= headers.length; c++) hr.getCell(c).border = border;
 
     cb.order.forEach((e, i) => {
       const row = ws.addRow(rowFor(variant, i + 1, e));
       row.font = { size: 10 };
       row.alignment = { horizontal: "center" };
+      // Border every column (incl. blank Resultado / E / S) like the table.
+      for (let c = 1; c <= headers.length; c++) row.getCell(c).border = border;
     });
 
     ws.addRow([]);

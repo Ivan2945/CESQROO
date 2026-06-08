@@ -46,14 +46,20 @@ export async function buildDayPdf(opts: {
     }
   }
 
-  // Center text in a column, truncating to fit.
+  // Center text in a column. Shrink the font (down to MIN_SIZE) only when the
+  // text doesn't fit at the base size, so the full name is always shown.
+  const MIN_SIZE = 6;
   const drawCells = (page: PDFPage, cells: (string | number)[], yTop: number, f: PDFFont) => {
     cells.forEach((t, i) => {
       let s = String(t ?? "");
       const maxW = colW[i] - 4;
-      while (s.length > 1 && f.widthOfTextAtSize(s, SIZE) > maxW) s = s.slice(0, -1);
-      const tw = f.widthOfTextAtSize(s, SIZE);
-      page.drawText(s, { x: colX[i] + (colW[i] - tw) / 2, y: PAGE_H - yTop - 13, size: SIZE, font: f, color: black });
+      let size = SIZE;
+      while (size > MIN_SIZE && f.widthOfTextAtSize(s, size) > maxW) size -= 0.5;
+      // Last resort if it still doesn't fit even at the smallest size.
+      while (s.length > 1 && f.widthOfTextAtSize(s, size) > maxW) s = s.slice(0, -1);
+      const tw = f.widthOfTextAtSize(s, size);
+      const baselineFromTop = (ROW + size * 0.7) / 2; // vertically center in the row
+      page.drawText(s, { x: colX[i] + (colW[i] - tw) / 2, y: PAGE_H - yTop - baselineFromTop, size, font: f, color: black });
     });
   };
   const lineUnder = (page: PDFPage, yTop: number, style: "solid" | "dotted") => {

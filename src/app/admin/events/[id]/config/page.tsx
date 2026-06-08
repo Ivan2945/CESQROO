@@ -15,7 +15,7 @@ export default async function EventConfigPage({
 
   const { data: event, error } = await supabaseAdmin
     .from("events")
-    .select("id, name, slug, is_open, saturday_date, sunday_date, config")
+    .select("id, name, slug, is_open, saturday_date, sunday_date, pdf_logo, config")
     .eq("id", id)
     .single();
   if (error || !event) throw new Error("Evento no encontrado.");
@@ -28,6 +28,7 @@ export default async function EventConfigPage({
       initialIsOpen={event.is_open}
       initialSaturdayDate={event.saturday_date}
       initialSundayDate={event.sunday_date}
+      initialPdfLogo={event.pdf_logo}
       initialConfig={normalizeConfig(event.config)}
     />
   );

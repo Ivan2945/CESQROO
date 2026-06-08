@@ -23,6 +23,7 @@ export async function saveEventConfigAction(
     isOpen: boolean;
     saturdayDate: string | null;
     sundayDate: string | null;
+    pdfLogo: string | null;
     config: EventConfig;
   }
 ): Promise<ActionResult<void>> {
@@ -45,6 +46,7 @@ export async function saveEventConfigAction(
       is_open: payload.isOpen,
       saturday_date: payload.saturdayDate || null,
       sunday_date: payload.sundayDate || null,
+      pdf_logo: payload.pdfLogo || null,
       config,
     })
     .eq("id", eventId);

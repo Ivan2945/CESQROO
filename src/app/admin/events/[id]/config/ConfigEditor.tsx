@@ -83,6 +83,7 @@ export default function ConfigEditor({
   initialIsOpen,
   initialSaturdayDate,
   initialSundayDate,
+  initialPdfLogo,
   initialConfig,
 }: {
   eventId: string;
@@ -91,6 +92,7 @@ export default function ConfigEditor({
   initialIsOpen: boolean;
   initialSaturdayDate: string | null;
   initialSundayDate: string | null;
+  initialPdfLogo: string | null;
   initialConfig: EventConfig;
 }) {
   const router = useRouter();
@@ -98,6 +100,10 @@ export default function ConfigEditor({
   const [isOpen, setIsOpen] = useState(initialIsOpen);
   const [saturdayDate, setSaturdayDate] = useState(initialSaturdayDate ?? "");
   const [sundayDate, setSundayDate] = useState(initialSundayDate ?? "");
+  const [headerTitle, setHeaderTitle] = useState(initialConfig.header.title);
+  const [headerSubtitle, setHeaderSubtitle] = useState(initialConfig.header.subtitle);
+  const [pdfLogo, setPdfLogo] = useState(initialPdfLogo ?? "");
+  const [logoErr, setLogoErr] = useState<string | null>(null);
   const [heights, setHeights] = useState<string[]>(initialConfig.heights);
   const [sections, setSections] = useState<string[]>(initialConfig.sections);
   const [days, setDays] = useState<string[]>(initialConfig.days);
@@ -137,15 +143,40 @@ export default function ConfigEditor({
     });
   }
 
+  function onLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
+    setLogoErr(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!/^image\/(png|jpeg)$/.test(file.type)) {
+      setLogoErr("Use una imagen PNG o JPG.");
+      return;
+    }
+    if (file.size > 1_500_000) {
+      setLogoErr("La imagen es muy grande (máx ~1.5 MB).");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => setPdfLogo(String(reader.result || ""));
+    reader.readAsDataURL(file);
+  }
+
   async function save() {
     setStatus(null);
     setSaving(true);
-    const config: EventConfig = { heights, sections, sectionsByHeight, days, fields };
+    const config: EventConfig = {
+      heights,
+      sections,
+      sectionsByHeight,
+      days,
+      fields,
+      header: { title: headerTitle, subtitle: headerSubtitle },
+    };
     const res = await saveEventConfigAction(eventId, {
       name,
       isOpen,
       saturdayDate: saturdayDate || null,
       sundayDate: sundayDate || null,
+      pdfLogo: pdfLogo || null,
       config,
     });
     setSaving(false);
@@ -217,6 +248,53 @@ export default function ConfigEditor({
         <p className="mt-2 text-xs text-slate-500">
           Las fechas se muestran en la página pública de inscripciones. Déjelas en blanco si aún no las define.
         </p>
+      </section>
+
+      {/* PDF header / branding */}
+      <section className={card}>
+        <h3 className={h2}>Encabezado del PDF</h3>
+        <p className="mb-3 text-xs text-slate-500">
+          Aparece arriba de cada hoja al exportar a PDF (logo, título y subtítulo). El nombre del evento y las fechas se
+          muestran automáticamente.
+        </p>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Título (opcional)</label>
+            <input
+              className={input + " w-full"}
+              value={headerTitle}
+              placeholder={name || "Nombre del evento"}
+              onChange={(e) => setHeaderTitle(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Subtítulo (opcional)</label>
+            <input
+              className={input + " w-full"}
+              value={headerSubtitle}
+              placeholder="Ej. organizador / sede"
+              onChange={(e) => setHeaderSubtitle(e.target.value)}
+            />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Logo (PNG o JPG)</label>
+            <div className="flex items-center gap-3">
+              {pdfLogo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={pdfLogo} alt="logo" className="h-12 w-auto rounded border border-slate-200" />
+              ) : (
+                <span className="text-xs text-slate-400">Sin logo</span>
+              )}
+              <input type="file" accept="image/png,image/jpeg" onChange={onLogoFile} className="text-sm" />
+              {pdfLogo && (
+                <button type="button" onClick={() => setPdfLogo("")} className="text-xs font-semibold text-red-600 hover:underline">
+                  Quitar
+                </button>
+              )}
+            </div>
+            {logoErr && <p className="mt-1 text-xs text-red-600">{logoErr}</p>}
+          </div>
+        </div>
       </section>
 
       {/* Heights / Sections / Days */}

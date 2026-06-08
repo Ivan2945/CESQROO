@@ -10,6 +10,8 @@ export type EventConfig = {
   sectionsByHeight: Record<string, string[]>;
   days: string[];
   fields: { circuit: boolean; discount: boolean };
+  // Branding shown on the PDF header (logo is stored separately on the event).
+  header: { title: string; subtitle: string };
 };
 
 // Sensible starting point used when creating a new event.
@@ -23,6 +25,7 @@ export const TEMPLATE_CONFIG: EventConfig = {
   },
   days: ["Sábado", "Domingo"],
   fields: { circuit: true, discount: true },
+  header: { title: "", subtitle: "" },
 };
 
 // Coerce an arbitrary stored value into a complete, safe EventConfig.
@@ -44,6 +47,10 @@ export function normalizeConfig(raw: unknown): EventConfig {
     fields: {
       circuit: !!c.fields?.circuit,
       discount: !!c.fields?.discount,
+    },
+    header: {
+      title: typeof c.header?.title === "string" ? c.header.title : "",
+      subtitle: typeof c.header?.subtitle === "string" ? c.header.subtitle : "",
     },
   };
 }

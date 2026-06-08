@@ -142,6 +142,23 @@ export default function ConfigEditor({
       return out;
     });
   }
+  // Check/uncheck a section for every height at once (the column "Todos").
+  function setSectionForAll(section: string, check: boolean) {
+    setSectionsByHeight((prev) => {
+      const out: Record<string, string[]> = { ...prev };
+      for (const h of heights) {
+        const cur = out[h] ?? [];
+        if (check) {
+          if (!cur.includes(section)) out[h] = [...cur, section];
+        } else {
+          const next = cur.filter((s) => s !== section);
+          if (next.length) out[h] = next;
+          else delete out[h];
+        }
+      }
+      return out;
+    });
+  }
 
   function onLogoFile(e: React.ChangeEvent<HTMLInputElement>) {
     setLogoErr(null);
@@ -317,9 +334,23 @@ export default function ConfigEditor({
             <thead>
               <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
                 <th className="py-2 pr-3">Altura</th>
-                {sections.map((s) => (
-                  <th key={s} className="py-2 pr-3">{s}</th>
-                ))}
+                {sections.map((s) => {
+                  const allChecked = heights.length > 0 && heights.every((h) => (sectionsByHeight[h] ?? []).includes(s));
+                  return (
+                    <th key={s} className="py-2 pr-3 align-bottom">
+                      <div>{s}</div>
+                      <label className="mt-1 inline-flex cursor-pointer items-center gap-1 text-[10px] font-normal normal-case text-slate-500">
+                        <input
+                          type="checkbox"
+                          className="accent-blue-600"
+                          checked={allChecked}
+                          onChange={(e) => setSectionForAll(s, e.target.checked)}
+                        />
+                        Todos
+                      </label>
+                    </th>
+                  );
+                })}
               </tr>
             </thead>
             <tbody>

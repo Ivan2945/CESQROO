@@ -66,6 +66,7 @@ export type RegisterPayload = {
     email: string;
   };
   entries: EntryInput[];
+  extemp?: boolean; // late add: allows Training/FC sections, flags entries is_extemp
 };
 
 // ---- Edit flow (club + email gated) ------------------------------------
@@ -82,9 +83,12 @@ export type ExistingEntry = {
   days: string[] | null;
   circuit: boolean;
   discount: boolean;
+  status?: string | null;
 };
 
 export type LookupPayload = { clubId: string; email: string };
+
+export type ExtempCancelPayload = { clubId: string; email: string; entryIds: string[] };
 
 export type LookupResult = {
   clubId: string;

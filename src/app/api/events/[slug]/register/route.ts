@@ -23,6 +23,7 @@ export async function POST(
   }
 
   const { isOtherClub, clubId, newClubName, contact, entries } = body;
+  const extemp = !!body.extemp;
 
   // ---- Event must exist and be open ----
   const { data: event, error: evErr } = await supabaseAdmin
@@ -46,7 +47,10 @@ export async function POST(
     const hasHorse = !!e.horseId || !!e.newHorseName?.trim();
     if (!hasRider) return bad(`Participación ${n}: seleccione o cree un jinete.`);
     if (!hasHorse) return bad(`Participación ${n}: seleccione o cree un caballo.`);
-    if (!isValidPair(config, e.height, e.section)) {
+    const sectionOk =
+      isValidPair(config, e.height, e.section) ||
+      (extemp && config.heights.includes(e.height) && config.extempSections.includes(e.section));
+    if (!sectionOk) {
       return bad(`Participación ${n}: la combinación de altura y sección no es válida.`);
     }
     if (!Array.isArray(e.days) || e.days.length === 0) {
@@ -187,6 +191,7 @@ export async function POST(
     // Only honor optional fields if the event enables them
     circuit: config.fields.circuit ? !!r.entry.circuit : false,
     discount: config.fields.discount ? !!r.entry.discount : false,
+    is_extemp: extemp,
   }));
 
   const { error: entErr } = await supabaseAdmin.from("event_entries").insert(rows);

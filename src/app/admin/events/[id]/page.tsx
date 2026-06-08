@@ -32,6 +32,7 @@ type Entry = {
   circuit: boolean;
   discount: boolean;
   status: string | null;
+  is_extemp: boolean | null;
 };
 
 export default async function AdminEventDetail({
@@ -64,7 +65,7 @@ export default async function AdminEventDetail({
   if (subIds.length) {
     const { data: ent } = await supabaseAdmin
       .from("event_entries")
-      .select("id, submission_id, rider_id, rider_name, horse_name, height, section, days, circuit, discount, status")
+      .select("id, submission_id, rider_id, rider_name, horse_name, height, section, days, circuit, discount, status, is_extemp")
       .in("submission_id", subIds);
     entries = (ent as Entry[]) ?? [];
   }
@@ -94,6 +95,9 @@ export default async function AdminEventDetail({
             </Link>
             <Link href={`/admin/events/${event.id}/import`} className="text-sm font-semibold text-blue-600">
               Importar
+            </Link>
+            <Link href={`/signup/${event.slug}/extemporaneo`} className="text-sm font-semibold text-amber-600">
+              Extemporáneo
             </Link>
           </>
         )}
@@ -147,7 +151,14 @@ export default async function AdminEventDetail({
                         const cancelled = (e.status ?? "active") === "cancelled";
                         return (
                           <tr key={e.id} className={"border-b border-slate-100 " + (cancelled ? "text-slate-400 line-through" : "")}>
-                            <td className="py-2 pr-3">{e.rider_name}</td>
+                            <td className="py-2 pr-3">
+                              {e.rider_name}
+                              {e.is_extemp && (
+                                <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                                  EXT
+                                </span>
+                              )}
+                            </td>
                             <td className="py-2 pr-3">{e.horse_name}</td>
                             <td className="py-2 pr-3">{e.height}</td>
                             <td className="py-2 pr-3">{e.section}</td>

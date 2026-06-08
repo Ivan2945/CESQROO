@@ -49,7 +49,7 @@ const input =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-blue-600 focus:ring-2 focus:ring-blue-100";
 const req = <span className="text-red-600">*</span>;
 
-export default function SignupClient({ slug }: { slug: string }) {
+export default function SignupClient({ slug, extemp = false }: { slug: string; extemp?: boolean }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [event, setEvent] = useState<EventRow | null>(null);
@@ -81,6 +81,9 @@ export default function SignupClient({ slug }: { slug: string }) {
 
   const isOther = clubId === OTHER;
   const config = normalizeConfig(event?.config);
+  // In extemp (late-add) mode, Training/FC become selectable for any height.
+  const sectionsFor = (h: string) =>
+    extemp ? [...sectionsForHeight(config, h), ...config.extempSections] : sectionsForHeight(config, h);
 
   // Scroll the confirmation summary into view once it appears
   useEffect(() => {
@@ -137,7 +140,7 @@ export default function SignupClient({ slug }: { slug: string }) {
       es.map((e, idx) => {
         if (idx !== i) return e;
         const next = { ...e, ...patch };
-        if ("height" in patch && !sectionsForHeight(config, next.height).includes(next.section)) {
+        if ("height" in patch && !sectionsFor(next.height).includes(next.section)) {
           next.section = "";
         }
         return next;
@@ -221,6 +224,7 @@ export default function SignupClient({ slug }: { slug: string }) {
           newClubName: newClubName.trim(),
           contact,
           entries: payloadEntries,
+          extemp,
         }),
       });
       const result = await res.json();
@@ -254,16 +258,25 @@ export default function SignupClient({ slug }: { slug: string }) {
   return (
     <div className="mx-auto max-w-4xl">
       <header className="mb-6">
-        <p className="text-xs font-semibold uppercase tracking-widest text-blue-600 dark:text-blue-400">Inscripción</p>
+        <p className="text-xs font-semibold uppercase tracking-widest text-blue-600 dark:text-blue-400">
+          {extemp ? "Inscripción extemporánea" : "Inscripción"}
+        </p>
         <h1 className="mt-1 text-3xl font-bold text-slate-900 dark:text-white">{event?.name}</h1>
         <p className="mt-1 text-slate-600 dark:text-slate-300">
-          Seleccione su club, revise los datos de contacto y agregue una fila por cada participación.
+          {extemp
+            ? "Agregue participaciones de último momento. Quedarán marcadas como extemporáneas para la facturación."
+            : "Seleccione su club, revise los datos de contacto y agregue una fila por cada participación."}
         </p>
-        <p className="mt-2 text-sm">
-          <a href={`/signup/${slug}/editar`} className="font-semibold text-blue-600 dark:text-blue-400">
-            ¿Ya te inscribiste? Editar tu inscripción →
-          </a>
-        </p>
+        {!extemp && (
+          <p className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-sm">
+            <a href={`/signup/${slug}/editar`} className="font-semibold text-blue-600 dark:text-blue-400">
+              ¿Ya te inscribiste? Editar tu inscripción →
+            </a>
+            <a href={`/signup/${slug}/extemporaneo`} className="font-semibold text-amber-600">
+              Inscripción / cancelación de último momento →
+            </a>
+          </p>
+        )}
       </header>
 
       {status && (
@@ -370,7 +383,7 @@ export default function SignupClient({ slug }: { slug: string }) {
 
           <div className="space-y-4">
             {entries.map((e, i) => {
-              const allowed = e.height ? sectionsForHeight(config, e.height) : [];
+              const allowed = e.height ? sectionsFor(e.height) : [];
               return (
                 <div key={i} className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
                   <div className="mb-3 flex items-center justify-between">

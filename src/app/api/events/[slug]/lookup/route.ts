@@ -39,7 +39,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   const subIds = matched.map((s) => s.id);
   const { data: entries } = await supabaseAdmin
     .from("event_entries")
-    .select("id, submission_id, rider_id, horse_id, rider_name, horse_name, height, section, days, circuit, discount")
+    .select("id, submission_id, rider_id, horse_id, rider_name, horse_name, height, section, days, circuit, discount, status")
     .in("submission_id", subIds)
     .order("created_at", { ascending: true });
 

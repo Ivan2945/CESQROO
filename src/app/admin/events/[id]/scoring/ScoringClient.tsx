@@ -22,6 +22,7 @@ import {
   seedResults,
   loadResults,
   putResult,
+  putNewEntry,
   flushQueue,
   queueSize,
   type BootstrapData,
@@ -194,28 +195,22 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
   // Add a late binomio to this class. Flags it is_extemp; numbered E1, E2, … by
   // how many extemporáneos are already in the class. Same billing as any entry.
   async function addBinomio() {
-    if (!add.clubId || !add.rider.trim() || !add.horse.trim() || !add.section) { setAdding("Complete club, jinete, caballo y sección."); return; }
-    setAdding("Agregando…");
-    try {
-      const res = await fetch(`/api/events/${slug}/scoring/add-binomio`, {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clubId: add.clubId, riderName: add.rider.trim(), horseName: add.horse.trim(), height, day, section: add.section }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || "Error");
-      const e = data.entry as { id: string; rider: string; horse: string; section: string; days: string[]; riderKey: string; horseKey: string; isExtemp: boolean };
-      const extCount = boot.entries.filter((x) => x.isExtemp && x.height === height && (x.days || []).includes(day)).length;
-      // Update the cached snapshot so the count and roster persist.
-      const nb = { ...boot, entries: [...boot.entries, { id: e.id, rider: e.rider, horse: e.horse, height, section: e.section, days: e.days, riderKey: e.riderKey, horseKey: e.horseKey, isExtemp: true }] };
-      await saveBootstrap(slug, nb);
-      onSetupSaved(nb);
-      setRows((rs) => [...rs, { entryId: e.id, no: `E${extCount + 1}`, rider: e.rider, horse: e.horse, section: e.section, ext: true, f1: "", t1: "", status1: "OK", f2: "", t2: "", status2: "OK", scored: false, committed: false }]);
-      setAdd({ clubId: "", rider: "", horse: "", section: "" });
-      setAddOpen(false);
-      setAdding("");
-    } catch (err) {
-      setAdding("No se pudo agregar: " + (err as Error).message);
-    }
+    const rider = add.rider.trim();
+    const horse = add.horse.trim();
+    if (!add.clubId || !rider || !horse || !add.section) { setAdding("Complete club, jinete, caballo y sección."); return; }
+    // Local-first: generate the id here so it works fully offline. Append to the
+    // cached roster + working list immediately and queue the creation for sync.
+    const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const extCount = boot.entries.filter((x) => x.isExtemp && x.height === height && (x.days || []).includes(day)).length;
+    const nb = { ...boot, entries: [...boot.entries, { id, rider, horse, height, section: add.section, days: [day], isExtemp: true }] };
+    await saveBootstrap(slug, nb);
+    onSetupSaved(nb);
+    await putNewEntry(slug, { entryId: id, clubId: add.clubId, riderName: rider, horseName: horse, height, day, section: add.section });
+    setRows((rs) => [...rs, { entryId: id, no: `E${extCount + 1}`, rider, horse, section: add.section, ext: true, f1: "", t1: "", status1: "OK", f2: "", t2: "", status2: "OK", scored: false, committed: false }]);
+    setAdd({ clubId: "", rider: "", horse: "", section: "" });
+    setAddOpen(false);
+    setAdding("");
+    flushQueue(slug).catch(() => {}); // opportunistic sync if online
   }
 
   const hasR2 = formatHasSecondRound(format);

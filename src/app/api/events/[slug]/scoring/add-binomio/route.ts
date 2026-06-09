@@ -5,6 +5,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 type Body = {
+  entryId?: string; // client-generated id for offline creation (idempotent)
   clubId: string;
   riderId?: string | null;
   riderName?: string; // "First Last" when creating
@@ -34,6 +35,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
 
   const { data: event } = await supabaseAdmin.from("events").select("id").eq("slug", slug).single();
   if (!event) return Response.json({ error: "Evento no encontrado." }, { status: 404 });
+
+  // Idempotency: if this client-generated entry already exists (a re-sync),
+  // do nothing — avoids duplicate riders/horses on retry.
+  if (b.entryId) {
+    const { data: dup } = await supabaseAdmin.from("event_entries").select("id").eq("id", b.entryId).maybeSingle();
+    if (dup) return Response.json({ ok: true, alreadyExists: true, entry: { id: b.entryId } });
+  }
 
   const { data: club } = await supabaseAdmin.from("show_clubs").select("id, name").eq("id", b.clubId).single();
   if (!club) return Response.json({ error: "Club no encontrado." }, { status: 404 });
@@ -88,6 +96,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   const { data: entry, error: entErr } = await supabaseAdmin
     .from("event_entries")
     .insert({
+      ...(b.entryId ? { id: b.entryId } : {}),
       event_id: event.id, submission_id: submissionId, club_id: club.id,
       rider_id: riderId, horse_id: horseId, rider_name: riderName, horse_name: horseName,
       height: b.height, section: b.section, days: [b.day], is_extemp: true, status: "active",

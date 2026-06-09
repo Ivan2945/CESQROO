@@ -72,6 +72,48 @@ async function saveResultsMap(slug: string, map: Record<string, ResultRow>) {
   await idbSet(`results:${slug}`, map);
 }
 
+// ---- New-binomio queue (entries created offline, pending creation) --------
+export type QueuedEntry = {
+  entryId: string; clubId: string; riderName: string; horseName: string;
+  height: string; day: string; section: string;
+};
+async function getEntryQueue(slug: string): Promise<Record<string, QueuedEntry>> {
+  return (await idbGet<Record<string, QueuedEntry>>(`entryq:${slug}`)) ?? {};
+}
+async function setEntryQueue(slug: string, q: Record<string, QueuedEntry>) {
+  await idbSet(`entryq:${slug}`, q);
+}
+// Enqueue a binomio created offline (the caller also appends it to the cached
+// bootstrap so it shows immediately).
+export async function putNewEntry(slug: string, item: QueuedEntry): Promise<void> {
+  const q = await getEntryQueue(slug);
+  q[item.entryId] = item;
+  await setEntryQueue(slug, q);
+}
+// Create queued binomios on the server (must land BEFORE their results, which
+// reference the entry). Returns true when the queue is empty/drained.
+async function flushEntries(slug: string): Promise<boolean> {
+  const q = await getEntryQueue(slug);
+  const items = Object.values(q);
+  if (items.length === 0) return true;
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
+  for (const it of items) {
+    try {
+      const res = await fetch(`/api/events/${slug}/scoring/add-binomio`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(it),
+      });
+      if (!res.ok) return false;
+      delete q[it.entryId];
+      await setEntryQueue(slug, q);
+    } catch {
+      return false;
+    }
+  }
+  return true;
+}
+
 // ---- Sync queue (keys pending upload) --------------------------------------
 async function getQueue(slug: string): Promise<Record<string, ResultRow>> {
   return (await idbGet<Record<string, ResultRow>>(`queue:${slug}`)) ?? {};
@@ -111,10 +153,13 @@ export async function seedResults(slug: string, rows: BootstrapData["results"]):
 
 // Flush the queue to the server. Returns counts; clears synced items on success.
 export async function flushQueue(slug: string): Promise<{ written: number; pending: number } | null> {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return null;
+  // Created binomios must sync before their results (FK dependency).
+  const entriesOk = await flushEntries(slug);
+  if (!entriesOk) return null;
   const q = await getQueue(slug);
   const rows = Object.values(q);
   if (rows.length === 0) return { written: 0, pending: 0 };
-  if (typeof navigator !== "undefined" && navigator.onLine === false) return null;
   const res = await fetch(`/api/events/${slug}/scoring/results`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -126,5 +171,5 @@ export async function flushQueue(slug: string): Promise<{ written: number; pendi
 }
 
 export async function queueSize(slug: string): Promise<number> {
-  return Object.keys(await getQueue(slug)).length;
+  return Object.keys(await getQueue(slug)).length + Object.keys(await getEntryQueue(slug)).length;
 }

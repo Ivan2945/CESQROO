@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import ScoringClient from "./ScoringClient";
+import ServiceWorkerRegistrar from "@/app/_components/ServiceWorkerRegistrar";
 
 export const dynamic = "force-dynamic";
 
@@ -29,7 +30,10 @@ export default async function ScoringPage({ params }: { params: Promise<{ id: st
   return (
     <div className="-m-5 min-h-screen bg-slate-50 p-5 text-slate-900" style={{ colorScheme: "light" }}>
       <div className="mx-auto max-w-6xl">
-        <Link href={`/admin/events/${event.id}`} className="text-sm font-semibold text-blue-600">← {event.name}</Link>
+        <div className="flex items-center justify-between gap-3">
+          <Link href={`/admin/events/${event.id}`} className="text-sm font-semibold text-blue-600">← {event.name}</Link>
+          <ServiceWorkerRegistrar />
+        </div>
         <ScoringClient slug={event.slug} eventName={event.name} />
       </div>
     </div>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   scoreClass,
   sectionPoints,
@@ -213,6 +213,29 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
     flushQueue(slug).catch(() => {}); // opportunistic sync if online
   }
 
+  // ---- Live state for the public view (status + current rider) ----
+  const [classStatus, setClassStatus] = useState<string>(existing?.status || "pending");
+  const currentRef = useRef<string | null>(existing?.current_entry_id ?? null);
+
+  // Best-effort push to the server (only matters when online; the public view
+  // reads it). Failures are ignored — scoring stays fully offline-capable.
+  const pushLive = useCallback((patch: { status?: string; currentEntryId?: string | null }) => {
+    fetch(`/api/events/${slug}/scoring/live-state`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ height, day, ...patch }),
+    }).catch(() => {});
+  }, [slug, height, day]);
+
+  function startClass() { setClassStatus("in_progress"); pushLive({ status: "in_progress" }); }
+  function endClass() { setClassStatus("finished"); pushLive({ status: "finished", currentEntryId: null }); currentRef.current = null; }
+
+  // The rider currently being judged = whichever row's field is focused.
+  function markCurrent(entryId: string) {
+    if (currentRef.current === entryId) return;
+    currentRef.current = entryId;
+    if (classStatus === "in_progress") pushLive({ currentEntryId: entryId });
+  }
+
   const hasR2 = formatHasSecondRound(format);
   const hasStatus2 = formatHasSecondStatus(format);
   const hasSession = formatHasSession(format);
@@ -329,6 +352,14 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
         {hasSession && <button onClick={startSession} className="rounded-md bg-blue-600 px-3 py-1 text-sm font-semibold text-white">Iniciar 2da ronda</button>}
         <button onClick={saveSetup} className="rounded-md bg-slate-800 px-3 py-1 text-sm font-semibold text-white">Guardar configuración</button>
         <button onClick={() => setAddOpen((v) => !v)} className="rounded-md bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-800">+ Agregar binomio</button>
+        {classStatus !== "in_progress" ? (
+          <button onClick={startClass} className="rounded-md bg-emerald-600 px-3 py-1 text-sm font-semibold text-white">▶ Iniciar clase</button>
+        ) : (
+          <button onClick={endClass} className="rounded-md bg-rose-600 px-3 py-1 text-sm font-semibold text-white">■ Finalizar clase</button>
+        )}
+        <span className={"rounded-full px-2.5 py-0.5 text-xs font-bold " + (classStatus === "in_progress" ? "bg-emerald-100 text-emerald-800" : classStatus === "finished" ? "bg-slate-200 text-slate-700" : "bg-amber-100 text-amber-800")}>
+          {classStatus === "in_progress" ? "EN PROGRESO (público)" : classStatus === "finished" ? "Finalizada" : "Sin iniciar"}
+        </span>
         {savedMsg && <span className="text-xs font-semibold text-emerald-700">{savedMsg}</span>}
       </div>
 
@@ -378,7 +409,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
             {pendingRows.map((r) => {
               const s = r.scored ? byId[r.entryId] : null;
               return (
-                <tr key={r.entryId} className={"border-b border-slate-200 " + (r.scored ? "bg-blue-50" : "")}>
+                <tr key={r.entryId} onFocus={() => markCurrent(r.entryId)} className={"border-b border-slate-200 " + (currentRef.current === r.entryId && classStatus === "in_progress" ? "ring-2 ring-emerald-400 " : "") + (r.scored ? "bg-blue-50" : "")}>
                   <td className="p-2 text-center font-bold">{r.no}</td>
                   <td className="p-2 text-center font-bold text-blue-700">{s?.rankSection != null ? s.rankSection + "º" : ""}</td>
                   <td className="p-2">{r.rider}{r.ext && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">EXT</span>}</td><td className="p-2">{r.horse}</td><td className="p-2 text-center">{r.section}</td>

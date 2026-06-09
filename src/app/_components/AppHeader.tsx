@@ -20,8 +20,19 @@ export default async function AppHeader() {
     data: { user },
   } = await supabase.auth.getUser();
 
-  // No header on logged-out pages (e.g. /login)
-  if (!user) return null;
+  // Logged-out: a minimal public header (public-facing links only).
+  if (!user) {
+    return (
+      <header style={{ padding: "12px 16px", borderBottom: "1px solid #e5e5e5", background: "#fafafa" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
+          <Link href="/inscripciones" style={{ textDecoration: "none", fontWeight: 700, color: "#000" }}>
+            CESQROO
+          </Link>
+          <ClientNav items={[{ href: "/inscripciones", label: "Inscripciones y resultados" }]} />
+        </div>
+      </header>
+    );
+  }
 
   // Determine role (admin may not have a profiles row)
   const { data: isAdmin } = await supabase.rpc("is_admin");
@@ -35,7 +46,7 @@ export default async function AppHeader() {
       .select("user_id, club_id, role")
       .eq("user_id", user.id)
       .single();
-    profile = (data as any) ?? null;
+    profile = (data as ProfileRow | null) ?? null;
   }
 
   const roleLabel = isAdmin ? "Admin" : profile?.role === "club_admin" ? "Club Admin" : (profile?.role ?? "User");
@@ -46,19 +57,19 @@ export default async function AppHeader() {
 
   if (clubId) {
     const { data } = await supabase.from("clubs").select("name").eq("id", clubId).single();
-    clubName = (data as any)?.name ?? null;
+    clubName = (data as { name: string } | null)?.name ?? null;
   }
 
   const adminItems = [
     { href: "/admin", label: "Inicio" },
+    { href: "/admin/events", label: "Eventos" },
     { href: "/admin/clubs", label: "Clubs" },
+    { href: "/admin/payments", label: "Pagos" },
     { href: "/admin/users", label: "Usuarios" },
-    { href: "/club", label: "Dashboard" },	
     { href: "/club/riders", label: "Jinetes" },
     { href: "/club/horses", label: "Caballos" },
     { href: "/club/tests", label: "Coggins" },
-    { href: "/admin/payments", label: "Pagos" },
-    { href: "/admin/events", label: "Eventos" },
+    { href: "/inscripciones", label: "Inscripciones / Resultados ↗" },
   ];
 
   const clubItems = [
@@ -68,6 +79,7 @@ export default async function AppHeader() {
     { href: "/club/tests", label: "Coggins" },
     { href: "/club/payments", label: "Pagos" },
     { href: "/admin/events", label: "Eventos" },
+    { href: "/inscripciones", label: "Inscripciones / Resultados ↗" },
   ];
 
   const items = isAdmin ? adminItems : clubItems;

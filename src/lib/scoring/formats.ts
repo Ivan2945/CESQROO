@@ -21,118 +21,139 @@ function roundTime(r: RoundResult): number | null {
   return r.fell ? r.timeSec + 6 : r.timeSec;
 }
 
-const RANKS_BY_STATUS: Record<Status, boolean> = {
-  OK: true,
-  // FC/T ride but are hors concours: they take no placing, so they never demote
-  // the binomios behind them. They earn 0 championship points (see points.ts).
-  FC: false,
-  T: false,
-  NP: false,
-  EL: false,
-  RT: false,
-};
-
-// Does this binomio get a placing? Only a normal completed round (OK) places.
-function placeable(s: Status): boolean {
-  return RANKS_BY_STATUS[s];
+// Status of a round, defaulting to a completed clear-of-status round.
+function statusOf(r: RoundResult | null | undefined): Status {
+  return (r && r.status) || "OK";
+}
+// Only a normally-completed round (OK) earns a placing on its own merits.
+// FC/T are hors concours; NP/EL/RT did not complete.
+function completed(s: Status): boolean {
+  return s === "OK";
 }
 
-// Score a single binomio into raw penalties + tie-break time, before ranking.
-type Raw = { jumpPens: number | null; timePens: number | null; totalPens: number | null; tieTime: number | null; advanced?: boolean };
+// Score a single binomio into raw penalties + tie-break time + tier, before
+// ranking. tier: 0 = full result, 1 = qualified but EL/RT in 2nd round,
+// 2 = did not qualify. A null result means no placing at all.
+type Raw = {
+  jumpPens: number | null;
+  timePens: number | null;
+  totalPens: number | null;
+  tieTime: number | null;
+  advanced?: boolean;
+  tier: number;
+};
+const NO_PLACE: Raw = { jumpPens: null, timePens: null, totalPens: null, tieTime: null, tier: 99 };
 
 function scoreOne(fmt: ClassFormat, e: ScoreInput): Raw {
-  if (!placeable(e.status) || e.r1.timeSec == null) {
-    return { jumpPens: null, timePens: null, totalPens: null, tieTime: null };
-  }
+  const s1 = statusOf(e.r1);
+  // A binomio that did not complete round 1 (NP/EL/RT) or is hors concours
+  // (FC/T) takes no placing in any format.
+  if (!completed(s1) || e.r1.timeSec == null) return NO_PLACE;
   const t1 = roundTime(e.r1)!;
 
   switch (fmt.kind) {
-    case "time_only": {
-      // Exhibition: no jump faults count; rank purely by time.
-      return { jumpPens: 0, timePens: 0, totalPens: 0, tieTime: t1 };
-    }
+    case "time_only":
+      return { jumpPens: 0, timePens: 0, totalPens: 0, tieTime: t1, tier: 0 };
     case "table_a": {
       const jp = e.r1.faults;
       const tp = timeOver(t1, fmt.taSec);
-      return { jumpPens: jp, timePens: tp, totalPens: jp + tp, tieTime: t1 };
+      return { jumpPens: jp, timePens: tp, totalPens: jp + tp, tieTime: t1, tier: 0 };
     }
     case "table_c": {
-      // Each knockdown converts to seconds added; rank by adjusted time. faults
-      // here are already ×4 jump points; convert back to fence count × secs.
       const secsPerFence = fmt.faultSeconds ?? 4;
       const fences = e.r1.faults / 4;
-      const adj = t1 + fences * secsPerFence;
-      return { jumpPens: 0, timePens: 0, totalPens: 0, tieTime: adj };
+      return { jumpPens: 0, timePens: 0, totalPens: 0, tieTime: t1 + fences * secsPerFence, tier: 0 };
     }
     case "optimum_window": {
       const jp = e.r1.faults;
-      // Penalty only when OUTSIDE [lower, upper]; rank by closeness to optimum.
       let tp = 0;
       if (t1 < fmt.lowerSec) tp = Math.ceil(fmt.lowerSec - t1);
       else if (t1 > fmt.upperSec) tp = Math.ceil(t1 - fmt.upperSec);
-      const tie = Math.abs(fmt.optimumSec - t1);
-      return { jumpPens: jp, timePens: tp, totalPens: jp + tp, tieTime: tie };
+      return { jumpPens: jp, timePens: tp, totalPens: jp + tp, tieTime: Math.abs(fmt.optimumSec - t1), tier: 0 };
+    }
+    case "two_phase_special": {
+      // 274 2.5: one continuous trip, everyone rides both phases, ranked on
+      // phase 2. You must FINISH to place — eliminated/retired anywhere = no
+      // placing (r1 status handled above; r2 status here).
+      const jp1 = e.r1.faults;
+      const tp1 = timeOver(t1, fmt.ta1Sec);
+      if (e.r2 && e.r2.timeSec != null) {
+        if (!completed(statusOf(e.r2))) return NO_PLACE; // eliminated in phase 2 -> no place
+        const t2 = roundTime(e.r2)!;
+        const jp2 = e.r2.faults;
+        const tp2 = timeOver(t2, fmt.ta2Sec);
+        return { jumpPens: jp1 + jp2, timePens: tp1 + tp2, totalPens: jp2 + tp2, tieTime: t2, tier: 0 };
+      }
+      return { jumpPens: jp1, timePens: tp1, totalPens: jp1 + tp1, tieTime: t1, tier: 0 };
+    }
+    case "two_phase": {
+      // 274 1.5.3 (normal): scored like a jump-off. A clear phase 1 qualifies for
+      // phase 2 and is ranked on phase 2; qualifying places you ahead of
+      // non-qualifiers EVEN IF eliminated in phase 2.
+      const jp1 = e.r1.faults;
+      const tp1 = timeOver(t1, fmt.ta1Sec);
+      const total1 = jp1 + tp1;
+      const qualified = total1 === 0;
+      if (!qualified) {
+        return { jumpPens: jp1, timePens: tp1, totalPens: total1, tieTime: t1, advanced: false, tier: 2 };
+      }
+      const s2 = statusOf(e.r2);
+      if (e.r2 && e.r2.timeSec != null && completed(s2)) {
+        const t2 = roundTime(e.r2)!;
+        const tp2 = timeOver(t2, fmt.ta2Sec);
+        return { jumpPens: jp1 + e.r2.faults, timePens: tp1 + tp2, totalPens: e.r2.faults + tp2, tieTime: t2, advanced: true, tier: 0 };
+      }
+      const elim2 = e.r2 && (e.r2.status === "EL" || e.r2.status === "RT" || e.r2.status === "NP");
+      return { jumpPens: jp1, timePens: tp1, totalPens: 0, tieTime: t1, advanced: true, tier: elim2 ? 1 : 0 };
     }
     case "table_a_jo": {
       const jp = e.r1.faults;
       const tp = timeOver(t1, fmt.taSec);
       const total = jp + tp;
-      const advanced = total === 0; // clear round 1 -> jump-off
-      if (advanced && e.r2 && e.r2.timeSec != null) {
+      const qualified = total === 0; // clear round 1 -> jump-off
+      if (!qualified) {
+        return { jumpPens: jp, timePens: tp, totalPens: total, tieTime: t1, advanced: false, tier: 2 };
+      }
+      const s2 = statusOf(e.r2);
+      if (e.r2 && e.r2.timeSec != null && completed(s2)) {
         const t2 = roundTime(e.r2)!;
-        const jp2 = e.r2.faults;
         const tp2 = timeOver(t2, fmt.joTaSec);
-        return { jumpPens: jp + jp2, timePens: tp + tp2, totalPens: jp2 + tp2, tieTime: t2, advanced: true };
+        return { jumpPens: jp + e.r2.faults, timePens: tp + tp2, totalPens: e.r2.faults + tp2, tieTime: t2, advanced: true, tier: 0 };
       }
-      // No jump-off ridden: rank on round-1 total, then round-1 time.
-      return { jumpPens: jp, timePens: tp, totalPens: total, tieTime: t1, advanced };
-    }
-    case "two_phase":
-    case "two_phase_special": {
-      const jp1 = e.r1.faults;
-      const tp1 = timeOver(t1, fmt.ta1Sec);
-      const clearPhase1 = jp1 + tp1 === 0;
-      // Normal two-phase: only a clear phase 1 contests phase 2; those not clear
-      // are ranked after, on phase-1 penalties. Special two-phase: everyone rides
-      // both phases and is ranked on phase 2.
-      const ridesPhase2 = fmt.kind === "two_phase_special" || clearPhase1;
-      if (ridesPhase2 && e.r2 && e.r2.timeSec != null) {
-        const t2 = roundTime(e.r2)!;
-        const jp2 = e.r2.faults;
-        const tp2 = timeOver(t2, fmt.ta2Sec);
-        return { jumpPens: jp1 + jp2, timePens: tp1 + tp2, totalPens: jp2 + tp2, tieTime: t2, advanced: true };
-      }
-      return { jumpPens: jp1, timePens: tp1, totalPens: jp1 + tp1, tieTime: t1, advanced: false };
+      // Qualified but eliminated/retired in the jump-off, or jump-off not yet
+      // ridden. Either way ahead of non-qualifiers. EL/RT -> tier 1 (after those
+      // who completed the jump-off); not yet ridden -> provisional tier 0.
+      const elimJO = e.r2 && (e.r2.status === "EL" || e.r2.status === "RT" || e.r2.status === "NP");
+      return { jumpPens: jp, timePens: tp, totalPens: 0, tieTime: t1, advanced: true, tier: elimJO ? 1 : 0 };
     }
     case "optimum_two_round": {
-      // FEM 7.4: only a zero-JUMP-fault round 1 advances. Round-1 time becomes
-      // the target; round 2 ranked by round-2 faults then |rd2 − rd1| time.
+      // FEM 7.4: only a zero-jump-fault round 1 qualifies. Round-1 time is the
+      // target; round 2 ranked by round-2 faults then |rd2 − rd1|.
       const jp1 = e.r1.faults;
-      const advanced = jp1 === 0;
-      if (advanced && e.r2 && e.r2.timeSec != null) {
-        const t2 = roundTime(e.r2)!;
-        const jp2 = e.r2.faults;
-        const tie = Math.abs(t2 - t1);
-        return { jumpPens: jp1 + jp2, timePens: 0, totalPens: jp2, tieTime: tie, advanced: true };
+      const qualified = jp1 === 0;
+      if (!qualified) {
+        return { jumpPens: jp1, timePens: 0, totalPens: jp1, tieTime: t1, advanced: false, tier: 2 };
       }
-      return { jumpPens: jp1, timePens: 0, totalPens: jp1, tieTime: t1, advanced };
+      const s2 = statusOf(e.r2);
+      if (e.r2 && e.r2.timeSec != null && completed(s2)) {
+        const t2 = roundTime(e.r2)!;
+        return { jumpPens: jp1 + e.r2.faults, timePens: 0, totalPens: e.r2.faults, tieTime: Math.abs(t2 - t1), advanced: true, tier: 0 };
+      }
+      const elim2 = e.r2 && (e.r2.status === "EL" || e.r2.status === "RT" || e.r2.status === "NP");
+      return { jumpPens: jp1, timePens: 0, totalPens: 0, tieTime: t1, advanced: true, tier: elim2 ? 1 : 0 };
     }
   }
 }
 
-// Compare two placeable rows: advanced binomios always rank ahead of
-// non-advanced (for jump-off / two-round / phased formats), then by total
-// penalties, then by tie-break time.
+// Compare two placeable rows: lower tier first (qualifiers ahead of
+// non-qualifiers even if eliminated in the 2nd round), then total penalties,
+// then tie-break time.
 function better(a: ScoredRow, b: ScoredRow): number {
-  const aa = a.advanced ? 0 : 1;
-  const bb = b.advanced ? 0 : 1;
-  if (aa !== bb) return aa - bb;
+  if (a.tier !== b.tier) return a.tier - b.tier;
   const ap = a.totalPens ?? Infinity;
   const bp = b.totalPens ?? Infinity;
   if (ap !== bp) return ap - bp;
-  const at = a.tieTime ?? Infinity;
-  const bt = b.tieTime ?? Infinity;
-  return at - bt;
+  return (a.tieTime ?? Infinity) - (b.tieTime ?? Infinity);
 }
 
 // Assign 1..n placings to placeable rows in sorted order; ties (identical
@@ -162,12 +183,13 @@ export function scoreClass(fmt: ClassFormat, entries: ScoreInput[]): ScoredRow[]
     return {
       id: e.id,
       section: e.section,
-      status: e.status,
+      status: statusOf(e.r1), // round-1 status is the binomio's overall status
       jumpPens: raw.jumpPens,
       timePens: raw.timePens,
       totalPens: raw.totalPens,
       tieTime: raw.tieTime,
       advanced: raw.advanced,
+      tier: raw.tier,
       rankSection: null,
       rankGeneral: null,
     };

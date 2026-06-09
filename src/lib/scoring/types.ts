@@ -11,18 +11,21 @@ export type Status = "OK" | "NP" | "EL" | "RT" | "FC" | "T";
 
 // One round (or phase) of a course. faults are JUMPING faults already in points
 // (knockdowns × 4 + refusal penalties). timeSec is the raw time on the clock.
-// fell adds the +6s the club's sheet applies for an "RM"/fall marker.
+// fell adds the +6s the club's sheet applies for an "RM"/fall marker. status is
+// the result of THIS round (defaults OK) — a jump-off / 2nd round has its own.
 export type RoundResult = {
   faults: number;
   timeSec: number | null;
   fell?: boolean; // "RM" marker -> +6s to the round time
+  status?: Status; // round-level status; defaults to "OK"
 };
 
-// A scored binomio's inputs for one class on one day.
+// A scored binomio's inputs for one class on one day. The round-1 status is the
+// binomio's overall status (NP/EL/etc.); a jump-off / 2nd round carries its own
+// status on r2 (e.g. eliminated in the jump-off but still placed as a qualifier).
 export type ScoreInput = {
   id: string; // entry id (binomio)
   section: string; // e.g. "Abierta" — used for per-section ranking
-  status: Status;
   r1: RoundResult;
   r2?: RoundResult | null; // jump-off / phase 2 / round 2 (format-dependent)
 };
@@ -52,6 +55,11 @@ export type ScoredRow = {
   // optimum formats this is closeness to the optimum, otherwise elapsed time.
   tieTime: number | null;
   advanced?: boolean; // qualified for jump-off / round 2 (jump-off & 2-round formats)
+  // Ranking tier (lower ranks ahead): 0 = completed 2nd round (or single-round
+  // result), 1 = qualified but eliminated/retired in the 2nd round, 2 = did not
+  // qualify. Tiers keep jump-off qualifiers ahead of non-qualifiers regardless
+  // of a 2nd-round elimination.
+  tier: number;
   rankSection: number | null; // placing within its section
   rankGeneral: number | null; // placing across the whole class
 };

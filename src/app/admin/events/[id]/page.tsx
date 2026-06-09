@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeConfig } from "@/lib/events/config";
 import { computeStatement } from "@/lib/events/billing";
 import { DeleteSubmissionButton, DeleteEntryButton, CancelEntryButton } from "./DeleteButtons";
+import { EditEntryButton } from "./EditEntryButton";
 
 const money = (n: number) => `$${n.toLocaleString("es-MX")}`;
 
@@ -180,6 +181,7 @@ export default async function AdminEventDetail({
                             {isAdmin && (
                               <td className="py-2 pr-3 text-right">
                                 <span className="inline-flex gap-3">
+                                  <EditEntryButton entry={e} eventId={event.id} config={config} />
                                   <CancelEntryButton entryId={e.id} eventId={event.id} cancelled={cancelled} />
                                   <DeleteEntryButton entryId={e.id} eventId={event.id} />
                                 </span>

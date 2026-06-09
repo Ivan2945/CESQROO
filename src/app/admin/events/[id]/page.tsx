@@ -106,6 +106,9 @@ export default async function AdminEventDetail({
             <Link href={`/admin/events/${event.id}/scoring`} className="text-sm font-semibold text-indigo-600">
               Calificar
             </Link>
+            <a href={`/resultados/${event.slug}`} target="_blank" className="text-sm font-semibold text-emerald-600">
+              Resultados en vivo ↗
+            </a>
           </>
         )}
       </div>

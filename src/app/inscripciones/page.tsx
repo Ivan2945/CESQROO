@@ -80,6 +80,12 @@ export default async function InscripcionesLanding() {
                   >
                     Extemporáneos →
                   </Link>
+                  <Link
+                    href={`/resultados/${ev.slug}`}
+                    className="inline-flex items-center justify-center rounded-lg border border-emerald-300 bg-emerald-50 px-5 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100"
+                  >
+                    Resultados en vivo →
+                  </Link>
                 </div>
               </div>
             );

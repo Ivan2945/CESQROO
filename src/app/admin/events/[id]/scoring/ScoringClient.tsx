@@ -46,10 +46,10 @@ const ceilTA = (d: number, c: number) => (d > 0 && c > 0 ? Math.ceil((d / c) * 6
 const p2 = (v: number | null | undefined) => (v == null ? "—" : Math.round(v * 100) / 100);
 
 type Row = {
-  entryId: string; no: number; rider: string; horse: string; section: string;
+  entryId: string; no: number | string; rider: string; horse: string; section: string;
   f1: string; t1: string; status1: string;
   f2: string; t2: string; status2: string;
-  scored: boolean; committed: boolean;
+  scored: boolean; committed: boolean; ext?: boolean;
 };
 
 // Sensible starting params per format (seconds + dist/cad for the helpers).
@@ -182,6 +182,41 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
   const [rows, setRows] = useState<Row[]>([]);
   const [lastId, setLastId] = useState<string | null>(null);
   const [savedMsg, setSavedMsg] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
+  const [add, setAdd] = useState({ clubId: "", rider: "", horse: "", section: "" });
+  const [adding, setAdding] = useState<string>("");
+
+  const sectionOptions = useMemo(
+    () => [...new Set([...(boot.config.sections || []), ...(boot.config.extempSections || [])])],
+    [boot.config]
+  );
+
+  // Add a late binomio to this class. Flags it is_extemp; numbered E1, E2, … by
+  // how many extemporáneos are already in the class. Same billing as any entry.
+  async function addBinomio() {
+    if (!add.clubId || !add.rider.trim() || !add.horse.trim() || !add.section) { setAdding("Complete club, jinete, caballo y sección."); return; }
+    setAdding("Agregando…");
+    try {
+      const res = await fetch(`/api/events/${slug}/scoring/add-binomio`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clubId: add.clubId, riderName: add.rider.trim(), horseName: add.horse.trim(), height, day, section: add.section }),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || "Error");
+      const e = data.entry as { id: string; rider: string; horse: string; section: string; days: string[]; riderKey: string; horseKey: string; isExtemp: boolean };
+      const extCount = boot.entries.filter((x) => x.isExtemp && x.height === height && (x.days || []).includes(day)).length;
+      // Update the cached snapshot so the count and roster persist.
+      const nb = { ...boot, entries: [...boot.entries, { id: e.id, rider: e.rider, horse: e.horse, height, section: e.section, days: e.days, riderKey: e.riderKey, horseKey: e.horseKey, isExtemp: true }] };
+      await saveBootstrap(slug, nb);
+      onSetupSaved(nb);
+      setRows((rs) => [...rs, { entryId: e.id, no: `E${extCount + 1}`, rider: e.rider, horse: e.horse, section: e.section, ext: true, f1: "", t1: "", status1: "OK", f2: "", t2: "", status2: "OK", scored: false, committed: false }]);
+      setAdd({ clubId: "", rider: "", horse: "", section: "" });
+      setAddOpen(false);
+      setAdding("");
+    } catch (err) {
+      setAdding("No se pudo agregar: " + (err as Error).message);
+    }
+  }
 
   const hasR2 = formatHasSecondRound(format);
   const hasStatus2 = formatHasSecondStatus(format);
@@ -201,8 +236,9 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
       setRows(order.map((o) => {
         const r = stored[`${o.entryId}|${height}|${day}`];
         const committed = !!r && (r.r1Faults !== "" || r.r1Time != null || r.r1Status !== "OK");
+        const ext = !!boot.entries.find((x) => x.id === o.entryId)?.isExtemp;
         return {
-          entryId: o.entryId, no: o.no, rider: o.rider, horse: o.horse, section: o.section,
+          entryId: o.entryId, no: o.no, rider: o.rider, horse: o.horse, section: o.section, ext,
           f1: r?.r1Faults ?? "", t1: r?.r1Time != null ? String(r.r1Time) : "", status1: r?.r1Status ?? "OK",
           f2: r?.r2Faults ?? "", t2: r?.r2Time != null ? String(r.r2Time) : "", status2: r?.r2Status ?? "OK",
           scored: committed, committed,
@@ -297,8 +333,33 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
         <button onClick={redraw} className="rounded-md bg-indigo-50 px-3 py-1 text-sm font-semibold text-indigo-700">Sortear orden</button>
         {hasSession && <button onClick={startSession} className="rounded-md bg-blue-600 px-3 py-1 text-sm font-semibold text-white">Iniciar 2da ronda</button>}
         <button onClick={saveSetup} className="rounded-md bg-slate-800 px-3 py-1 text-sm font-semibold text-white">Guardar configuración</button>
+        <button onClick={() => setAddOpen((v) => !v)} className="rounded-md bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-800">+ Agregar binomio</button>
         {savedMsg && <span className="text-xs font-semibold text-emerald-700">{savedMsg}</span>}
       </div>
+
+      {addOpen && (
+        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
+          <span className="basis-full text-[11px] font-bold uppercase tracking-wide text-amber-700">Agregar extemporáneo a {height} · {day}</span>
+          <label className="flex flex-col gap-1 text-[11px] font-semibold text-slate-600"><span>Club</span>
+            <select value={add.clubId} onChange={(e) => setAdd({ ...add, clubId: e.target.value })} className="rounded border border-slate-300 px-2 py-1">
+              <option value="">Seleccione…</option>
+              {boot.clubs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[11px] font-semibold text-slate-600"><span>Participante</span>
+            <input value={add.rider} onChange={(e) => setAdd({ ...add, rider: e.target.value })} className="rounded border border-slate-300 px-2 py-1" placeholder="Nombre Apellido" /></label>
+          <label className="flex flex-col gap-1 text-[11px] font-semibold text-slate-600"><span>Caballo</span>
+            <input value={add.horse} onChange={(e) => setAdd({ ...add, horse: e.target.value })} className="rounded border border-slate-300 px-2 py-1" /></label>
+          <label className="flex flex-col gap-1 text-[11px] font-semibold text-slate-600"><span>Sección</span>
+            <select value={add.section} onChange={(e) => setAdd({ ...add, section: e.target.value })} className="rounded border border-slate-300 px-2 py-1">
+              <option value="">Seleccione…</option>
+              {sectionOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </label>
+          <button onClick={addBinomio} className="rounded-md bg-amber-600 px-3 py-1.5 text-sm font-semibold text-white">Agregar</button>
+          {adding && <span className="text-xs font-semibold text-amber-800">{adding}</span>}
+        </div>
+      )}
 
       <ParamPanel format={format} params={params} setParams={setParams} />
 
@@ -325,7 +386,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
                 <tr key={r.entryId} className={"border-b border-slate-200 " + (r.scored ? "bg-blue-50" : "")}>
                   <td className="p-2 text-center font-bold">{r.no}</td>
                   <td className="p-2 text-center font-bold text-blue-700">{s?.rankSection != null ? s.rankSection + "º" : ""}</td>
-                  <td className="p-2">{r.rider}</td><td className="p-2">{r.horse}</td><td className="p-2 text-center">{r.section}</td>
+                  <td className="p-2">{r.rider}{r.ext && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">EXT</span>}</td><td className="p-2">{r.horse}</td><td className="p-2 text-center">{r.section}</td>
                   <td className="p-2"><input value={r.f1} onChange={(e) => patch(r.entryId, { f1: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-40 rounded border border-slate-300 px-2 py-1" placeholder="obst. · RM" /></td>
                   <td className="p-2"><input type="number" step="0.01" value={r.t1} onChange={(e) => patch(r.entryId, { t1: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-20 rounded border border-slate-300 px-2 py-1 text-right" /></td>
                   <td className="p-2"><select value={r.status1} onChange={(e) => patch(r.entryId, { status1: e.target.value })} className="rounded border border-slate-300 px-1 py-1">{STATUSES.map((x) => <option key={x}>{x}</option>)}</select></td>
@@ -354,7 +415,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
                   return (
                     <tr key={r.entryId} className={"border-b border-slate-200 " + (s.rankSection === 1 ? "bg-emerald-50" : s.rankSection == null ? "text-slate-400" : "")}>
                       <td className="p-2 text-center font-extrabold">{s.rankSection ?? "—"}</td>
-                      <td className="p-2 text-center">{r.no}</td><td className="p-2">{r.rider}</td><td className="p-2">{r.horse}</td><td className="p-2 text-center">{r.section}</td>
+                      <td className="p-2 text-center">{r.no}</td><td className="p-2">{r.rider}{r.ext && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">EXT</span>}</td><td className="p-2">{r.horse}</td><td className="p-2 text-center">{r.section}</td>
                       <td className="p-2 text-center">{p2(s.jumpPens)}</td><td className="p-2 text-center font-bold">{p2(s.totalPens)}</td>
                       <td className="p-2 text-center">{p2(points[r.entryId])}</td><td className="p-2 text-center">{r.status1}</td>
                       <td className="p-2 text-center"><button onClick={() => patch(r.entryId, { committed: false })} className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Editar</button></td>

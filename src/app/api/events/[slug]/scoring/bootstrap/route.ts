@@ -22,7 +22,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
 
   const config = normalizeConfig(event.config);
 
-  const [{ data: ent }, { data: setups }, { data: results }] = await Promise.all([
+  const [{ data: ent }, { data: setups }, { data: results }, { data: clubs }] = await Promise.all([
     supabaseAdmin
       .from("event_entries")
       .select("id, rider_id, horse_id, rider_name, horse_name, height, section, days, status, is_extemp")
@@ -35,6 +35,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
       .from("event_results")
       .select("entry_id, height, day, r1_faults, r1_time, r1_status, r2_faults, r2_time, r2_status, client_updated_at")
       .eq("event_id", event.id),
+    supabaseAdmin.from("show_clubs").select("id, name").order("name"),
   ]);
 
   // Active binomios only (cancelled entries don't compete).
@@ -65,5 +66,6 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
     entries,
     setups: setups ?? [],
     results: results ?? [],
+    clubs: clubs ?? [],
   });
 }

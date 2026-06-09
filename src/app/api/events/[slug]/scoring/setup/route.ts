@@ -9,7 +9,7 @@ type SetupBody = {
   day: string;
   format: string;
   params?: Record<string, number>;
-  startOrder?: { entry_id: string; no: number }[] | null;
+  startOrder?: { entry_id: string; no: number | string }[] | null;
 };
 
 // PUT /api/events/[slug]/scoring/setup  (admin only)

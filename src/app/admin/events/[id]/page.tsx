@@ -102,6 +102,9 @@ export default async function AdminEventDetail({
             <a href={`/api/events/${event.slug}/billing-pdf`} className="text-sm font-semibold text-emerald-600">
               Estados de cuenta (PDF)
             </a>
+            <Link href={`/admin/events/${event.id}/scoring`} className="text-sm font-semibold text-indigo-600">
+              Calificar
+            </Link>
           </>
         )}
       </div>

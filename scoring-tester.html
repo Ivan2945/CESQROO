@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CESQROO · Calificación en vivo (offline)</title>
+<style>
+  :root { --b:#2563eb; --line:#e2e8f0; --ink:#0f172a; --muted:#64748b; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif; margin:0; color:var(--ink); background:#f8fafc; }
+  .wrap { max-width:1280px; margin:0 auto; padding:22px 16px 70px; }
+  h1 { font-size:21px; margin:0 0 2px; }
+  .sub { color:var(--muted); font-size:13px; margin:0 0 16px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:12px; padding:14px 16px; margin-bottom:16px; box-shadow:0 1px 2px rgba(0,0,0,.04); }
+  .row1 { display:flex; gap:18px; flex-wrap:wrap; align-items:flex-end; }
+  label.field { display:block; font-size:12px; font-weight:600; color:#334155; margin-bottom:6px; }
+  select, input { font:inherit; padding:7px 9px; border:1px solid #cbd5e1; border-radius:8px; background:#fff; }
+  #format { min-width:260px; }
+  #params { display:flex; flex-wrap:wrap; gap:12px; margin-top:12px; }
+  .param { display:flex; flex-direction:column; gap:4px; font-size:12px; font-weight:600; color:#334155; }
+  .param input { width:118px; }
+  .param.hl input { border-color:#2563eb; background:#eff6ff; font-weight:700; }
+  .param.ro input { background:#f1f5f9; color:#334155; font-weight:800; cursor:not-allowed; border-style:dotted; }
+  .tagroup { display:flex; flex-wrap:wrap; gap:10px 14px; align-items:flex-end; border:1px dashed #cbd5e1; border-radius:10px; padding:10px 12px; }
+  .tagroup .tglabel { flex-basis:100%; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.04em; color:#475569; }
+  .tagroup .note { flex-basis:100%; font-size:11px; color:#94a3b8; }
+  #queue { width:220px; font-variant-numeric:tabular-nums; letter-spacing:.05em; }
+  table { border-collapse:collapse; width:100%; font-size:13px; }
+  th, td { border-bottom:1px solid var(--line); padding:5px 7px; text-align:center; vertical-align:middle; }
+  th { font-size:11px; text-transform:uppercase; letter-spacing:.03em; color:var(--muted); }
+  input.numbox { width:46px; text-align:center; font-weight:700; }
+  input.name { min-width:120px; width:100%; }
+  input.sec { width:84px; }
+  input.faltas { min-width:240px; width:100%; font-variant-numeric:tabular-nums; letter-spacing:.06em; }
+  input.faltas2 { min-width:120px; }
+  input.time { width:82px; text-align:right; font-variant-numeric:tabular-nums; }
+  select.estado { width:60px; padding:5px 4px; font-size:12px; }
+  td.no { width:54px; } td.prov { width:42px; font-weight:800; color:var(--b); }
+  .fcount { font-size:11px; font-weight:700; color:#b45309; margin-top:3px; min-height:14px; }
+  tr.scored { background:#eff6ff; }
+  .grid td.rk { font-weight:800; } .grid td.tot { font-weight:700; }
+  .grid tr.win { background:#ecfdf5; } .grid tr.out { color:#94a3b8; }
+  .toolbar { display:flex; gap:10px; align-items:center; margin:6px 0 12px; flex-wrap:wrap; }
+  button { font:inherit; font-weight:600; border:0; border-radius:8px; padding:8px 14px; cursor:pointer; }
+  #addRow,#reseed,#applyQueue { background:#eef2ff; color:#3730a3; }
+  #startJO { background:#1d4ed8; color:#fff; }
+  button.del { background:#fee2e2; color:#b91c1c; padding:3px 9px; border-radius:6px; }
+  button.edit { background:#fef9c3; color:#854d0e; padding:3px 10px; border-radius:6px; font-size:12px; }
+  .hint { color:var(--muted); font-size:12px; margin:8px 0 0; }
+  .badge { display:inline-block; background:#dcfce7; color:#166534; font-size:11px; font-weight:700; padding:2px 8px; border-radius:999px; }
+  .kbd { background:#f1f5f9; border:1px solid #cbd5e1; border-bottom-width:2px; border-radius:5px; padding:0 5px; font-size:11px; font-weight:700; }
+  h2 { font-size:14px; margin:0 0 8px; text-transform:uppercase; letter-spacing:.04em; color:#475569; }
+  #lastScored:empty { display:none; }
+  .lastcard { display:flex; flex-wrap:wrap; gap:6px 18px; align-items:baseline; background:#0f172a; color:#e2e8f0; border-radius:10px; padding:10px 14px; margin-bottom:12px; font-size:13px; }
+  .lastcard b { color:#fff; font-size:15px; } .lastcard .ln { font-size:14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CESQROO · Calificación en vivo <span class="badge">100% offline</span></h1>
+  <p class="sub"><span class="kbd">Enter</span> en Faltas o Tiempo = calcular, rankear y pasar a Resultados. El tiempo permitido se calcula de distancia ÷ cadencia (editable); el <b>tiempo límite</b> (eliminación) es 2× el permitido, o fijo por distancia en Table C. <b>RM</b> en faltas = rehúse con modificación (+6s).</p>
+
+  <div class="card">
+    <div class="row1">
+      <div>
+        <label class="field">Modalidad</label>
+        <select id="format">
+          <option value="time_only">Cruces — Solo tiempo</option>
+          <option value="table_a" selected>Table A — sin desempate (238 2.1)</option>
+          <option value="table_a_jo">Table A — con desempate (238 2.2)</option>
+          <option value="two_phase">Two-Phase normal (274 1.5.3)</option>
+          <option value="two_phase_special">Two-Phase Special (274 2.5 — 80cm)</option>
+          <option value="optimum_window">Optimum con límites (40 / 60cm)</option>
+          <option value="optimum_two_round">FEM 7.4 — optimum 2 rondas (75cm)</option>
+          <option value="table_c">Table C (239)</option>
+        </select>
+      </div>
+      <div>
+        <label class="field">Orden de pista (ej. 5,7,9,1,3)</label>
+        <input id="queue" placeholder="5,7,9,1,3" inputmode="numeric">
+      </div>
+      <button id="applyQueue" type="button">Aplicar orden</button>
+      <button id="startJO" type="button">Iniciar desempate</button>
+    </div>
+    <div id="params"></div>
+  </div>
+
+  <div class="card">
+    <h2>Por calificar</h2>
+    <div id="lastScored"></div>
+    <div class="toolbar">
+      <button id="addRow" type="button">+ Agregar binomio</button>
+      <button id="reseed" type="button">Datos de ejemplo</button>
+    </div>
+    <div style="overflow-x:auto">
+    <table>
+      <thead><tr>
+        <th class="no">No.</th><th>Lugar</th><th style="text-align:left">Participante</th><th style="text-align:left">Caballo</th><th>Sección</th>
+        <th>Faltas R1</th><th>Tiempo R1</th><th>Estado</th>
+        <th class="r2col" id="r2faltas">Faltas R2</th><th class="r2col" id="r2head">Tiempo R2</th><th class="r2stat" id="r2stathead">Estado R2</th>
+        <th></th>
+      </tr></thead>
+      <tbody id="pendingBody"></tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Resultados</h2>
+    <div id="results"></div>
+  </div>
+</div>
+<script>
+"use strict";
+var Scoring = (() => {
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __export = (target, all) => {
+    for (var name in all)
+      __defProp(target, name, { get: all[name], enumerable: true });
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
+
+  // src/lib/scoring/index.ts
+  var index_exports = {};
+  __export(index_exports, {
+    basePoints: () => basePoints,
+    hasFallMarker: () => hasFallMarker,
+    jumpFaults: () => jumpFaults,
+    parseFaultShorthand: () => parseFaultShorthand,
+    scoreClass: () => scoreClass,
+    sectionPoints: () => sectionPoints,
+    sumPoints: () => sumPoints,
+    timeAllowed: () => timeAllowed
+  });
+
+  // src/lib/scoring/formats.ts
+  function timeAllowed(distanceM, speedMPerMin) {
+    if (!distanceM || !speedMPerMin) return 0;
+    return Math.ceil(distanceM / speedMPerMin * 60);
+  }
+  function timeOver(timeSec, taSec) {
+    return timeSec > taSec ? Math.ceil(timeSec - taSec) : 0;
+  }
+  function roundTime(r) {
+    if (r.timeSec == null) return null;
+    return r.fell ? r.timeSec + 6 : r.timeSec;
+  }
+  function statusOf(r) {
+    return r && r.status || "OK";
+  }
+  function completed(s) {
+    return s === "OK";
+  }
+  var NO_PLACE = { jumpPens: null, timePens: null, totalPens: null, tieTime: null, tier: 99 };
+  function scoreOne(fmt, e) {
+    const s1 = statusOf(e.r1);
+    if (!completed(s1) || e.r1.timeSec == null) return NO_PLACE;
+    const t1 = roundTime(e.r1);
+    switch (fmt.kind) {
+      case "time_only":
+        return { jumpPens: 0, timePens: 0, totalPens: 0, tieTime: t1, tier: 0 };
+      case "table_a": {
+        const jp = e.r1.faults;
+        const tp = timeOver(t1, fmt.taSec);
+        return { jumpPens: jp, timePens: tp, totalPens: jp + tp, tieTime: t1, tier: 0 };
+      }
+      case "table_c": {
+        const secsPerFence = fmt.faultSeconds ?? 4;
+        const fences = e.r1.faults / 4;
+        return { jumpPens: 0, timePens: 0, totalPens: 0, tieTime: t1 + fences * secsPerFence, tier: 0 };
+      }
+      case "optimum_window": {
+        const jp = e.r1.faults;
+        let tp = 0;
+        if (t1 < fmt.lowerSec) tp = Math.ceil(fmt.lowerSec - t1);
+        else if (t1 > fmt.upperSec) tp = Math.ceil(t1 - fmt.upperSec);
+        return { jumpPens: jp, timePens: tp, totalPens: jp + tp, tieTime: Math.abs(fmt.optimumSec - t1), tier: 0 };
+      }
+      case "two_phase_special": {
+        const jp1 = e.r1.faults;
+        const tp1 = timeOver(t1, fmt.ta1Sec);
+        if (e.r2 && e.r2.timeSec != null) {
+          if (!completed(statusOf(e.r2))) return NO_PLACE;
+          const t2 = roundTime(e.r2);
+          const jp2 = e.r2.faults;
+          const tp2 = timeOver(t2, fmt.ta2Sec);
+          return { jumpPens: jp1 + jp2, timePens: tp1 + tp2, totalPens: jp2 + tp2, tieTime: t2, tier: 0 };
+        }
+        return { jumpPens: jp1, timePens: tp1, totalPens: jp1 + tp1, tieTime: t1, tier: 0 };
+      }
+      case "two_phase": {
+        const jp1 = e.r1.faults;
+        const tp1 = timeOver(t1, fmt.ta1Sec);
+        const total1 = jp1 + tp1;
+        const qualified = total1 === 0;
+        if (!qualified) {
+          return { jumpPens: jp1, timePens: tp1, totalPens: total1, tieTime: t1, advanced: false, tier: 2 };
+        }
+        const s2 = statusOf(e.r2);
+        if (e.r2 && e.r2.timeSec != null && completed(s2)) {
+          const t2 = roundTime(e.r2);
+          const tp2 = timeOver(t2, fmt.ta2Sec);
+          return { jumpPens: jp1 + e.r2.faults, timePens: tp1 + tp2, totalPens: e.r2.faults + tp2, tieTime: t2, advanced: true, tier: 0 };
+        }
+        const elim2 = e.r2 && (e.r2.status === "EL" || e.r2.status === "RT" || e.r2.status === "NP");
+        return { jumpPens: jp1, timePens: tp1, totalPens: 0, tieTime: t1, advanced: true, tier: elim2 ? 1 : 0 };
+      }
+      case "table_a_jo": {
+        const jp = e.r1.faults;
+        const tp = timeOver(t1, fmt.taSec);
+        const total = jp + tp;
+        const qualified = total === 0;
+        if (!qualified) {
+          return { jumpPens: jp, timePens: tp, totalPens: total, tieTime: t1, advanced: false, tier: 2 };
+        }
+        const s2 = statusOf(e.r2);
+        if (e.r2 && e.r2.timeSec != null && completed(s2)) {
+          const t2 = roundTime(e.r2);
+          const tp2 = timeOver(t2, fmt.joTaSec);
+          return { jumpPens: jp + e.r2.faults, timePens: tp + tp2, totalPens: e.r2.faults + tp2, tieTime: t2, advanced: true, tier: 0 };
+        }
+        const elimJO = e.r2 && (e.r2.status === "EL" || e.r2.status === "RT" || e.r2.status === "NP");
+        return { jumpPens: jp, timePens: tp, totalPens: 0, tieTime: t1, advanced: true, tier: elimJO ? 1 : 0 };
+      }
+      case "optimum_two_round": {
+        const jp1 = e.r1.faults;
+        const qualified = jp1 === 0;
+        if (!qualified) {
+          return { jumpPens: jp1, timePens: 0, totalPens: jp1, tieTime: t1, advanced: false, tier: 2 };
+        }
+        const s2 = statusOf(e.r2);
+        if (e.r2 && e.r2.timeSec != null && completed(s2)) {
+          const t2 = roundTime(e.r2);
+          return { jumpPens: jp1 + e.r2.faults, timePens: 0, totalPens: e.r2.faults, tieTime: Math.abs(t2 - t1), advanced: true, tier: 0 };
+        }
+        const elim2 = e.r2 && (e.r2.status === "EL" || e.r2.status === "RT" || e.r2.status === "NP");
+        return { jumpPens: jp1, timePens: 0, totalPens: 0, tieTime: t1, advanced: true, tier: elim2 ? 1 : 0 };
+      }
+    }
+  }
+  function better(a, b) {
+    if (a.tier !== b.tier) return a.tier - b.tier;
+    const ap = a.totalPens ?? Infinity;
+    const bp = b.totalPens ?? Infinity;
+    if (ap !== bp) return ap - bp;
+    return (a.tieTime ?? Infinity) - (b.tieTime ?? Infinity);
+  }
+  function assignRanks(rows, key) {
+    const placeable_ = rows.filter((r) => r.totalPens != null);
+    placeable_.sort(better);
+    let lastRank = 0;
+    for (let i = 0; i < placeable_.length; i++) {
+      const r = placeable_[i];
+      const prev = placeable_[i - 1];
+      if (i > 0 && prev && better(prev, r) === 0) {
+        r[key] = prev[key];
+      } else {
+        r[key] = i + 1;
+      }
+      lastRank = i + 1;
+    }
+    void lastRank;
+  }
+  function scoreClass(fmt, entries) {
+    const rows = entries.map((e) => {
+      const raw = scoreOne(fmt, e);
+      return {
+        id: e.id,
+        section: e.section,
+        status: statusOf(e.r1),
+        // round-1 status is the binomio's overall status
+        jumpPens: raw.jumpPens,
+        timePens: raw.timePens,
+        totalPens: raw.totalPens,
+        tieTime: raw.tieTime,
+        advanced: raw.advanced,
+        tier: raw.tier,
+        rankSection: null,
+        rankGeneral: null
+      };
+    });
+    assignRanks(rows, "rankGeneral");
+    const bySection = /* @__PURE__ */ new Map();
+    for (const r of rows) {
+      const arr = bySection.get(r.section) ?? [];
+      arr.push(r);
+      bySection.set(r.section, arr);
+    }
+    for (const arr of bySection.values()) assignRanks(arr, "rankSection");
+    return rows;
+  }
+
+  // src/lib/scoring/points.ts
+  function basePoints(rank) {
+    if (rank <= 0) return 0;
+    if (rank === 1) return 21;
+    return Math.max(0, 21 - rank);
+  }
+  function pointsAt(rank, starters) {
+    if (rank <= 0) return 0;
+    if (starters > 20) return starters + 1 - (rank === 1 ? 0 : rank);
+    return basePoints(rank);
+  }
+  function isStarter(s) {
+    return s !== "NP";
+  }
+  function sectionPoints(rows) {
+    const out = /* @__PURE__ */ new Map();
+    const bySection = /* @__PURE__ */ new Map();
+    for (const r of rows) {
+      const arr = bySection.get(r.section) ?? [];
+      arr.push(r);
+      bySection.set(r.section, arr);
+    }
+    for (const arr of bySection.values()) {
+      const starters = arr.filter((r) => isStarter(r.status)).length;
+      const countAtRank = /* @__PURE__ */ new Map();
+      for (const r of arr) {
+        if (r.rankSection != null) countAtRank.set(r.rankSection, (countAtRank.get(r.rankSection) ?? 0) + 1);
+      }
+      for (const r of arr) {
+        if (r.status === "FC" || r.status === "T" || r.rankSection == null) {
+          out.set(r.id, 0);
+          continue;
+        }
+        const rank = r.rankSection;
+        const tie = countAtRank.get(rank) ?? 1;
+        let sum = 0;
+        for (let p = rank; p < rank + tie; p++) sum += pointsAt(p, starters);
+        out.set(r.id, sum / tie);
+      }
+    }
+    return out;
+  }
+  function sumPoints(...maps) {
+    const out = /* @__PURE__ */ new Map();
+    for (const m of maps) {
+      for (const [id, pts] of m) out.set(id, (out.get(id) ?? 0) + pts);
+    }
+    return out;
+  }
+
+  // src/lib/scoring/faults.ts
+  function parseFaultShorthand(input) {
+    if (input == null) return 0;
+    const tokens = String(input).replace(/[rabcm]/gi, "").split(/[\s,]+/).filter((t) => /\d/.test(t));
+    return tokens.length * 4;
+  }
+  function hasFallMarker(input) {
+    if (input == null) return false;
+    return /rm/i.test(String(input));
+  }
+  function jumpFaults(railsDown, refusals = 0) {
+    return (Math.max(0, railsDown) + Math.max(0, refusals)) * 4;
+  }
+  return __toCommonJS(index_exports);
+})();
+</script><script>
+// Live ring-side scoring UI. Uses the REAL engine exposed as `Scoring`.
+// Enter (in a faults/time field) = score + rank + send to Resultados in one go.
+// The last scored rider stays pinned above the list so you can read it out.
+// "Iniciar desempate" pulls the qualifiers back up to enter their 2nd round.
+// Faults total updates live as you type the knocked obstacles.
+// r2: has a 2nd round/phase · r2session: 2nd round is a SEPARATE session (bring
+// qualifiers back) · twoStatus: 2nd round has its own Estado (qualifying places
+// you ahead of non-qualifiers even if eliminated in it).
+// tas: time-allowance groups (distance + cadence -> editable computed seconds).
+// optimum: distance + optimum cadence ± offset -> three editable time bounds.
+// nums: plain numeric params.
+// Time limit (elimination) = 2 × time allowed for every class except Table C,
+// where it is fixed by distance (120 s under 600 m, otherwise 180 s).
+const FORMATS = {
+  time_only: { r2: false, tas: [{ key: "taSec", label: "Tiempo permitido", dist: 300, cad: 300 }] },
+  table_a: { r2: false, tas: [{ key: "taSec", label: "Tiempo permitido", dist: 500, cad: 350 }] },
+  table_a_jo: { r2: true, r2session: true, twoStatus: true, r2label: "Desempate", tas: [{ key: "taSec", label: "TA 1ra ronda", dist: 500, cad: 350 }, { key: "joTaSec", label: "TA desempate", dist: 350, cad: 375 }] },
+  two_phase: { r2: true, r2session: false, twoStatus: true, r2label: "Fase 2", tas: [{ key: "ta1Sec", label: "TA Fase 1", dist: 450, cad: 350 }, { key: "ta2Sec", label: "TA Fase 2", dist: 300, cad: 375 }] },
+  two_phase_special: { r2: true, r2session: false, twoStatus: false, r2label: "Fase 2", tas: [{ key: "ta1Sec", label: "TA Fase 1", dist: 450, cad: 350 }, { key: "ta2Sec", label: "TA Fase 2", dist: 300, cad: 375 }] },
+  optimum_window: { r2: false, optimum: { dist: 460, cad: 325, offset: 25 } },
+  optimum_two_round: { r2: true, r2session: true, twoStatus: true, r2label: "2da ronda" }, // ideal-time 2 rounds: no time allowed / limit
+  table_c: { r2: false, tableC: { dist: 550 }, nums: [{ key: "faultSeconds", label: "Segundos por derribo", val: 4 }] },
+};
+const ceilTA = (d, c) => (d > 0 && c > 0 ? Math.ceil((d / c) * 60) : 0);
+const tableCLimit = (dist) => (Number(dist) >= 600 ? 180 : 120);
+const STATUSES = ["OK", "NP", "EL", "RT", "FC", "T"];
+const SCOREKEYS = ["f1", "t1", "f2", "t2"];
+
+let uid = 0;
+let rows = [];
+let results = {};
+let points = {};
+let lastUid = null;
+
+function mk(no, rider, horse, section) {
+  return { uid: ++uid, no, rider, horse, section, status: "OK", status2: "OK", f1: "", t1: "", f2: "", t2: "", scored: false, committed: false };
+}
+function seed() {
+  uid = 0; results = {}; points = {}; lastUid = null;
+  rows = [
+    mk(1, "Ana Torres", "Relámpago", "Abierta"),
+    mk(2, "Diego Ruiz", "Tornado", "Abierta"),
+    mk(3, "Sofía Marín", "Lucero", "Abierta"),
+    mk(4, "Mateo Silva", "Canela", "Libre"),
+    mk(5, "Camila Reyes", "Brisa", "Libre"),
+  ];
+}
+seed();
+
+const $ = (id) => document.getElementById(id);
+const num = (v) => (v === "" || v == null ? null : Number(v));
+const p2 = (v) => (v == null ? "—" : Math.round(v * 100) / 100);
+const byUid = (u) => rows.find((r) => r.uid === u);
+const def = () => FORMATS[$("format").value];
+
+function effTime(t, f) {
+  const raw = num(t);
+  if (raw == null) return null;
+  return { raw, adj: Scoring.hasFallMarker(f) ? raw + 6 : raw };
+}
+function timeText(r) {
+  const a = effTime(r.t1, r.f1);
+  const s1 = !a ? "—" : a.raw !== a.adj ? `${a.raw.toFixed(2)} → ${a.adj.toFixed(2)}` : a.adj.toFixed(2);
+  if (!def().r2) return s1;
+  const b = effTime(r.t2, r.f2);
+  const s2 = !b ? "—" : b.raw !== b.adj ? `${b.raw.toFixed(2)} → ${b.adj.toFixed(2)}` : b.adj.toFixed(2);
+  return { s1, s2 };
+}
+function fcountText(v) {
+  if (!String(v).trim()) return "";
+  const pen = Scoring.parseFaultShorthand(v);
+  return `${pen} falta${pen === 1 ? "" : "s"}${Scoring.hasFallMarker(v) ? " · RM +6s" : ""}`;
+}
+
+function taGroup(s) {
+  const ta = ceilTA(s.dist, s.cad);
+  return `<div class="tagroup"><span class="tglabel">${s.label}</span>
+    <label class="param"><span>Distancia (m)</span><input type="number" step="any" class="ta-d" data-key="${s.key}" value="${s.dist}"></label>
+    <label class="param"><span>Cadencia (m/min)</span><input type="number" step="any" class="ta-c" data-key="${s.key}" value="${s.cad}"></label>
+    <label class="param hl"><span>Tiempo permitido (s) — editable</span><input type="number" step="any" class="ta-s" data-param="${s.key}" data-key="${s.key}" value="${ta}"></label>
+    <label class="param ro"><span>Tiempo límite (2×)</span><input class="ta-max" data-key="${s.key}" value="${ta * 2}" readonly tabindex="-1"></label>
+  </div>`;
+}
+function optimumGroup(o) {
+  const op = ceilTA(o.dist, o.cad);
+  return `<div class="tagroup"><span class="tglabel">Optimum (límites)</span>
+    <label class="param"><span>Distancia (m)</span><input type="number" step="any" class="opt-d" value="${o.dist}"></label>
+    <label class="param"><span>Cadencia óptima</span><input type="number" step="any" class="opt-c" value="${o.cad}"></label>
+    <label class="param"><span>± m/min</span><input type="number" step="any" class="opt-o" value="${o.offset}"></label>
+    <label class="param hl"><span>Lím. rápido (s)</span><input type="number" step="any" data-param="lowerSec" class="opt-lo" value="${ceilTA(o.dist, o.cad + o.offset)}"></label>
+    <label class="param hl"><span>Óptimo (s)</span><input type="number" step="any" data-param="optimumSec" class="opt-op" value="${op}"></label>
+    <label class="param hl"><span>Lím. lento (s)</span><input type="number" step="any" data-param="upperSec" class="opt-up" value="${ceilTA(o.dist, o.cad - o.offset)}"></label>
+    <label class="param ro"><span>Tiempo límite (2×)</span><input class="opt-max" value="${op * 2}" readonly tabindex="-1"></label>
+  </div>`;
+}
+function tableCGroup(c) {
+  return `<div class="tagroup"><span class="tglabel">Table C — límite por distancia</span>
+    <label class="param"><span>Distancia (m)</span><input type="number" step="any" class="tc-d" value="${c.dist}"></label>
+    <label class="param ro"><span>Tiempo límite (s)</span><input class="tc-max" value="${tableCLimit(c.dist)}" readonly tabindex="-1"></label>
+    <span class="note">≥ 600 m → 180 s · &lt; 600 m → 120 s</span>
+  </div>`;
+}
+function renderParams() {
+  const d = def();
+  let html = "";
+  (d.tas || []).forEach((s) => (html += taGroup(s)));
+  if (d.optimum) html += optimumGroup(d.optimum);
+  if (d.tableC) html += tableCGroup(d.tableC);
+  (d.nums || []).forEach((n) => (html += `<label class="param"><span>${n.label}</span><input type="number" step="any" data-param="${n.key}" value="${n.val}"></label>`));
+  $("params").innerHTML = html;
+  const jo = $("startJO");
+  jo.style.display = d.r2session ? "" : "none";
+  jo.textContent = `Iniciar ${d.r2label || "2da ronda"}`;
+}
+
+// Recompute time allowances when distance/cadence change (the seconds stay
+// editable afterwards for course-measurement corrections).
+function wireParams() {
+  const setMax = (key) => {
+    const ta = $("params").querySelector(`.ta-s[data-key="${key}"]`);
+    const mx = $("params").querySelector(`.ta-max[data-key="${key}"]`);
+    if (ta && mx) mx.value = (Number(ta.value) || 0) * 2;
+  };
+  $("params").addEventListener("input", (e) => {
+    const t = e.target, P = $("params");
+    if (t.classList.contains("ta-d") || t.classList.contains("ta-c")) {
+      const key = t.dataset.key;
+      const dd = P.querySelector(`.ta-d[data-key="${key}"]`), cc = P.querySelector(`.ta-c[data-key="${key}"]`);
+      const ta = P.querySelector(`.ta-s[data-key="${key}"]`);
+      if (ta) ta.value = ceilTA(Number(dd.value), Number(cc.value));
+      setMax(key);
+    } else if (t.classList.contains("ta-s")) {
+      setMax(t.dataset.key); // manual TA override -> limit follows
+    } else if (t.classList.contains("opt-d") || t.classList.contains("opt-c") || t.classList.contains("opt-o")) {
+      const dv = Number(P.querySelector(".opt-d").value), cv = Number(P.querySelector(".opt-c").value), ov = Number(P.querySelector(".opt-o").value);
+      P.querySelector(".opt-lo").value = ceilTA(dv, cv + ov);
+      P.querySelector(".opt-op").value = ceilTA(dv, cv);
+      P.querySelector(".opt-up").value = ceilTA(dv, cv - ov);
+      P.querySelector(".opt-max").value = ceilTA(dv, cv) * 2;
+    } else if (t.classList.contains("opt-op")) {
+      P.querySelector(".opt-max").value = (Number(t.value) || 0) * 2; // manual optimum override
+    } else if (t.classList.contains("tc-d")) {
+      P.querySelector(".tc-max").value = tableCLimit(t.value);
+    }
+  });
+}
+function buildFormat() {
+  const obj = { kind: $("format").value };
+  document.querySelectorAll("[data-param]").forEach((el) => (obj[el.dataset.param] = Number(el.value)));
+  return obj;
+}
+
+function recompute() {
+  const fmt = buildFormat();
+  const r2 = FORMATS[fmt.kind].r2;
+  const active = rows.filter((r) => r.scored || r.committed);
+  const inputs = active.map((r) => ({
+    id: String(r.uid),
+    section: r.section || "—",
+    status: r.status,
+    r1: { faults: Scoring.parseFaultShorthand(r.f1), timeSec: r.status === "NP" ? null : num(r.t1), fell: Scoring.hasFallMarker(r.f1), status: r.status },
+    r2: r2 ? { faults: Scoring.parseFaultShorthand(r.f2), timeSec: num(r.t2), fell: Scoring.hasFallMarker(r.f2), status: FORMATS[fmt.kind].twoStatus ? r.status2 : "OK" } : null,
+  }));
+  const scored = Scoring.scoreClass(fmt, inputs);
+  const pts = Scoring.sectionPoints(scored);
+  results = Object.fromEntries(scored.map((s) => [s.id, s]));
+  points = Object.fromEntries([...pts.entries()]);
+}
+
+function renderLast() {
+  const el = $("lastScored");
+  const r = lastUid != null ? byUid(lastUid) : null;
+  const s = r ? results[String(r.uid)] : null;
+  if (!r || !s) { el.innerHTML = ""; return; }
+  const tt = timeText(r);
+  const tstr = def().r2 ? `1ra ${tt.s1}` + (tt.s2 && tt.s2 !== "—" ? ` · ${def().r2label} ${tt.s2}` : "") : tt;
+  el.innerHTML = `<div class="lastcard">
+    <span class="ln">Último calificado: <b>#${r.no ?? ""} ${r.rider} / ${r.horse}</b></span>
+    <span>Lugar <b>${s.rankSection != null ? s.rankSection + "º" : "—"}</b></span>
+    <span>Obstáculos <b>${p2(s.jumpPens)}</b></span>
+    <span>Total <b>${p2(s.totalPens)}</b></span>
+    <span>Tiempo <b>${tstr}</b></span>
+    <span>Sección <b>${s.section ?? r.section}</b> · Estado <b>${r.status}</b></span>
+  </div>`;
+}
+
+function renderPending() {
+  const d = def();
+  document.querySelectorAll(".r2col").forEach((el) => (el.style.display = d.r2 ? "" : "none"));
+  document.querySelectorAll(".r2stat").forEach((el) => (el.style.display = d.twoStatus ? "" : "none"));
+  const rh = $("r2head"); if (rh) rh.textContent = d.r2 ? `Tiempo ${d.r2label}` : "";
+  const rf = $("r2faltas"); if (rf) rf.textContent = d.r2 ? `Faltas ${d.r2label}` : "";
+  const rs = $("r2stathead"); if (rs) rs.textContent = d.twoStatus ? `Estado ${d.r2label}` : "";
+  const tb = $("pendingBody");
+  tb.innerHTML = "";
+  rows.filter((r) => !r.committed).forEach((r) => {
+    const sc = r.scored ? results[String(r.uid)] : null;
+    const tr = document.createElement("tr");
+    if (r.scored) tr.className = "scored";
+    tr.innerHTML = `
+      <td class="no"><input value="${r.no ?? ""}" data-u="${r.uid}" data-k="no" class="numbox"></td>
+      <td class="prov">${sc && sc.rankSection != null ? sc.rankSection + "º" : ""}</td>
+      <td><input value="${r.rider}" data-u="${r.uid}" data-k="rider" class="name"></td>
+      <td><input value="${r.horse}" data-u="${r.uid}" data-k="horse" class="name"></td>
+      <td><input value="${r.section}" data-u="${r.uid}" data-k="section" class="sec"></td>
+      <td><input value="${r.f1}" data-u="${r.uid}" data-k="f1" class="faltas" placeholder="obstáculos derribados · RM = rehúse c/mod"><div class="fcount" data-fc="${r.uid}-1">${fcountText(r.f1)}</div></td>
+      <td><input type="number" step="0.01" value="${r.t1}" data-u="${r.uid}" data-k="t1" class="time"></td>
+      <td><select data-u="${r.uid}" data-k="status" class="estado">${STATUSES.map((s) => `<option ${s === r.status ? "selected" : ""}>${s}</option>`).join("")}</select></td>
+      <td class="r2col" style="${d.r2 ? "" : "display:none"}"><input value="${r.f2}" data-u="${r.uid}" data-k="f2" class="faltas2"><div class="fcount" data-fc="${r.uid}-2">${fcountText(r.f2)}</div></td>
+      <td class="r2col" style="${d.r2 ? "" : "display:none"}"><input type="number" step="0.01" value="${r.t2}" data-u="${r.uid}" data-k="t2" class="time"></td>
+      <td class="r2stat" style="${d.twoStatus ? "" : "display:none"}"><select data-u="${r.uid}" data-k="status2" class="estado">${STATUSES.map((s) => `<option ${s === r.status2 ? "selected" : ""}>${s}</option>`).join("")}</select></td>
+      <td><button class="del" data-u="${r.uid}">✕</button></td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function renderResults() {
+  const d = def();
+  const committed = rows.filter((r) => r.committed);
+  committed.sort((a, b) => {
+    if ((a.section || "") !== (b.section || "")) return (a.section || "").localeCompare(b.section || "");
+    return (results[String(a.uid)]?.rankSection ?? 1e9) - (results[String(b.uid)]?.rankSection ?? 1e9);
+  });
+  const timeHead = d.r2 ? "T. 1ra" : "Tiempo";
+  $("results").innerHTML = committed.length === 0 ? '<p class="hint">Aún no hay resultados. Califique un binomio y presione Enter.</p>' : `
+    <table class="grid">
+      <thead><tr>
+        <th>Lugar</th><th>No.</th><th style="text-align:left">Participante</th><th style="text-align:left">Caballo</th><th>Sección</th>
+        <th>Obstáculos</th><th>Total</th><th>${timeHead}</th>${d.r2 ? `<th>${d.r2label}</th>` : ""}<th>Puntos</th><th>Est.</th><th></th>
+      </tr></thead>
+      <tbody>
+        ${committed.map((r) => {
+          const s = results[String(r.uid)] || {};
+          const placed = s.rankSection != null;
+          const tt = timeText(r);
+          const t1 = d.r2 ? tt.s1 : tt;
+          return `<tr class="${placed ? (s.rankSection === 1 ? "win" : "") : "out"}">
+            <td class="rk">${s.rankSection ?? "—"}</td>
+            <td>${r.no ?? ""}</td><td style="text-align:left">${r.rider}</td><td style="text-align:left">${r.horse}</td><td>${s.section ?? r.section}</td>
+            <td>${p2(s.jumpPens)}</td><td class="tot">${p2(s.totalPens)}</td>
+            <td>${t1}</td>${d.r2 ? `<td>${tt.s2}</td>` : ""}
+            <td>${p2(points[String(r.uid)])}</td><td>${r.status}</td>
+            <td><button class="edit" data-u="${r.uid}">Editar</button></td></tr>`;
+        }).join("")}
+      </tbody>
+    </table>`;
+}
+
+function renderAll() { renderLast(); renderPending(); renderResults(); }
+
+// Live edits: update the model only. Faults box updates its live count in place
+// (no re-render, so focus is never lost).
+document.addEventListener("input", (e) => {
+  const t = e.target;
+  if (!(t.dataset.u && t.dataset.k)) return;
+  const r = byUid(+t.dataset.u);
+  if (!r) return;
+  r[t.dataset.k] = t.dataset.k === "no" ? (t.value === "" ? "" : Number(t.value)) : t.value;
+  if (t.dataset.k === "f1" || t.dataset.k === "f2") {
+    const which = t.dataset.k === "f1" ? "1" : "2";
+    const fc = document.querySelector(`.fcount[data-fc="${r.uid}-${which}"]`);
+    if (fc) fc.textContent = fcountText(t.value);
+  }
+});
+
+// Enter in a scoring field = score + commit in one step.
+document.addEventListener("keydown", (e) => {
+  if (e.key !== "Enter") return;
+  const t = e.target;
+  if (!(t.dataset && t.dataset.u && t.tagName === "INPUT" && SCOREKEYS.includes(t.dataset.k))) return;
+  e.preventDefault();
+  const r = byUid(+t.dataset.u);
+  if (!r) return;
+  r.scored = true;
+  r.committed = true;
+  lastUid = r.uid;
+  recompute();
+  renderAll();
+  const next = document.querySelector("#pendingBody tr:not(.scored) .faltas");
+  if (next) next.focus();
+});
+
+document.addEventListener("click", (e) => {
+  if (e.target.classList.contains("del")) { rows = rows.filter((r) => r.uid !== +e.target.dataset.u); recompute(); renderAll(); }
+  if (e.target.classList.contains("edit")) {
+    const r = byUid(+e.target.dataset.u);
+    if (r) { r.committed = false; recompute(); renderAll();
+      const f = document.querySelector(`#pendingBody input[data-u="${r.uid}"][data-k="f1"]`); if (f) f.focus(); }
+  }
+});
+
+// Bring every qualifier (advanced in round 1) back to the scoring list for round 2.
+function startJumpoff() {
+  let n = 0;
+  rows.forEach((r) => { const s = results[String(r.uid)]; if (r.committed && s && s.advanced) { r.committed = false; n++; } });
+  recompute();
+  renderAll();
+  if (n === 0) { alert("Aún no hay binomios clasificados (ronda 1 con cero faltas)."); return; }
+  const f = document.querySelector("#pendingBody tr.scored .faltas2");
+  if (f) f.focus();
+}
+
+function applyQueue() {
+  const field = $("queue");
+  const seq = field.value.split(/[,\s]+/).filter(Boolean).map(Number);
+  if (seq.length === 0) return;
+  const orig = new Map(rows.map((r, i) => [r.uid, i]));
+  rows.sort((a, b) => {
+    const ai = seq.indexOf(Number(a.no)), bi = seq.indexOf(Number(b.no));
+    const ap = ai < 0 ? 1000 + orig.get(a.uid) : ai;
+    const bp = bi < 0 ? 1000 + orig.get(b.uid) : bi;
+    return ap - bp;
+  });
+  renderPending();
+  // Consume the first number (up to and including the first comma) so the next
+  // click advances the order instead of re-applying an already-called rider.
+  field.value = field.value.replace(/^\s*[^,]*,?\s*/, "");
+}
+
+$("format").addEventListener("change", () => { rows.forEach((r) => { r.scored = false; r.committed = false; r.status = "OK"; r.status2 = "OK"; }); results = {}; points = {}; lastUid = null; renderParams(); renderAll(); });
+$("addRow").addEventListener("click", () => { const n = Math.max(0, ...rows.map((r) => Number(r.no) || 0)) + 1; rows.push(mk(n, "", "", "Abierta")); renderPending(); });
+$("reseed").addEventListener("click", () => { seed(); renderAll(); });
+$("applyQueue").addEventListener("click", applyQueue);
+$("queue").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); applyQueue(); } });
+$("startJO").addEventListener("click", startJumpoff);
+
+wireParams();
+renderParams();
+renderAll();
+</script></body></html>

@@ -29,7 +29,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
       .eq("event_id", event.id),
     supabaseAdmin
       .from("event_class_setup")
-      .select("height, day, format, params, start_order, updated_at")
+      .select("height, day, format, params, start_order, status, current_entry_id, updated_at")
       .eq("event_id", event.id),
     supabaseAdmin
       .from("event_results")

@@ -23,10 +23,15 @@ export default async function ScoringPage({ params }: { params: Promise<{ id: st
     );
   }
 
+  // The scoring screen is always LIGHT (high-contrast for sunny show conditions),
+  // regardless of the app/OS dark theme. The negative margin cancels the global
+  // <main> padding so the light surface bleeds to the edges.
   return (
-    <div className="mx-auto max-w-6xl">
-      <Link href={`/admin/events/${event.id}`} className="text-sm text-blue-600 dark:text-blue-400">← {event.name}</Link>
-      <ScoringClient slug={event.slug} eventName={event.name} />
+    <div className="-m-5 min-h-screen bg-slate-50 p-5 text-slate-900" style={{ colorScheme: "light" }}>
+      <div className="mx-auto max-w-6xl">
+        <Link href={`/admin/events/${event.id}`} className="text-sm font-semibold text-blue-600">← {event.name}</Link>
+        <ScoringClient slug={event.slug} eventName={event.name} />
+      </div>
     </div>
   );
 }

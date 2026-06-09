@@ -112,17 +112,17 @@ export default function ScoringClient({ slug, eventName }: { slug: string; event
   }, [doSync]);
 
   if (loadErr) return <p className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-red-800">{loadErr}</p>;
-  if (!boot) return <p className="mt-6 text-slate-500 dark:text-slate-400">Cargando…</p>;
+  if (!boot) return <p className="mt-6 text-slate-500">Cargando…</p>;
 
   return (
     <div className="mt-3">
       <div className="mb-4 flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-bold text-slate-900 dark:text-white dark:text-white">Calificación · {eventName}</h1>
+        <h1 className="text-2xl font-bold text-slate-900">Calificación · {eventName}</h1>
         <span className={"rounded-full px-2.5 py-0.5 text-xs font-semibold " + (offline ? "bg-amber-100 text-amber-800" : "bg-emerald-100 text-emerald-800")}>
           {offline ? "Sin conexión" : "En línea"}
         </span>
         {pending > 0 && <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800">{pending} por sincronizar</span>}
-        <button onClick={doSync} className="rounded-md border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300">Sincronizar</button>
+        <button onClick={doSync} className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700">Sincronizar</button>
       </div>
 
       {!sel ? (
@@ -149,8 +149,8 @@ function ClassPicker({ boot, onPick }: { boot: BootstrapData; onPick: (h: string
   return (
     <div className="space-y-5">
       {config.days.map((day) => (
-        <section key={day} className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
-          <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{day}</h2>
+        <section key={day} className="rounded-xl border border-slate-200 bg-white p-4">
+          <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-500">{day}</h2>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
             {config.heights.map((h) => {
               const n = countFor(h, day);
@@ -158,9 +158,9 @@ function ClassPicker({ boot, onPick }: { boot: BootstrapData; onPick: (h: string
               const fmt = setup?.format || defaultFormatForHeight(h);
               return (
                 <button key={h} disabled={n === 0} onClick={() => onPick(h, day)}
-                  className={"rounded-lg border p-3 text-left transition " + (n === 0 ? "cursor-not-allowed border-slate-100 dark:border-slate-800 text-slate-300 dark:text-slate-600" : "border-slate-200 dark:border-slate-700 hover:border-blue-400 hover:shadow")}>
-                  <div className="text-lg font-bold text-slate-900 dark:text-white">{h}</div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400">{n} binomio(s)</div>
+                  className={"rounded-lg border p-3 text-left transition " + (n === 0 ? "cursor-not-allowed border-slate-100 text-slate-300" : "border-slate-200 hover:border-blue-400 hover:shadow")}>
+                  <div className="text-lg font-bold text-slate-900">{h}</div>
+                  <div className="text-xs text-slate-500">{n} binomio(s)</div>
                   <div className="mt-1 text-[11px] font-semibold text-blue-600">{FORMAT_LABELS[fmt]}</div>
                 </button>
               );
@@ -289,9 +289,9 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
   return (
     <div className="mt-3 space-y-4">
       <div className="flex flex-wrap items-center gap-3">
-        <button onClick={onBack} className="text-sm font-semibold text-slate-500 dark:text-slate-400">← Categorías</button>
-        <h2 className="text-xl font-bold text-slate-900 dark:text-white">{height} · {day}</h2>
-        <select value={format} onChange={(e) => { setFormat(e.target.value); setParams(defaultParams(e.target.value)); }} className="rounded-lg border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white px-2 py-1 text-sm">
+        <button onClick={onBack} className="text-sm font-semibold text-slate-500">← Categorías</button>
+        <h2 className="text-xl font-bold text-slate-900">{height} · {day}</h2>
+        <select value={format} onChange={(e) => { setFormat(e.target.value); setParams(defaultParams(e.target.value)); }} className="rounded-lg border border-slate-300 px-2 py-1 text-sm">
           {FORMAT_KINDS.map((k) => <option key={k} value={k}>{FORMAT_LABELS[k]}</option>)}
         </select>
         <button onClick={redraw} className="rounded-md bg-indigo-50 px-3 py-1 text-sm font-semibold text-indigo-700">Sortear orden</button>
@@ -311,9 +311,9 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
+      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
-          <thead><tr className="border-b border-slate-200 dark:border-slate-700 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          <thead><tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
             <th className="p-2">No.</th><th className="p-2">Lugar</th><th className="p-2 text-left">Participante</th><th className="p-2 text-left">Caballo</th><th className="p-2">Secc.</th>
             <th className="p-2">Faltas</th><th className="p-2">Tiempo</th><th className="p-2">Estado</th>
             {hasR2 && <><th className="p-2">Faltas 2</th><th className="p-2">Tiempo 2</th></>}{hasStatus2 && <th className="p-2">Estado 2</th>}
@@ -322,16 +322,16 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
             {pendingRows.map((r) => {
               const s = r.scored ? byId[r.entryId] : null;
               return (
-                <tr key={r.entryId} className={"border-b border-slate-200 dark:border-slate-700 " + (r.scored ? "bg-blue-50 dark:bg-blue-950/40" : "")}>
+                <tr key={r.entryId} className={"border-b border-slate-200 " + (r.scored ? "bg-blue-50" : "")}>
                   <td className="p-2 text-center font-bold">{r.no}</td>
                   <td className="p-2 text-center font-bold text-blue-700">{s?.rankSection != null ? s.rankSection + "º" : ""}</td>
                   <td className="p-2">{r.rider}</td><td className="p-2">{r.horse}</td><td className="p-2 text-center">{r.section}</td>
-                  <td className="p-2"><input value={r.f1} onChange={(e) => patch(r.entryId, { f1: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-40 rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white px-2 py-1" placeholder="obst. · RM" /></td>
-                  <td className="p-2"><input type="number" step="0.01" value={r.t1} onChange={(e) => patch(r.entryId, { t1: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-20 rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white px-2 py-1 text-right" /></td>
-                  <td className="p-2"><select value={r.status1} onChange={(e) => patch(r.entryId, { status1: e.target.value })} className="rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white px-1 py-1">{STATUSES.map((x) => <option key={x}>{x}</option>)}</select></td>
-                  {hasR2 && <><td className="p-2"><input value={r.f2} onChange={(e) => patch(r.entryId, { f2: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-28 rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white px-2 py-1" /></td>
-                  <td className="p-2"><input type="number" step="0.01" value={r.t2} onChange={(e) => patch(r.entryId, { t2: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-20 rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white px-2 py-1 text-right" /></td></>}
-                  {hasStatus2 && <td className="p-2"><select value={r.status2} onChange={(e) => patch(r.entryId, { status2: e.target.value })} className="rounded border border-slate-300 dark:border-slate-600 dark:bg-slate-800 dark:text-white px-1 py-1">{STATUSES.map((x) => <option key={x}>{x}</option>)}</select></td>}
+                  <td className="p-2"><input value={r.f1} onChange={(e) => patch(r.entryId, { f1: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-40 rounded border border-slate-300 px-2 py-1" placeholder="obst. · RM" /></td>
+                  <td className="p-2"><input type="number" step="0.01" value={r.t1} onChange={(e) => patch(r.entryId, { t1: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-20 rounded border border-slate-300 px-2 py-1 text-right" /></td>
+                  <td className="p-2"><select value={r.status1} onChange={(e) => patch(r.entryId, { status1: e.target.value })} className="rounded border border-slate-300 px-1 py-1">{STATUSES.map((x) => <option key={x}>{x}</option>)}</select></td>
+                  {hasR2 && <><td className="p-2"><input value={r.f2} onChange={(e) => patch(r.entryId, { f2: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-28 rounded border border-slate-300 px-2 py-1" /></td>
+                  <td className="p-2"><input type="number" step="0.01" value={r.t2} onChange={(e) => patch(r.entryId, { t2: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-20 rounded border border-slate-300 px-2 py-1 text-right" /></td></>}
+                  {hasStatus2 && <td className="p-2"><select value={r.status2} onChange={(e) => patch(r.entryId, { status2: e.target.value })} className="rounded border border-slate-300 px-1 py-1">{STATUSES.map((x) => <option key={x}>{x}</option>)}</select></td>}
                 </tr>
               );
             })}
@@ -339,12 +339,12 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
         </table>
       </div>
 
-      <section className="rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 p-4">
-        <h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Resultados</h3>
-        {committed.length === 0 ? <p className="text-sm text-slate-500 dark:text-slate-400">Aún no hay resultados.</p> : (
+      <section className="rounded-xl border border-slate-200 bg-white p-4">
+        <h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-slate-500">Resultados</h3>
+        {committed.length === 0 ? <p className="text-sm text-slate-500">Aún no hay resultados.</p> : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="border-b border-slate-200 dark:border-slate-700 text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <thead><tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
                 <th className="p-2">Lugar</th><th className="p-2">No.</th><th className="p-2 text-left">Participante</th><th className="p-2 text-left">Caballo</th><th className="p-2">Secc.</th>
                 <th className="p-2">Obst.</th><th className="p-2">Total</th><th className="p-2">Puntos</th><th className="p-2">Est.</th><th className="p-2"></th>
               </tr></thead>
@@ -352,7 +352,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
                 {committed.map((r) => {
                   const s = byId[r.entryId] || ({} as ScoredRow);
                   return (
-                    <tr key={r.entryId} className={"border-b border-slate-200 dark:border-slate-700 " + (s.rankSection === 1 ? "bg-emerald-50 dark:bg-emerald-950/40" : s.rankSection == null ? "text-slate-400 dark:text-slate-500" : "")}>
+                    <tr key={r.entryId} className={"border-b border-slate-200 " + (s.rankSection === 1 ? "bg-emerald-50" : s.rankSection == null ? "text-slate-400" : "")}>
                       <td className="p-2 text-center font-extrabold">{s.rankSection ?? "—"}</td>
                       <td className="p-2 text-center">{r.no}</td><td className="p-2">{r.rider}</td><td className="p-2">{r.horse}</td><td className="p-2 text-center">{r.section}</td>
                       <td className="p-2 text-center">{p2(s.jumpPens)}</td><td className="p-2 text-center font-bold">{p2(s.totalPens)}</td>
@@ -376,8 +376,8 @@ function ParamPanel({ format, params, setParams }: { format: string; params: Rec
   const taBlock = (key: string, label: string) => {
     const ta = params[key] ?? 0;
     return (
-      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-dashed border-slate-300 p-3">
-        <span className="basis-full text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{label}</span>
+      <div className="flex flex-wrap items-end gap-3 rounded-lg border border-dashed border-slate-300 bg-white p-3">
+        <span className="basis-full text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</span>
         <Field label="Distancia (m)" value={params[`${key}_d`] ?? 0} onChange={(v) => setParams({ ...params, [`${key}_d`]: v, [key]: ceilTA(v, params[`${key}_c`] ?? 0) })} />
         <Field label="Cadencia" value={params[`${key}_c`] ?? 0} onChange={(v) => setParams({ ...params, [`${key}_c`]: v, [key]: ceilTA(params[`${key}_d`] ?? 0, v) })} />
         <Field label="T. permitido (s)" value={ta} hl onChange={(v) => set(key, v)} />
@@ -391,8 +391,8 @@ function ParamPanel({ format, params, setParams }: { format: string; params: Rec
       {format === "table_a_jo" && (<>{taBlock("taSec", "TA 1ra ronda")}{taBlock("joTaSec", "TA desempate")}</>)}
       {(format === "two_phase" || format === "two_phase_special") && (<>{taBlock("ta1Sec", "TA Fase 1")}{taBlock("ta2Sec", "TA Fase 2")}</>)}
       {format === "optimum_window" && (
-        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-dashed border-slate-300 p-3">
-          <span className="basis-full text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Optimum (límites)</span>
+        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-dashed border-slate-300 bg-white p-3">
+          <span className="basis-full text-[11px] font-bold uppercase tracking-wide text-slate-500">Optimum (límites)</span>
           <Field label="Distancia (m)" value={params.opt_d ?? 0} onChange={(v) => recalcOpt(params, setParams, { opt_d: v })} />
           <Field label="Cadencia óptima" value={params.opt_c ?? 0} onChange={(v) => recalcOpt(params, setParams, { opt_c: v })} />
           <Field label="± m/min" value={params.opt_o ?? 0} onChange={(v) => recalcOpt(params, setParams, { opt_o: v })} />
@@ -403,8 +403,8 @@ function ParamPanel({ format, params, setParams }: { format: string; params: Rec
         </div>
       )}
       {format === "table_c" && (
-        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-dashed border-slate-300 p-3">
-          <span className="basis-full text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Table C</span>
+        <div className="flex flex-wrap items-end gap-3 rounded-lg border border-dashed border-slate-300 bg-white p-3">
+          <span className="basis-full text-[11px] font-bold uppercase tracking-wide text-slate-500">Table C</span>
           <Field label="Distancia (m)" value={params.tc_d ?? 0} onChange={(v) => set("tc_d", v)} />
           <Field label="T. límite (s)" value={(params.tc_d ?? 0) >= 600 ? 180 : 120} readOnly />
           <Field label="Segundos / derribo" value={params.faultSeconds ?? 4} onChange={(v) => set("faultSeconds", v)} />
@@ -424,7 +424,7 @@ function Field({ label, value, onChange, hl, readOnly }: { label: string; value:
     <label className="flex flex-col gap-1 text-[11px] font-semibold text-slate-600">
       <span>{label}</span>
       <input type="number" step="any" value={value} readOnly={readOnly} onChange={(e) => onChange?.(Number(e.target.value))}
-        className={"w-28 rounded border px-2 py-1 dark:border-slate-600 dark:text-white " + (readOnly ? "border-dotted bg-slate-100 font-bold dark:bg-slate-800 dark:text-slate-200" : hl ? "border-blue-500 bg-blue-50 font-bold dark:bg-blue-950/40" : "border-slate-300 dark:bg-slate-800")} />
+        className={"w-28 rounded border px-2 py-1 " + (readOnly ? "border-dotted bg-slate-100 font-bold" : hl ? "border-blue-500 bg-blue-50 font-bold" : "border-slate-300")} />
     </label>
   );
 }

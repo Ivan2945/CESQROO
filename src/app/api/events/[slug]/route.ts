@@ -13,14 +13,14 @@ export async function GET(
 
   const { data: row, error: evErr } = await supabaseAdmin
     .from("events")
-    .select("id, name, slug, saturday_date, sunday_date, is_open, created_at, config")
+    .select("id, name, slug, saturday_date, sunday_date, is_open, created_at, config, day_state")
     .eq("slug", slug)
     .single();
 
   if (evErr || !row) {
     return Response.json({ error: "Evento no encontrado." }, { status: 404 });
   }
-  const event = { ...row, config: normalizeConfig(row.config) };
+  const event = { ...row, config: normalizeConfig(row.config), day_state: row.day_state ?? {} };
   if (!event.is_open) {
     return Response.json({ error: "Las inscripciones para este evento están cerradas.", event }, { status: 403 });
   }

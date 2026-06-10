@@ -28,13 +28,17 @@ export async function POST(
   // ---- Event must exist and be open ----
   const { data: event, error: evErr } = await supabaseAdmin
     .from("events")
-    .select("id, is_open, config")
+    .select("id, is_open, config, day_state")
     .eq("slug", slug)
     .single();
   if (evErr || !event) return bad("Evento no encontrado.", 404);
   if (!event.is_open) return bad("Las inscripciones para este evento están cerradas.", 403);
 
   const config = normalizeConfig(event.config);
+  // Per-day gating: a day is open unless explicitly closed/committed. Extemp
+  // (late) adds bypass this — that's their whole purpose.
+  const dayState = (event.day_state ?? {}) as Record<string, { signupsOpen?: boolean; committed?: boolean }>;
+  const dayOpen = (d: string) => { const s = dayState[d]; return !s || (s.signupsOpen !== false && !s.committed); };
 
   // ---- Validate entries against the event's configuration ----
   if (!Array.isArray(entries) || entries.length === 0) {
@@ -58,6 +62,10 @@ export async function POST(
     }
     if (!e.days.every((d) => isValidDay(config, d))) {
       return bad(`Participación ${n}: día no válido para este evento.`);
+    }
+    if (!extemp) {
+      const closed = e.days.find((d) => !dayOpen(d));
+      if (closed) return bad(`Las inscripciones para ${closed} están cerradas. Use el formulario de extemporáneos.`);
     }
   }
 

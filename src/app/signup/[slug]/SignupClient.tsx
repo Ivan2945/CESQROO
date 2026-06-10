@@ -84,6 +84,12 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
   // In extemp (late-add) mode, Training/FC become selectable for any height.
   const sectionsFor = (h: string) =>
     extemp ? [...sectionsForHeight(config, h), ...config.extempSections] : sectionsForHeight(config, h);
+  // A day is closed for normal sign-ups once it's closed/committed. Extemp bypasses.
+  const dayClosed = (d: string) => {
+    if (extemp) return false;
+    const s = event?.day_state?.[d];
+    return !!s && (s.signupsOpen === false || s.committed === true);
+  };
 
   // Scroll the confirmation summary into view once it appears
   useEffect(() => {
@@ -513,23 +519,28 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
                     <span className="text-sm font-semibold text-slate-700">Días {req}</span>
                     {config.days.map((d) => {
                       const on = e.days.includes(d);
+                      const closed = dayClosed(d);
                       return (
                         <label
                           key={d}
+                          title={closed ? "Inscripciones cerradas para este día" : undefined}
                           className={
-                            "inline-flex cursor-pointer items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-semibold " +
-                            (on
-                              ? "border-blue-600 bg-blue-50 text-blue-800"
-                              : "border-slate-300 bg-white text-slate-700")
+                            "inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-semibold " +
+                            (closed
+                              ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 line-through"
+                              : "cursor-pointer " + (on
+                                ? "border-blue-600 bg-blue-50 text-blue-800"
+                                : "border-slate-300 bg-white text-slate-700"))
                           }
                         >
                           <input
                             type="checkbox"
                             className="accent-blue-600"
                             checked={on}
+                            disabled={closed}
                             onChange={() => toggleDay(i, d)}
                           />
-                          {d}
+                          {d}{closed ? " (cerrado)" : ""}
                         </label>
                       );
                     })}

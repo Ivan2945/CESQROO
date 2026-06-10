@@ -11,6 +11,7 @@ export type EventRow = {
   is_open: boolean;
   created_at: string;
   config: EventConfig;
+  day_state?: Record<string, { signupsOpen?: boolean; committed?: boolean; committedAt?: string | null }>;
 };
 
 export type ClubOption = {

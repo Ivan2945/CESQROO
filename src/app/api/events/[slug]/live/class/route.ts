@@ -1,7 +1,7 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { scoreClass } from "@/lib/scoring/formats";
 import { sectionPoints } from "@/lib/scoring/points";
-import { classFormatFromSetup, defaultFormatForHeight, buildStartList } from "@/lib/scoring/portal";
+import { classFormatFromSetup, defaultFormatForHeight } from "@/lib/scoring/portal";
 import type { ScoreInput } from "@/lib/scoring/types";
 import { parseFaultShorthand, hasFallMarker } from "@/lib/scoring/faults";
 
@@ -45,14 +45,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   const setupParams = (setupRow?.params ?? {}) as Record<string, number>;
   const fmt = classFormatFromSetup(format, setupParams);
 
-  // Order: saved draw if present, else a fresh draw (display only).
-  const order = setupRow?.start_order && (setupRow.start_order as { entry_id: string; no: number | string }[]).length
-    ? (setupRow.start_order as { entry_id: string; no: number | string }[]).map((o) => ({
+  // Order: ONLY the committed draw carries numbers. Before commit we show a
+  // number-less roster (no premature start numbers leaking to the public).
+  const committedOrder = (setupRow?.start_order as { entry_id: string; no: number | string }[] | null) ?? null;
+  const order = committedOrder && committedOrder.length
+    ? committedOrder.map((o) => ({
         entryId: o.entry_id, no: o.no,
         rider: entryById.get(o.entry_id)?.rider_name || "", horse: entryById.get(o.entry_id)?.horse_name || "",
         section: entryById.get(o.entry_id)?.section || "",
       }))
-    : buildStartList(active.map((e) => ({ id: e.id, rider: e.rider_name, horse: e.horse_name, height: e.height, section: e.section, days: Array.isArray(e.days) ? e.days : [], riderKey: e.rider_id ?? e.rider_name, horseKey: e.horse_id ?? e.horse_name })), height, day, 1);
+    : active
+        .filter((e) => e.height === height && (Array.isArray(e.days) ? e.days : []).includes(day))
+        .map((e) => ({ entryId: e.id, no: "" as number | string, rider: e.rider_name, horse: e.horse_name, section: e.section || "" }));
 
   const resByEntry = new Map((results ?? []).map((r) => [r.entry_id, r]));
   const hasResult = (id: string) => {

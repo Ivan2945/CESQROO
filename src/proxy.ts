@@ -2,10 +2,16 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
 export async function proxy(request: NextRequest) {
-  // Subdomain routing: on the "inscripciones" host, the bare root serves the
-  // public events landing. (Vercel forwards the public host as x-forwarded-host.)
+  // Public-domain routing. On the public domain (and its subdomains, e.g.
+  // cesqroo.lacompe.digital), the bare root serves the public events landing.
+  // PUBLIC_BASE_DOMAIN makes the domain a one-line switch; defaults to
+  // lacompe.digital. The legacy "inscripciones.*" host is still honored.
+  // (Vercel forwards the public host as x-forwarded-host.)
   const host = (request.headers.get("x-forwarded-host") || request.headers.get("host") || "").toLowerCase();
-  if (host.startsWith("inscripciones.") && request.nextUrl.pathname === "/") {
+  const publicDomain = (process.env.PUBLIC_BASE_DOMAIN || "lacompe.digital").toLowerCase();
+  const isPublicHost =
+    host.startsWith("inscripciones.") || host === publicDomain || host.endsWith("." + publicDomain);
+  if (isPublicHost && request.nextUrl.pathname === "/") {
     const url = request.nextUrl.clone();
     url.pathname = "/inscripciones";
     return NextResponse.rewrite(url);

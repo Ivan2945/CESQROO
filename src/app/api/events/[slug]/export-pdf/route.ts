@@ -1,7 +1,7 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeConfig } from "@/lib/events/config";
-import { buildClasses, type ExportEntry, type Variant } from "@/lib/events/exportWorkbook";
+import { buildClassesOrdered, type ExportEntry, type Variant } from "@/lib/events/exportWorkbook";
 import { buildDayPdf, buildMasterListPdf } from "@/lib/events/exportPdf";
 
 export const runtime = "nodejs";
@@ -93,11 +93,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
 
   const { data: rows } = await supabaseAdmin
     .from("event_entries")
-    .select("submission_id, rider_id, horse_id, rider_name, horse_name, height, section, days")
+    .select("id, submission_id, rider_id, horse_id, rider_name, horse_name, height, section, days, status")
     .eq("event_id", event.id);
 
   const entries: ExportEntry[] = (rows ?? [])
-    .filter((r) => Array.isArray(r.days) && (r.days as string[]).includes(day))
+    .filter((r) => (r.status ?? "active") !== "cancelled" && Array.isArray(r.days) && (r.days as string[]).includes(day))
     .map((r) => ({
       club: clubBySub.get(r.submission_id) ?? "—",
       rider: r.rider_name,
@@ -106,14 +106,24 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       section: r.section,
       riderKey: r.rider_id ?? r.rider_name,
       horseKey: r.horse_id ?? r.horse_name,
+      entryId: r.id,
     }));
+
+  // Committed running order per height (idempotent re-export, not a fresh draw).
+  const { data: setupRows } = await supabaseAdmin
+    .from("event_class_setup").select("height, start_order").eq("event_id", event.id).eq("day", day);
+  const orderByHeight = new Map<string, string[]>(
+    (setupRows ?? [])
+      .filter((s) => Array.isArray(s.start_order) && s.start_order.length)
+      .map((s) => [s.height, (s.start_order as { entry_id: string }[]).map((o) => o.entry_id)])
+  );
 
   const requested = heightOrder.filter((h) => config.heights.includes(h));
   const finalOrder = [...new Set([...requested, ...config.heights])];
   const dayIdx = config.days.indexOf(day);
   const startNumber = (dayIdx > 0 ? dayIdx : 0) * config.heights.length + 1;
 
-  const classes = buildClasses(entries, finalOrder, startNumber);
+  const classes = buildClassesOrdered(entries, finalOrder, startNumber, orderByHeight);
   const label = LIST_LABEL[list] ?? "Lista";
   const header = {
     title: config.header.title || event.name,

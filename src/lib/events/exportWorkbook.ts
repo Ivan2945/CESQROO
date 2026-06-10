@@ -8,6 +8,7 @@ export type ExportEntry = {
   section: string | null; // category (Abierta/Libre/…) or null
   riderKey: string; // rider id (or name) — used for spacing
   horseKey: string; // horse id (or name) — used for spacing
+  entryId?: string; // event_entries id — used to honor a committed start order
 };
 
 // Try to keep repeat appearances of the same rider OR horse this many
@@ -162,14 +163,50 @@ export function buildClasses(entries: ExportEntry[], orderedHeights: string[], s
   return sequence.map((h, i) => ({ index: startNumber + i, height: h, order: drawOrder(byHeight.get(h) ?? []) }));
 }
 
+// Like buildClasses, but honors a committed start order per height (entryId list)
+// instead of drawing. Heights without a committed order fall back to a draw, so
+// the same committed event always exports the identical order.
+export function buildClassesOrdered(
+  entries: ExportEntry[],
+  orderedHeights: string[],
+  startNumber: number,
+  orderByHeight: Map<string, string[]>
+): ClassBlock[] {
+  const byHeight = new Map<string, ExportEntry[]>();
+  for (const e of entries) {
+    const arr = byHeight.get(e.height) ?? [];
+    arr.push(e);
+    byHeight.set(e.height, arr);
+  }
+  const seen = new Set<string>();
+  const sequence: string[] = [];
+  for (const h of orderedHeights) if (!seen.has(h)) { sequence.push(h); seen.add(h); }
+  for (const h of byHeight.keys()) if (!seen.has(h)) { sequence.push(h); seen.add(h); }
+  return sequence.map((h, i) => {
+    const list = byHeight.get(h) ?? [];
+    const ord = orderByHeight.get(h);
+    let order: ExportEntry[];
+    if (ord && ord.length) {
+      const pos = new Map(ord.map((id, idx) => [id, idx]));
+      order = [...list].sort((a, b) => (pos.get(a.entryId ?? "") ?? 1e9) - (pos.get(b.entryId ?? "") ?? 1e9));
+    } else {
+      order = drawOrder(list);
+    }
+    return { index: startNumber + i, height: h, order };
+  });
+}
+
 export async function buildDayWorkbook(opts: {
   eventName: string;
   day: string;
   orderedHeights: string[];
   entries: ExportEntry[];
   startNumber?: number; // first Prueba number (for continuous numbering across days)
+  orderByHeight?: Map<string, string[]>; // committed start order per height
 }): Promise<Buffer> {
-  const classes = buildClasses(opts.entries, opts.orderedHeights, opts.startNumber ?? 1);
+  const classes = opts.orderByHeight
+    ? buildClassesOrdered(opts.entries, opts.orderedHeights, opts.startNumber ?? 1, opts.orderByHeight)
+    : buildClasses(opts.entries, opts.orderedHeights, opts.startNumber ?? 1);
 
   const wb = new ExcelJS.Workbook();
   wb.creator = "CESQROO";

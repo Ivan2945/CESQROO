@@ -51,11 +51,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   // Entries for this event, filtered to the chosen day
   const { data: rows } = await supabaseAdmin
     .from("event_entries")
-    .select("submission_id, rider_id, horse_id, rider_name, horse_name, height, section, days")
+    .select("id, submission_id, rider_id, horse_id, rider_name, horse_name, height, section, days, status")
     .eq("event_id", event.id);
 
   const entries: ExportEntry[] = (rows ?? [])
-    .filter((r) => Array.isArray(r.days) && (r.days as string[]).includes(day))
+    .filter((r) => (r.status ?? "active") !== "cancelled" && Array.isArray(r.days) && (r.days as string[]).includes(day))
     .map((r) => ({
       club: clubBySub.get(r.submission_id) ?? "—",
       rider: r.rider_name,
@@ -64,7 +64,17 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       section: r.section,
       riderKey: r.rider_id ?? r.rider_name,
       horseKey: r.horse_id ?? r.horse_name,
+      entryId: r.id,
     }));
+
+  // Committed running order per height (so re-exporting is identical, not a new draw).
+  const { data: setupRows } = await supabaseAdmin
+    .from("event_class_setup").select("height, start_order").eq("event_id", event.id).eq("day", day);
+  const orderByHeight = new Map<string, string[]>(
+    (setupRows ?? [])
+      .filter((s) => Array.isArray(s.start_order) && s.start_order.length)
+      .map((s) => [s.height, (s.start_order as { entry_id: string }[]).map((o) => o.entry_id)])
+  );
 
   // Class running order: organizer's order first, then any remaining configured
   // heights, so every class gets a list even with zero entries.
@@ -82,6 +92,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     orderedHeights: finalOrder,
     entries,
     startNumber,
+    orderByHeight,
   });
   const filename = `${safeFilename(event.name)} - ${safeFilename(day)}.xlsx`;
 

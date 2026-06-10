@@ -91,6 +91,9 @@ export default async function AdminEventDetail({
             <Link href={`/admin/events/${event.id}/config`} className="text-sm font-semibold text-blue-600">
               Configurar
             </Link>
+            <Link href={`/admin/events/${event.id}/commit`} className="text-sm font-semibold text-emerald-700">
+              Cerrar / Comprometer
+            </Link>
             <Link href={`/admin/events/${event.id}/export`} className="text-sm font-semibold text-emerald-600">
               Exportar a Excel
             </Link>

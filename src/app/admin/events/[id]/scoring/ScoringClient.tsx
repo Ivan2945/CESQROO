@@ -206,7 +206,9 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
     await saveBootstrap(slug, nb);
     onSetupSaved(nb);
     await putNewEntry(slug, { entryId: id, clubId: add.clubId, riderName: rider, horseName: horse, height, day, section: add.section });
-    setRows((rs) => [...rs, { entryId: id, no: `E${extCount + 1}`, rider, horse, section: add.section, ext: true, f1: "", t1: "", status1: "OK", f2: "", t2: "", status2: "OK", scored: false, committed: false }]);
+    // Position rule: before the class starts → front; once in progress → end.
+    const newRow = { entryId: id, no: `E${extCount + 1}`, rider, horse, section: add.section, ext: true, f1: "", t1: "", status1: "OK", f2: "", t2: "", status2: "OK", scored: false, committed: false };
+    setRows((rs) => (classStatus === "in_progress" ? [...rs, newRow] : [newRow, ...rs]));
     setAdd({ clubId: "", rider: "", horse: "", section: "" });
     setAddOpen(false);
     setAdding("");

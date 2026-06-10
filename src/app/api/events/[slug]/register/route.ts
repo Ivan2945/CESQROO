@@ -202,8 +202,34 @@ export async function POST(
     is_extemp: extemp,
   }));
 
-  const { error: entErr } = await supabaseAdmin.from("event_entries").insert(rows);
+  const { data: inserted, error: entErr } = await supabaseAdmin
+    .from("event_entries").insert(rows).select("id, height, days");
   if (entErr) return bad("Error al guardar las participaciones: " + entErr.message);
+
+  // Extemp adds on an already-committed day go to the END of that class's
+  // running order (admin-side adds before class start are positioned in the
+  // scoring screen instead).
+  if (extemp && inserted) {
+    type StartItem = { entry_id: string; no: number | string };
+    const appendByClass = new Map<string, string[]>(); // "height|day" -> entryIds
+    for (const e of inserted) {
+      for (const d of (Array.isArray(e.days) ? e.days : [])) {
+        if (dayState[d]?.committed) {
+          const k = `${e.height}|${d}`;
+          (appendByClass.get(k) ?? appendByClass.set(k, []).get(k)!).push(e.id);
+        }
+      }
+    }
+    for (const [k, ids] of appendByClass) {
+      const [height, d] = k.split("|");
+      const { data: setupRow } = await supabaseAdmin
+        .from("event_class_setup").select("id, start_order").eq("event_id", event.id).eq("height", height).eq("day", d).maybeSingle();
+      const existing = (setupRow?.start_order as StartItem[] | null) ?? [];
+      const start_order = [...existing, ...ids.map((id, i) => ({ entry_id: id, no: existing.length + i + 1 }))];
+      if (setupRow) await supabaseAdmin.from("event_class_setup").update({ start_order }).eq("id", setupRow.id);
+      else await supabaseAdmin.from("event_class_setup").insert({ event_id: event.id, height, day: d, format: "table_a_jo", params: {}, start_order });
+    }
+  }
 
   return Response.json({ ok: true, count: rows.length, clubCreated });
 }

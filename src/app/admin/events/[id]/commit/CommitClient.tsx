@@ -79,6 +79,7 @@ export default function CommitClient({ slug, days }: { slug: string; days: strin
             ) : (
               <button disabled={busy} onClick={() => { if (confirm(`¿Reabrir ${day}? Podrá editar y re-comprometer.`)) post({ action: "reopen" }); }} className="rounded-md bg-rose-600 px-3 py-1 text-sm font-semibold text-white">Reabrir día</button>
             )}
+            <button disabled={busy} onClick={() => { if (confirm(`¿Borrar las listas sorteadas de ${day}? Se elimina el orden y los números y el día queda abierto y sin sortear. NO afecta resultados ya calificados.`)) post({ action: "reset" }); }} className="rounded-md border border-rose-300 px-3 py-1 text-sm font-semibold text-rose-700 dark:border-rose-800 dark:text-rose-300">Borrar listas</button>
           </span>
         </div>
       )}

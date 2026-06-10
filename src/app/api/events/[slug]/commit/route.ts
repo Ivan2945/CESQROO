@@ -85,6 +85,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     await setDay({ signupsOpen: true, committed: false, committedAt: null });
     return Response.json({ ok: true, dayState: dayInfo(ds, day) });
   }
+  if (action === "reset") {
+    // Wipe the drawn orders + numbers for the day and re-open it. Does NOT
+    // touch event_results, so any scores already entered are kept.
+    await supabaseAdmin.from("event_class_setup").update({ start_order: null, updated_at: new Date().toISOString() }).eq("event_id", event.id).eq("day", day);
+    await setDay({ signupsOpen: true, committed: false, committedAt: null });
+    return Response.json({ ok: true, dayState: dayInfo(ds, day) });
+  }
 
   if (action === "draw") {
     const { data: ent } = await supabaseAdmin

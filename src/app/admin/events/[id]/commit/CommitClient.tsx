@@ -112,7 +112,7 @@ export default function CommitClient({ slug, days }: { slug: string; days: strin
                 <h2 className="text-lg font-bold text-slate-900 dark:text-white">{c.height}</h2>
                 <span className="text-xs text-slate-500 dark:text-slate-400">{c.total} binomio(s)</span>
                 {!c.drawn && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">sin sortear</span>}
-                {!committed && c.drawn && (
+                {c.drawn && (
                   <button onClick={() => renumber(c.height)} className="ml-auto rounded-md border border-slate-300 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:border-slate-600 dark:text-slate-300">Renumerar 1..n</button>
                 )}
               </div>
@@ -124,7 +124,7 @@ export default function CommitClient({ slug, days }: { slug: string; days: strin
                   {c.order.map((o, i) => (
                     <tr key={o.entryId} className="border-b border-slate-100 dark:border-slate-800">
                       <td className="p-1.5 text-center">
-                        {!committed && c.drawn ? (
+                        {c.drawn ? (
                           <input
                             value={String(o.no ?? "")}
                             onChange={(e) => editNo(c.height, i, e.target.value)}
@@ -139,7 +139,7 @@ export default function CommitClient({ slug, days }: { slug: string; days: strin
                       <td className="p-1.5 uppercase text-slate-700 dark:text-slate-300">{o.horse}</td>
                       <td className="p-1.5 text-center text-slate-700 dark:text-slate-300">{o.section}</td>
                       <td className="p-1.5 text-right">
-                        {!committed && c.drawn && (
+                        {c.drawn && (
                           <span className="inline-flex gap-1">
                             <button onClick={() => move(c.height, i, -1)} disabled={i === 0} className="rounded border border-slate-300 px-1.5 text-xs disabled:opacity-30 dark:border-slate-600 dark:text-slate-300">↑</button>
                             <button onClick={() => move(c.height, i, 1)} disabled={i === c.order.length - 1} className="rounded border border-slate-300 px-1.5 text-xs disabled:opacity-30 dark:border-slate-600 dark:text-slate-300">↓</button>

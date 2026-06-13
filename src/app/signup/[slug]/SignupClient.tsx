@@ -84,9 +84,9 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
   // In extemp (late-add) mode, Training/FC become selectable for any height.
   const sectionsFor = (h: string) =>
     extemp ? [...sectionsForHeight(config, h), ...config.extempSections] : sectionsForHeight(config, h);
-  // A day is closed for normal sign-ups once it's closed/committed. Extemp bypasses.
+  // A day is closed (for any public sign-up, regular OR extemp) once it's
+  // closed/committed. Late additions for closed days are admin-only from there.
   const dayClosed = (d: string) => {
-    if (extemp) return false;
     const s = event?.day_state?.[d];
     return !!s && (s.signupsOpen === false || s.committed === true);
   };

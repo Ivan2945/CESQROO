@@ -63,10 +63,8 @@ export async function POST(
     if (!e.days.every((d) => isValidDay(config, d))) {
       return bad(`Participación ${n}: día no válido para este evento.`);
     }
-    if (!extemp) {
-      const closed = e.days.find((d) => !dayOpen(d));
-      if (closed) return bad(`Las inscripciones para ${closed} están cerradas. Use el formulario de extemporáneos.`);
-    }
+    const closedDay = e.days.find((d) => !dayOpen(d));
+    if (closedDay) return bad(`Las inscripciones para ${closedDay} están cerradas. Las adiciones tardías las realiza el organizador.`);
   }
 
   // ---- Resolve club (existing or create "Other") ----

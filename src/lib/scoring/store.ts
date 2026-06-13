@@ -75,7 +75,7 @@ async function saveResultsMap(slug: string, map: Record<string, ResultRow>) {
 // ---- New-binomio queue (entries created offline, pending creation) --------
 export type QueuedEntry = {
   entryId: string; clubId: string; riderName: string; horseName: string;
-  height: string; day: string; section: string;
+  height: string; day: string; section: string; email?: string;
 };
 async function getEntryQueue(slug: string): Promise<Record<string, QueuedEntry>> {
   return (await idbGet<Record<string, QueuedEntry>>(`entryq:${slug}`)) ?? {};

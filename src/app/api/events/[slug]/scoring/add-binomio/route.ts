@@ -14,6 +14,7 @@ type Body = {
   height: string;
   day: string;
   section: string;
+  email?: string;
 };
 
 // POST /api/events/[slug]/scoring/add-binomio  (admin only)
@@ -82,15 +83,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     horseName = hn;
   }
 
-  // Find or create the club's submission for this event.
+  // Find or create the club's (single) submission for this event.
+  const email = (b.email || "").trim() || null;
   const { data: subs } = await supabaseAdmin
-    .from("event_submissions").select("id").eq("event_id", event.id).eq("club_id", club.id).order("created_at", { ascending: false }).limit(1);
+    .from("event_submissions").select("id").eq("event_id", event.id).eq("club_id", club.id).order("created_at", { ascending: true }).limit(1);
   let submissionId = subs?.[0]?.id as string | undefined;
   if (!submissionId) {
     const { data: ns, error } = await supabaseAdmin
-      .from("event_submissions").insert({ event_id: event.id, club_id: club.id, club_name: club.name }).select("id").single();
+      .from("event_submissions").insert({ event_id: event.id, club_id: club.id, club_name: club.name, email }).select("id").single();
     if (error || !ns) return Response.json({ error: "No se pudo crear la inscripción del club." }, { status: 500 });
     submissionId = ns.id;
+  } else if (email) {
+    await supabaseAdmin.from("event_submissions").update({ email }).eq("id", submissionId);
   }
 
   const { data: entry, error: entErr } = await supabaseAdmin

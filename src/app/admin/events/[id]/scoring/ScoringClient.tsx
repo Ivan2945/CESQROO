@@ -184,7 +184,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
   const [lastId, setLastId] = useState<string | null>(null);
   const [savedMsg, setSavedMsg] = useState("");
   const [addOpen, setAddOpen] = useState(false);
-  const [add, setAdd] = useState({ clubId: "", rider: "", horse: "", section: "" });
+  const [add, setAdd] = useState({ clubId: "", rider: "", horse: "", section: "", email: "" });
   const [adding, setAdding] = useState<string>("");
 
   const sectionOptions = useMemo(
@@ -197,14 +197,14 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
   async function addBinomio() {
     const rider = add.rider.trim();
     const horse = add.horse.trim();
-    if (!add.clubId || !rider || !horse || !add.section) { setAdding("Complete club, jinete, caballo y sección."); return; }
+    if (!add.clubId || !rider || !horse || !add.section || !add.email.trim()) { setAdding("Complete club, jinete, caballo, sección y correo."); return; }
     // Local-first: generate the id here so it works fully offline. Append to the
     // cached roster + working list immediately and queue the creation for sync.
     const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const nb = { ...boot, entries: [...boot.entries, { id, rider, horse, height, section: add.section, days: [day], isExtemp: true }] };
     await saveBootstrap(slug, nb);
     onSetupSaved(nb);
-    await putNewEntry(slug, { entryId: id, clubId: add.clubId, riderName: rider, horseName: horse, height, day, section: add.section });
+    await putNewEntry(slug, { entryId: id, clubId: add.clubId, riderName: rider, horseName: horse, height, day, section: add.section, email: add.email.trim() });
     // Position rule: END only if Training/FC section OR the class is in session;
     // otherwise FRONT, numbered 1A, 1B, … (newest furthest to the front).
     const goesEnd = (boot.config.extempSections || []).includes(add.section) || classStatus === "in_progress";
@@ -215,7 +215,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
       const newRow = { entryId: id, no, rider, horse, section: add.section, ext: true, f1: "", t1: "", status1: "OK", f2: "", t2: "", status2: "OK", scored: false, committed: false };
       return goesEnd ? [...rs, newRow] : [newRow, ...rs];
     });
-    setAdd({ clubId: "", rider: "", horse: "", section: "" });
+    setAdd({ clubId: "", rider: "", horse: "", section: "", email: "" });
     setAddOpen(false);
     setAdding("");
     flushQueue(slug).catch(() => {}); // opportunistic sync if online
@@ -384,6 +384,8 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
             <input value={add.rider} onChange={(e) => setAdd({ ...add, rider: e.target.value })} className="rounded border border-slate-300 px-2 py-1" placeholder="Nombre Apellido" /></label>
           <label className="flex flex-col gap-1 text-[11px] font-semibold text-slate-600"><span>Caballo</span>
             <input value={add.horse} onChange={(e) => setAdd({ ...add, horse: e.target.value })} className="rounded border border-slate-300 px-2 py-1" /></label>
+          <label className="flex flex-col gap-1 text-[11px] font-semibold text-slate-600"><span>Correo</span>
+            <input type="email" value={add.email} onChange={(e) => setAdd({ ...add, email: e.target.value })} className="rounded border border-slate-300 px-2 py-1" placeholder="correo@club.com" /></label>
           <label className="flex flex-col gap-1 text-[11px] font-semibold text-slate-600"><span>Sección</span>
             <select value={add.section} onChange={(e) => setAdd({ ...add, section: e.target.value })} className="rounded border border-slate-300 px-2 py-1">
               <option value="">Seleccione…</option>

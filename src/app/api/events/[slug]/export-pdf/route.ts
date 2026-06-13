@@ -112,10 +112,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   // Committed running order per height (idempotent re-export, not a fresh draw).
   const { data: setupRows } = await supabaseAdmin
     .from("event_class_setup").select("height, start_order").eq("event_id", event.id).eq("day", day);
-  const orderByHeight = new Map<string, string[]>(
+  const orderByHeight = new Map<string, { entryId: string; no: number | string }[]>(
     (setupRows ?? [])
       .filter((s) => Array.isArray(s.start_order) && s.start_order.length)
-      .map((s) => [s.height, (s.start_order as { entry_id: string }[]).map((o) => o.entry_id)])
+      .map((s) => [s.height, (s.start_order as { entry_id: string; no: number | string }[]).map((o) => ({ entryId: o.entry_id, no: o.no }))])
   );
 
   const requested = heightOrder.filter((h) => config.heights.includes(h));

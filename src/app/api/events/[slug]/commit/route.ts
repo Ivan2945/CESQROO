@@ -114,14 +114,28 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   }
 
   if (action === "saveOrder") {
-    const { height, order } = body as { height: string; order: string[] };
+    // Stores the order AND each row's label exactly (preserves 1A, 6A, …).
+    const { height, order } = body as { height: string; order: { entry_id: string; no: number | string }[] };
     if (!height || !Array.isArray(order)) return Response.json({ error: "Falta height u order." }, { status: 400 });
-    const start_order = order.map((entryId, i) => ({ entry_id: entryId, no: i + 1 }));
+    const start_order = order.map((o) => ({ entry_id: o.entry_id, no: o.no }));
     const { data: row } = await supabaseAdmin.from("event_class_setup").select("id").eq("event_id", event.id).eq("height", height).eq("day", day).maybeSingle();
     if (row) {
       await supabaseAdmin.from("event_class_setup").update({ start_order, updated_at: new Date().toISOString() }).eq("id", row.id);
     } else {
       await supabaseAdmin.from("event_class_setup").insert({ event_id: event.id, height, day, format: defaultFormatForHeight(height), params: {}, start_order });
+    }
+    return Response.json({ ok: true });
+  }
+
+  if (action === "renumber") {
+    // Clean 1..n by current position (wipes any manual labels for this class).
+    const { height } = body as { height: string };
+    if (!height) return Response.json({ error: "Falta height." }, { status: 400 });
+    const { data: row } = await supabaseAdmin.from("event_class_setup").select("id, start_order").eq("event_id", event.id).eq("height", height).eq("day", day).maybeSingle();
+    if (row) {
+      const cur = (row.start_order as { entry_id: string }[] | null) ?? [];
+      const start_order = cur.map((o, i) => ({ entry_id: o.entry_id, no: i + 1 }));
+      await supabaseAdmin.from("event_class_setup").update({ start_order, updated_at: new Date().toISOString() }).eq("id", row.id);
     }
     return Response.json({ ok: true });
   }

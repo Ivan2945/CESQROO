@@ -9,6 +9,7 @@ export type ExportEntry = {
   riderKey: string; // rider id (or name) — used for spacing
   horseKey: string; // horse id (or name) — used for spacing
   entryId?: string; // event_entries id — used to honor a committed start order
+  startNo?: number | string; // committed start number/label (1, 6A, 1B, …)
 };
 
 // Try to keep repeat appearances of the same rider OR horse this many
@@ -87,7 +88,7 @@ export function headersFor(variant: Variant): string[] {
   return ["Orden", "Club", "Jinete", "Caballo", "Categoría"];
 }
 
-export function rowFor(variant: Variant, idx: number, e: ExportEntry): (string | number)[] {
+export function rowFor(variant: Variant, idx: number | string, e: ExportEntry): (string | number)[] {
   const cat = e.section || "";
   if (variant === "results") return [idx, e.club, e.rider, e.horse, cat ? CAT_ABBREV[cat] ?? cat.slice(0, 2) : "", ""];
   if (variant === "steward") return [idx, e.club, e.rider, e.horse, "", ""];
@@ -128,7 +129,7 @@ function renderSheet(ws: ExcelJS.Worksheet, classes: ClassBlock[], variant: Vari
     for (let c = 1; c <= headers.length; c++) hr.getCell(c).border = { bottom: solid };
 
     cb.order.forEach((e, i) => {
-      const row = ws.addRow(rowFor(variant, i + 1, e));
+      const row = ws.addRow(rowFor(variant, e.startNo ?? i + 1, e));
       row.font = { size: 10 };
       row.alignment = { horizontal: "center", shrinkToFit: true };
       if (isWriteSheet) for (let c = 1; c <= headers.length; c++) row.getCell(c).border = { bottom: dotted };
@@ -170,7 +171,7 @@ export function buildClassesOrdered(
   entries: ExportEntry[],
   orderedHeights: string[],
   startNumber: number,
-  orderByHeight: Map<string, string[]>
+  orderByHeight: Map<string, { entryId: string; no: number | string }[]>
 ): ClassBlock[] {
   const byHeight = new Map<string, ExportEntry[]>();
   for (const e of entries) {
@@ -187,8 +188,11 @@ export function buildClassesOrdered(
     const ord = orderByHeight.get(h);
     let order: ExportEntry[];
     if (ord && ord.length) {
-      const pos = new Map(ord.map((id, idx) => [id, idx]));
-      order = [...list].sort((a, b) => (pos.get(a.entryId ?? "") ?? 1e9) - (pos.get(b.entryId ?? "") ?? 1e9));
+      const pos = new Map(ord.map((o, idx) => [o.entryId, idx]));
+      const noBy = new Map(ord.map((o) => [o.entryId, o.no]));
+      order = [...list]
+        .sort((a, b) => (pos.get(a.entryId ?? "") ?? 1e9) - (pos.get(b.entryId ?? "") ?? 1e9))
+        .map((e) => ({ ...e, startNo: noBy.get(e.entryId ?? "") }));
     } else {
       order = drawOrder(list);
     }
@@ -202,7 +206,7 @@ export async function buildDayWorkbook(opts: {
   orderedHeights: string[];
   entries: ExportEntry[];
   startNumber?: number; // first Prueba number (for continuous numbering across days)
-  orderByHeight?: Map<string, string[]>; // committed start order per height
+  orderByHeight?: Map<string, { entryId: string; no: number | string }[]>; // committed start order per height
 }): Promise<Buffer> {
   const classes = opts.orderByHeight
     ? buildClassesOrdered(opts.entries, opts.orderedHeights, opts.startNumber ?? 1, opts.orderByHeight)

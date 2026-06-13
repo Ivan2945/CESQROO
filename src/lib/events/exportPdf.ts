@@ -192,7 +192,7 @@ export async function buildDayPdf(opts: {
         hline(page, yTop + ROW, "solid", d.left, d.right, d.black);
         yTop += ROW;
       }
-      drawRow(page, rowFor(variant, i + 1, e), yTop, d.font, colX, colW, d.black);
+      drawRow(page, rowFor(variant, e.startNo ?? i + 1, e), yTop, d.font, colX, colW, d.black);
       if (isWrite) hline(page, yTop + ROW, "dotted", d.left, d.right, d.gray);
       yTop += ROW;
     });

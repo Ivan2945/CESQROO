@@ -34,7 +34,14 @@ export default function CommitClient({ slug, days }: { slug: string; days: strin
 
   const committed = !!state?.committed;
 
-  // Local up/down reorder, then persist that class's order.
+  // Persist a class's current order + labels exactly (preserves 1A, 6A, …).
+  function saveClass(height: string, order: OrderItem[]) {
+    fetch(`/api/events/${slug}/commit`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ day, action: "saveOrder", height, order: order.map((o) => ({ entry_id: o.entryId, no: o.no })) }),
+    }).catch(() => {});
+  }
+  // Up/down reorder — keeps each row's number/label attached.
   function move(height: string, idx: number, dir: -1 | 1) {
     setClasses((cs) => cs.map((c) => {
       if (c.height !== height) return c;
@@ -42,10 +49,20 @@ export default function CommitClient({ slug, days }: { slug: string; days: strin
       const j = idx + dir;
       if (j < 0 || j >= order.length) return c;
       [order[idx], order[j]] = [order[j], order[idx]];
-      const renum = order.map((o, i) => ({ ...o, no: typeof o.no === "string" && String(o.no).startsWith("E") ? o.no : i + 1 }));
-      fetch(`/api/events/${slug}/commit`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ day, action: "saveOrder", height, order: renum.map((o) => o.entryId) }) }).catch(() => {});
-      return { ...c, order: renum, drawn: true };
+      saveClass(height, order);
+      return { ...c, order, drawn: true };
     }));
+  }
+  // Edit a single row's number/label (e.g. 6A) without renumbering anyone else.
+  function editNo(height: string, idx: number, value: string) {
+    setClasses((cs) => cs.map((c) => {
+      if (c.height !== height) return c;
+      const order = c.order.map((o, i) => (i === idx ? { ...o, no: value } : o));
+      return { ...c, order };
+    }));
+  }
+  function renumber(height: string) {
+    post({ action: "renumber", height });
   }
 
   return (
@@ -95,6 +112,9 @@ export default function CommitClient({ slug, days }: { slug: string; days: strin
                 <h2 className="text-lg font-bold text-slate-900 dark:text-white">{c.height}</h2>
                 <span className="text-xs text-slate-500 dark:text-slate-400">{c.total} binomio(s)</span>
                 {!c.drawn && <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-900/50 dark:text-amber-300">sin sortear</span>}
+                {!committed && c.drawn && (
+                  <button onClick={() => renumber(c.height)} className="ml-auto rounded-md border border-slate-300 px-2 py-0.5 text-[11px] font-semibold text-slate-600 dark:border-slate-600 dark:text-slate-300">Renumerar 1..n</button>
+                )}
               </div>
               <table className="w-full text-sm">
                 <thead><tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:text-slate-400">
@@ -103,7 +123,18 @@ export default function CommitClient({ slug, days }: { slug: string; days: strin
                 <tbody>
                   {c.order.map((o, i) => (
                     <tr key={o.entryId} className="border-b border-slate-100 dark:border-slate-800">
-                      <td className="p-1.5 text-center font-bold text-slate-900 dark:text-white">{o.no || "—"}</td>
+                      <td className="p-1.5 text-center">
+                        {!committed && c.drawn ? (
+                          <input
+                            value={String(o.no ?? "")}
+                            onChange={(e) => editNo(c.height, i, e.target.value)}
+                            onBlur={() => saveClass(c.height, c.order)}
+                            className="w-12 rounded border border-slate-300 px-1 py-0.5 text-center font-bold text-slate-900 dark:border-slate-600 dark:bg-slate-800 dark:text-white"
+                          />
+                        ) : (
+                          <span className="font-bold text-slate-900 dark:text-white">{o.no || "—"}</span>
+                        )}
+                      </td>
                       <td className="p-1.5 text-slate-900 dark:text-white">{o.rider}{o.ext && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">EXT</span>}</td>
                       <td className="p-1.5 text-slate-700 dark:text-slate-300">{o.horse}</td>
                       <td className="p-1.5 text-center text-slate-700 dark:text-slate-300">{o.section}</td>

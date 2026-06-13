@@ -31,7 +31,12 @@ export function computeStatement(entries: BillingEntry[], config: EventConfig): 
   const exempt = new Set(config.pricing.nominationExempt);
   const isCancelled = (e: BillingEntry) => (e.status ?? "active") === "cancelled";
   const dayCount = (e: BillingEntry) => (Array.isArray(e.days) ? e.days.length : 0);
-  const discFactor = Math.max(0, 1 - (discount?.entryPercentOff ?? 0) / 100);
+  // Discounted entry fee for `n` starts at `price` each: percent off the total,
+  // or a flat amount off PER START (floored at 0).
+  const discounted = (full: number, n: number) =>
+    discount?.mode === "flat"
+      ? Math.max(0, full - (discount?.value ?? 0) * n)
+      : full * Math.max(0, 1 - (discount?.value ?? 0) / 100);
 
   let starts = 0;
   let entryFees = 0;
@@ -42,8 +47,9 @@ export function computeStatement(entries: BillingEntry[], config: EventConfig): 
     starts += n;
     const full = n * entryFeeForHeight(config, e.height);
     if (e.discount) {
-      entryFees += full * discFactor;
-      discountSavings += full * (1 - discFactor);
+      const charged = discounted(full, n);
+      entryFees += charged;
+      discountSavings += full - charged;
     } else {
       entryFees += full;
     }
@@ -78,7 +84,8 @@ export function computeStatement(entries: BillingEntry[], config: EventConfig): 
       if (!isCancelled(e)) continue;
       const n = dayCount(e);
       if (cancellation.mode === "no_refund") {
-        cancellationCharge += n * entryFeeForHeight(config, e.height) * (e.discount ? discFactor : 1);
+        const full = n * entryFeeForHeight(config, e.height);
+        cancellationCharge += e.discount ? discounted(full, n) : full;
       } else {
         cancellationCharge += n * cancellation.fee;
       }

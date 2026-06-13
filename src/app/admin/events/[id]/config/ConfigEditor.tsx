@@ -123,6 +123,9 @@ export default function ConfigEditor({
   const [nominationExempt, setNominationExempt] = useState<string[]>(initialConfig.pricing.nominationExempt);
   const [cancelMode, setCancelMode] = useState<"credit" | "fee" | "no_refund">(initialConfig.pricing.cancellation.mode);
   const [cancelFee, setCancelFee] = useState(String(initialConfig.pricing.cancellation.fee));
+  const [discountMode, setDiscountMode] = useState<"percent" | "flat">(initialConfig.pricing.discount.mode);
+  const [discountValue, setDiscountValue] = useState(String(initialConfig.pricing.discount.value));
+  const [discountWaives, setDiscountWaives] = useState(initialConfig.pricing.discount.waivesNomination);
   const [extempSections, setExtempSections] = useState<string[]>(initialConfig.extempSections);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
@@ -219,7 +222,7 @@ export default function ConfigEditor({
         entryFeeByHeight,
         nominationExempt,
         cancellation: { mode: cancelMode, fee: Number(cancelFee) || 0 },
-        discount: { entryPercentOff: 50, waivesNomination: true },
+        discount: { mode: discountMode, value: Number(discountValue) || 0, waivesNomination: discountWaives },
       },
       extempSections,
     };
@@ -533,6 +536,23 @@ export default function ConfigEditor({
               <input type="number" className={input + " w-full"} value={cancelFee} onChange={(e) => setCancelFee(e.target.value)} />
             </div>
           )}
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">Descuento</label>
+            <select value={discountMode} onChange={(e) => setDiscountMode(e.target.value as "percent" | "flat")} className={input + " w-full"}>
+              <option value="percent">Porcentaje (%) sobre cuotas</option>
+              <option value="flat">Monto fijo (MXN) por salida</option>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1.5 block text-sm font-semibold text-slate-700">{discountMode === "percent" ? "Porcentaje (%)" : "Monto por salida (MXN)"}</label>
+            <input type="number" className={input + " w-full"} value={discountValue} onChange={(e) => setDiscountValue(e.target.value)} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+              <input type="checkbox" className="accent-blue-600" checked={discountWaives} onChange={(e) => setDiscountWaives(e.target.checked)} />
+              El descuento también exime la nominación
+            </label>
+          </div>
         </div>
 
         <div className="mt-4 max-w-xs">

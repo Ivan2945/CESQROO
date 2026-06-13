@@ -21,8 +21,9 @@ export type EventConfig = {
     nominationExempt: string[];
     // What a cancelled start costs: full credit (free), a fixed fee kept, or no refund.
     cancellation: { mode: "credit" | "fee" | "no_refund"; fee: number };
-    // The "Descuento" flag: % off entry fees, and (optionally) waives nomination.
-    discount: { entryPercentOff: number; waivesNomination: boolean };
+    // The "Descuento" flag: percent or flat ($/start) off entry fees, and
+    // (optionally) waives the nomination fee.
+    discount: { mode: "percent" | "flat"; value: number; waivesNomination: boolean };
   };
   // Extra sections only an admin can use for late (extemporáneo) entries.
   extempSections: string[];
@@ -46,7 +47,7 @@ export const TEMPLATE_CONFIG: EventConfig = {
     entryFeeByHeight: {},
     nominationExempt: ["Cruces"],
     cancellation: { mode: "credit", fee: 0 },
-    discount: { entryPercentOff: 50, waivesNomination: true },
+    discount: { mode: "percent", value: 50, waivesNomination: true },
   },
   extempSections: ["Training", "FC"],
 };
@@ -101,11 +102,17 @@ function normalizePricing(raw: unknown): EventConfig["pricing"] {
       mode: cMode === "fee" || cMode === "no_refund" ? cMode : "credit",
       fee: Number.isFinite(Number(p.cancellation?.fee)) ? Number(p.cancellation?.fee) : 0,
     },
-    discount: {
-      entryPercentOff: Number.isFinite(Number(p.discount?.entryPercentOff)) ? Number(p.discount?.entryPercentOff) : 50,
-      waivesNomination: p.discount?.waivesNomination !== false,
-    },
+    discount: normalizeDiscount(p.discount),
   };
+}
+
+// Normalize the discount, migrating the legacy { entryPercentOff } shape.
+function normalizeDiscount(raw: unknown): EventConfig["pricing"]["discount"] {
+  const d = (raw ?? {}) as Partial<EventConfig["pricing"]["discount"]> & { entryPercentOff?: number };
+  const mode = d.mode === "flat" ? "flat" : "percent";
+  let value = Number(d.value);
+  if (!Number.isFinite(value)) value = Number.isFinite(Number(d.entryPercentOff)) ? Number(d.entryPercentOff) : 50;
+  return { mode, value: Math.max(0, value), waivesNomination: d.waivesNomination !== false };
 }
 
 // Entry fee for a class (height), falling back to the default.

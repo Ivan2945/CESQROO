@@ -45,10 +45,19 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
       const inClass = entries.filter((e) => e.height === height && (Array.isArray(e.days) ? e.days : []).includes(day));
       if (inClass.length === 0) return null;
       const saved = orderByHeight.get(height);
-      const order = saved && saved.length
-        ? saved.map((o) => { const e = entryById.get(o.entry_id); return { entryId: o.entry_id, no: o.no, rider: e?.rider_name || "", horse: e?.horse_name || "", section: e?.section || "", ext: extById.get(o.entry_id) || false }; })
-        : null; // not drawn yet
-      return { height, total: inClass.length, drawn: !!order, order: order ?? inClass.map((e) => ({ entryId: e.id, no: "", rider: e.rider_name, horse: e.horse_name, section: e.section, ext: !!e.is_extemp })) };
+      let order: { entryId: string; no: number | string; rider: string; horse: string; section: string; ext: boolean }[] | null = null;
+      if (saved && saved.length) {
+        // Saved order (only entries that still exist & are active)…
+        const inOrder = new Set<string>();
+        order = saved
+          .filter((o) => entryById.has(o.entry_id))
+          .map((o) => { const e = entryById.get(o.entry_id)!; inOrder.add(o.entry_id); return { entryId: o.entry_id, no: o.no, rider: e.rider_name, horse: e.horse_name, section: e.section, ext: extById.get(o.entry_id) || false }; });
+        // …plus any active entry NOT yet in the order (e.g. a fresh extemp), so
+        // nothing is ever hidden. Appended for the admin to position.
+        const missing = inClass.filter((e) => !inOrder.has(e.id));
+        order = [...order, ...missing.map((e) => ({ entryId: e.id, no: "" as number | string, rider: e.rider_name, horse: e.horse_name, section: e.section, ext: !!e.is_extemp }))];
+      }
+      return { height, total: inClass.length, drawn: !!order, order: order ?? inClass.map((e) => ({ entryId: e.id, no: "" as number | string, rider: e.rider_name, horse: e.horse_name, section: e.section, ext: !!e.is_extemp })) };
     })
     .filter(Boolean);
 

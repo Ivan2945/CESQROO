@@ -34,8 +34,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   }
   if (!b.clubId || !b.height || !b.day || !b.section) return Response.json({ error: "Faltan datos (club, altura, día o sección)." }, { status: 400 });
 
-  const { data: event } = await supabaseAdmin.from("events").select("id").eq("slug", slug).single();
+  const { data: event } = await supabaseAdmin.from("events").select("id, config").eq("slug", slug).single();
   if (!event) return Response.json({ error: "Evento no encontrado." }, { status: 404 });
+  const extempSections: string[] = Array.isArray(event.config?.extempSections) ? event.config.extempSections : ["Training", "FC"];
 
   // Idempotency: if this client-generated entry already exists (a re-sync),
   // do nothing — avoids duplicate riders/horses on retry.
@@ -108,6 +109,27 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     .select("id")
     .single();
   if (entErr || !entry) return Response.json({ error: "No se pudo agregar el binomio: " + (entErr?.message ?? "") }, { status: 500 });
+
+  // If the class already has a committed start order, slot the new binomio in:
+  // END if Training/FC or the class is in session; otherwise FRONT (1A, 1B…).
+  {
+    type StartItem = { entry_id: string; no: number | string };
+    const { data: setupRow } = await supabaseAdmin
+      .from("event_class_setup").select("id, start_order, status").eq("event_id", event.id).eq("height", b.height).eq("day", b.day).maybeSingle();
+    const existing = (setupRow?.start_order as StartItem[] | null) ?? [];
+    if (setupRow && existing.length) {
+      const goesEnd = setupRow.status === "in_progress" || extempSections.includes(b.section);
+      let start_order: StartItem[];
+      if (goesEnd) {
+        const maxNum = existing.reduce((m, o) => { const n = Number(o.no); return Number.isFinite(n) && n > m ? n : m; }, 0);
+        start_order = [...existing, { entry_id: entry.id, no: maxNum + 1 }];
+      } else {
+        const frontLetter = existing.filter((o) => /^1[A-Za-z]+$/.test(String(o.no))).length;
+        start_order = [{ entry_id: entry.id, no: `1${String.fromCharCode(65 + frontLetter)}` }, ...existing];
+      }
+      await supabaseAdmin.from("event_class_setup").update({ start_order }).eq("id", setupRow.id);
+    }
+  }
 
   return Response.json({
     entry: {

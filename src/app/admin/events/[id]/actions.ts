@@ -45,6 +45,93 @@ export async function deleteEntryAction(
   return { ok: true, data: undefined, message: "Participación eliminada." };
 }
 
+// Admin: manually add a participation (binomio) to any club. Picks an existing
+// rider/horse (by id) or creates one by name; attaches to the club's single
+// submission (creating it if needed); positions in a committed start order.
+export type AddEntryInput = {
+  eventId: string;
+  clubId: string;
+  riderId?: string | null;
+  riderName: string;
+  horseId?: string | null;
+  horseName: string;
+  height: string;
+  section: string;
+  days: string[];
+  isExtemp: boolean;
+};
+
+export async function addEntryAction(input: AddEntryInput): Promise<ActionResult<void>> {
+  if (!(await isAdminUser())) return { ok: false, message: "Solo un administrador puede agregar participaciones." };
+  const rider = input.riderName.trim();
+  const horse = input.horseName.trim();
+  if (!input.clubId) return { ok: false, message: "Seleccione un club." };
+  if (!rider || !horse) return { ok: false, message: "Escriba jinete y caballo." };
+  if (!input.height || !input.section) return { ok: false, message: "Elija altura y sección." };
+  if (!Array.isArray(input.days) || input.days.length === 0) return { ok: false, message: "Elija al menos un día." };
+
+  const { data: event } = await supabaseAdmin.from("events").select("id, config, day_state").eq("id", input.eventId).single();
+  if (!event) return { ok: false, message: "Evento no encontrado." };
+  const extempSections: string[] = Array.isArray(event.config?.extempSections) ? event.config.extempSections : ["Training", "FC"];
+  const dayState = (event.day_state ?? {}) as Record<string, { committed?: boolean }>;
+
+  const { data: club } = await supabaseAdmin.from("show_clubs").select("id, name").eq("id", input.clubId).single();
+  if (!club) return { ok: false, message: "Club no encontrado." };
+
+  // Resolve rider
+  let riderId = input.riderId || null;
+  if (!riderId) {
+    const parts = rider.split(/\s+/);
+    const { data: nr } = await supabaseAdmin.from("show_riders").insert({ first_name: parts[0] ?? "", last_name: parts.slice(1).join(" "), full_name: rider }).select("id").single();
+    riderId = nr?.id ?? null;
+  }
+  // Resolve horse
+  let horseId = input.horseId || null;
+  if (!horseId) {
+    const { data: nh } = await supabaseAdmin.from("show_horses").insert({ name: horse }).select("id").single();
+    horseId = nh?.id ?? null;
+  }
+
+  // One submission per club.
+  const { data: subs } = await supabaseAdmin
+    .from("event_submissions").select("id").eq("event_id", event.id).eq("club_id", club.id).order("created_at", { ascending: true }).limit(1);
+  let submissionId = subs?.[0]?.id as string | undefined;
+  if (!submissionId) {
+    const { data: ns, error } = await supabaseAdmin.from("event_submissions").insert({ event_id: event.id, club_id: club.id, club_name: club.name }).select("id").single();
+    if (error || !ns) return { ok: false, message: "No se pudo crear la inscripción del club." };
+    submissionId = ns.id;
+  }
+
+  const { data: entry, error: entErr } = await supabaseAdmin
+    .from("event_entries")
+    .insert({ event_id: event.id, submission_id: submissionId, club_id: club.id, rider_id: riderId, horse_id: horseId, rider_name: rider, horse_name: horse, height: input.height, section: input.section, days: input.days, is_extemp: input.isExtemp, status: "active" })
+    .select("id").single();
+  if (entErr || !entry) return { ok: false, message: "No se pudo agregar: " + (entErr?.message ?? "") };
+
+  // Position in any already-committed class (front 1A/1B, or end for Training/FC
+  // or a class in session).
+  type StartItem = { entry_id: string; no: number | string };
+  for (const d of input.days) {
+    if (!dayState[d]?.committed) continue;
+    const { data: setupRow } = await supabaseAdmin.from("event_class_setup").select("id, start_order, status").eq("event_id", event.id).eq("height", input.height).eq("day", d).maybeSingle();
+    const existing = (setupRow?.start_order as StartItem[] | null) ?? [];
+    if (!setupRow || existing.length === 0) continue;
+    const goesEnd = setupRow.status === "in_progress" || extempSections.includes(input.section);
+    let start_order: StartItem[];
+    if (goesEnd) {
+      const maxNum = existing.reduce((m, o) => { const n = Number(o.no); return Number.isFinite(n) && n > m ? n : m; }, 0);
+      start_order = [...existing, { entry_id: entry.id, no: maxNum + 1 }];
+    } else {
+      const frontLetter = existing.filter((o) => /^1[A-Za-z]+$/.test(String(o.no))).length;
+      start_order = [{ entry_id: entry.id, no: `1${String.fromCharCode(65 + frontLetter)}` }, ...existing];
+    }
+    await supabaseAdmin.from("event_class_setup").update({ start_order }).eq("id", setupRow.id);
+  }
+
+  revalidatePath(`/admin/events/${input.eventId}`);
+  return { ok: true, data: undefined, message: "Participación agregada." };
+}
+
 // Merge duplicate submissions: when a club submitted multiple forms, fold them
 // into one. SAFE — entries are REASSIGNED to the club's earliest submission, not
 // deleted; only the now-empty extra submission rows are removed.

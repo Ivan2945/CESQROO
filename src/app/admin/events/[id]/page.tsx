@@ -5,6 +5,7 @@ import { normalizeConfig } from "@/lib/events/config";
 import { computeStatement } from "@/lib/events/billing";
 import { DeleteSubmissionButton, DeleteEntryButton, CancelEntryButton, MergeDuplicatesButton } from "./DeleteButtons";
 import { EditEntryButton } from "./EditEntryButton";
+import { AddEntryButton } from "./AddEntryButton";
 
 const money = (n: number) => `$${n.toLocaleString("es-MX")}`;
 
@@ -113,6 +114,7 @@ export default async function AdminEventDetail({
               Resultados en vivo ↗
             </a>
             <MergeDuplicatesButton eventId={event.id} />
+            <AddEntryButton eventId={event.id} slug={event.slug} config={config} />
           </>
         )}
       </div>

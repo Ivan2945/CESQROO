@@ -219,6 +219,7 @@ export default function ConfigEditor({
         entryFeeByHeight,
         nominationExempt,
         cancellation: { mode: cancelMode, fee: Number(cancelFee) || 0 },
+        discount: { entryPercentOff: 50, waivesNomination: true },
       },
       extempSections,
     };

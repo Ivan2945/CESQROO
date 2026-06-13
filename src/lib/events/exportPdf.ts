@@ -290,6 +290,7 @@ export async function buildStatementsPdf(opts: {
     const s = club.stmt;
     lineItem(`Inscripciones (${s.starts} salida${s.starts === 1 ? "" : "s"})`, money(s.entryFees));
     lineItem(`Nominación (${s.nominationRiders} jinete${s.nominationRiders === 1 ? "" : "s"})`, money(s.nominationFees));
+    if (s.discountSavings > 0) lineItem("Descuento", "-" + money(s.discountSavings));
     if (s.cancellationCharge > 0) lineItem("Cancelaciones", money(s.cancellationCharge));
     yTop += 2;
     hline(page, yTop, "solid", d.left, d.right, d.black);

@@ -21,6 +21,8 @@ export type EventConfig = {
     nominationExempt: string[];
     // What a cancelled start costs: full credit (free), a fixed fee kept, or no refund.
     cancellation: { mode: "credit" | "fee" | "no_refund"; fee: number };
+    // The "Descuento" flag: % off entry fees, and (optionally) waives nomination.
+    discount: { entryPercentOff: number; waivesNomination: boolean };
   };
   // Extra sections only an admin can use for late (extemporáneo) entries.
   extempSections: string[];
@@ -44,6 +46,7 @@ export const TEMPLATE_CONFIG: EventConfig = {
     entryFeeByHeight: {},
     nominationExempt: ["Cruces"],
     cancellation: { mode: "credit", fee: 0 },
+    discount: { entryPercentOff: 50, waivesNomination: true },
   },
   extempSections: ["Training", "FC"],
 };
@@ -97,6 +100,10 @@ function normalizePricing(raw: unknown): EventConfig["pricing"] {
     cancellation: {
       mode: cMode === "fee" || cMode === "no_refund" ? cMode : "credit",
       fee: Number.isFinite(Number(p.cancellation?.fee)) ? Number(p.cancellation?.fee) : 0,
+    },
+    discount: {
+      entryPercentOff: Number.isFinite(Number(p.discount?.entryPercentOff)) ? Number(p.discount?.entryPercentOff) : 50,
+      waivesNomination: p.discount?.waivesNomination !== false,
     },
   };
 }

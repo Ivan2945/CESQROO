@@ -45,6 +45,45 @@ export async function deleteEntryAction(
   return { ok: true, data: undefined, message: "Participación eliminada." };
 }
 
+// Merge duplicate submissions: when a club submitted multiple forms, fold them
+// into one. SAFE — entries are REASSIGNED to the club's earliest submission, not
+// deleted; only the now-empty extra submission rows are removed.
+export async function mergeDuplicateSubmissionsAction(eventId: string): Promise<ActionResult<{ merged: number }>> {
+  if (!(await isAdminUser())) return { ok: false, message: "Solo un administrador puede combinar inscripciones." };
+
+  const { data: subs } = await supabaseAdmin
+    .from("event_submissions")
+    .select("id, club_id, created_at")
+    .eq("event_id", eventId)
+    .order("created_at", { ascending: true });
+  if (!subs || subs.length === 0) return { ok: true, data: { merged: 0 }, message: "Sin inscripciones." };
+
+  // Group by club; keep the earliest submission per club as the target.
+  const byClub = new Map<string, { id: string }[]>();
+  for (const s of subs) {
+    if (!s.club_id) continue;
+    (byClub.get(s.club_id) ?? byClub.set(s.club_id, []).get(s.club_id)!).push(s);
+  }
+
+  let merged = 0;
+  for (const group of byClub.values()) {
+    if (group.length < 2) continue;
+    const target = group[0].id;
+    const dupes = group.slice(1).map((g) => g.id);
+    // Move every entry from the duplicates onto the target submission.
+    const { error: moveErr } = await supabaseAdmin
+      .from("event_entries").update({ submission_id: target }).in("submission_id", dupes);
+    if (moveErr) return { ok: false, message: "No se pudieron mover las participaciones: " + moveErr.message };
+    // Remove the now-empty duplicate submission rows (entries already moved).
+    const { error: delErr } = await supabaseAdmin.from("event_submissions").delete().in("id", dupes);
+    if (delErr) return { ok: false, message: "No se pudieron eliminar duplicados: " + delErr.message };
+    merged += dupes.length;
+  }
+
+  revalidatePath(`/admin/events/${eventId}`);
+  return { ok: true, data: { merged }, message: merged === 0 ? "No había duplicados." : `Se combinaron ${merged} inscripción(es) duplicada(s).` };
+}
+
 // Manually edit a participation (admin fix-ups: wrong name, mistyped horse,
 // wrong class/section/days). Updates the entry, and — so the correction shows up
 // everywhere — also renames the linked show rider/horse record when its name

@@ -168,21 +168,42 @@ export async function POST(
     resolved.push({ rider_id, rider_name, horse_id, horse_name, entry: e });
   }
 
-  // ---- Insert the submission (club batch) ----
-  const { data: submission, error: subErr } = await supabaseAdmin
+  // ---- One submission per club: reuse the club's existing submission for this
+  // event (so multiple forms from the same club merge into one), else create. ----
+  const contactPatch = {
+    club_name: resolvedClubName,
+    representative: contact?.representative || null,
+    coach: contact?.coach || null,
+    phone: contact?.phone || null,
+    email: contact?.email || null,
+  };
+  let submission: { id: string } | null = null;
+  const { data: existingSub } = await supabaseAdmin
     .from("event_submissions")
-    .insert({
-      event_id: event.id,
-      club_id: resolvedClubId,
-      club_name: resolvedClubName,
-      representative: contact?.representative || null,
-      coach: contact?.coach || null,
-      phone: contact?.phone || null,
-      email: contact?.email || null,
-    })
     .select("id")
-    .single();
-  if (subErr || !submission) return bad("Error al guardar la inscripción: " + (subErr?.message ?? ""));
+    .eq("event_id", event.id)
+    .eq("club_id", resolvedClubId)
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (existingSub) {
+    submission = existingSub;
+    // Refresh the contact with the latest form values (don't wipe with blanks).
+    const patch: Record<string, string> = {};
+    if (contactPatch.representative) patch.representative = contactPatch.representative;
+    if (contactPatch.coach) patch.coach = contactPatch.coach;
+    if (contactPatch.phone) patch.phone = contactPatch.phone;
+    if (contactPatch.email) patch.email = contactPatch.email;
+    if (Object.keys(patch).length) await supabaseAdmin.from("event_submissions").update(patch).eq("id", existingSub.id);
+  } else {
+    const { data: created, error: subErr } = await supabaseAdmin
+      .from("event_submissions")
+      .insert({ event_id: event.id, club_id: resolvedClubId, ...contactPatch })
+      .select("id")
+      .single();
+    if (subErr || !created) return bad("Error al guardar la inscripción: " + (subErr?.message ?? ""));
+    submission = created;
+  }
 
   // ---- Insert the entries ----
   const rows = resolved.map((r) => ({
@@ -203,29 +224,40 @@ export async function POST(
   }));
 
   const { data: inserted, error: entErr } = await supabaseAdmin
-    .from("event_entries").insert(rows).select("id, height, days");
+    .from("event_entries").insert(rows).select("id, height, days, section");
   if (entErr) return bad("Error al guardar las participaciones: " + entErr.message);
 
-  // Extemp adds on an already-committed day go to the END of that class's
-  // running order (admin-side adds before class start are positioned in the
-  // scoring screen instead).
+  // Position extemps within each committed class. Rule: they go to the END only
+  // if the section is Training/FC OR the class is already in session; otherwise
+  // they go to the FRONT, numbered 1A, 1B, … (1B ahead of 1A).
   if (extemp && inserted) {
     type StartItem = { entry_id: string; no: number | string };
-    const appendByClass = new Map<string, string[]>(); // "height|day" -> entryIds
+    const extSet = new Set(config.extempSections);
+    const byClass = new Map<string, { id: string; section: string }[]>();
     for (const e of inserted) {
       for (const d of (Array.isArray(e.days) ? e.days : [])) {
         if (dayState[d]?.committed) {
           const k = `${e.height}|${d}`;
-          (appendByClass.get(k) ?? appendByClass.set(k, []).get(k)!).push(e.id);
+          (byClass.get(k) ?? byClass.set(k, []).get(k)!).push({ id: e.id, section: e.section });
         }
       }
     }
-    for (const [k, ids] of appendByClass) {
+    for (const [k, items] of byClass) {
       const [height, d] = k.split("|");
       const { data: setupRow } = await supabaseAdmin
-        .from("event_class_setup").select("id, start_order").eq("event_id", event.id).eq("height", height).eq("day", d).maybeSingle();
+        .from("event_class_setup").select("id, start_order, status").eq("event_id", event.id).eq("height", height).eq("day", d).maybeSingle();
       const existing = (setupRow?.start_order as StartItem[] | null) ?? [];
-      const start_order = [...existing, ...ids.map((id, i) => ({ entry_id: id, no: existing.length + i + 1 }))];
+      const inSession = setupRow?.status === "in_progress";
+      let endNum = existing.reduce((m, o) => { const n = Number(o.no); return Number.isFinite(n) && n > m ? n : m; }, 0);
+      let frontLetter = existing.filter((o) => /^1[A-Za-z]+$/.test(String(o.no))).length;
+      const front: StartItem[] = [];
+      const end: StartItem[] = [];
+      for (const it of items) {
+        if (inSession || extSet.has(it.section)) { endNum += 1; end.push({ entry_id: it.id, no: endNum }); }
+        else { front.push({ entry_id: it.id, no: `1${String.fromCharCode(65 + frontLetter)}` }); frontLetter += 1; }
+      }
+      front.reverse(); // newest extemp furthest to the front (1B before 1A)
+      const start_order = [...front, ...existing, ...end];
       if (setupRow) await supabaseAdmin.from("event_class_setup").update({ start_order }).eq("id", setupRow.id);
       else await supabaseAdmin.from("event_class_setup").insert({ event_id: event.id, height, day: d, format: "table_a_jo", params: {}, start_order });
     }

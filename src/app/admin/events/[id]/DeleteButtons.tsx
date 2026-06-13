@@ -2,7 +2,29 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { deleteSubmissionAction, deleteEntryAction, setEntryStatusAction } from "./actions";
+import { deleteSubmissionAction, deleteEntryAction, setEntryStatusAction, mergeDuplicateSubmissionsAction } from "./actions";
+
+export function MergeDuplicatesButton({ eventId }: { eventId: string }) {
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={() => {
+        if (!confirm("¿Combinar inscripciones duplicadas? Cada club quedará con UNA sola inscripción; las participaciones se mueven, no se borran.")) return;
+        start(async () => {
+          const res = await mergeDuplicateSubmissionsAction(eventId);
+          alert(res && res.message ? res.message : "Listo.");
+          router.refresh();
+        });
+      }}
+      className="rounded-md border border-blue-300 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:bg-blue-50 disabled:opacity-50 dark:border-blue-800 dark:text-blue-300"
+    >
+      {pending ? "Combinando…" : "Combinar duplicados"}
+    </button>
+  );
+}
 
 export function CancelEntryButton({ entryId, eventId, cancelled }: { entryId: string; eventId: string; cancelled: boolean }) {
   const [pending, start] = useTransition();

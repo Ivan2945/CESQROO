@@ -3,7 +3,7 @@ import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeConfig } from "@/lib/events/config";
 import { computeStatement } from "@/lib/events/billing";
-import { DeleteSubmissionButton, DeleteEntryButton, CancelEntryButton } from "./DeleteButtons";
+import { DeleteSubmissionButton, DeleteEntryButton, CancelEntryButton, MergeDuplicatesButton } from "./DeleteButtons";
 import { EditEntryButton } from "./EditEntryButton";
 
 const money = (n: number) => `$${n.toLocaleString("es-MX")}`;
@@ -112,6 +112,7 @@ export default async function AdminEventDetail({
             <a href={`/resultados/${event.slug}`} target="_blank" className="text-sm font-semibold text-emerald-600">
               Resultados en vivo ↗
             </a>
+            <MergeDuplicatesButton eventId={event.id} />
           </>
         )}
       </div>

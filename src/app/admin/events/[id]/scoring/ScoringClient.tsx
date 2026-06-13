@@ -201,14 +201,20 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
     // Local-first: generate the id here so it works fully offline. Append to the
     // cached roster + working list immediately and queue the creation for sync.
     const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const extCount = boot.entries.filter((x) => x.isExtemp && x.height === height && (x.days || []).includes(day)).length;
     const nb = { ...boot, entries: [...boot.entries, { id, rider, horse, height, section: add.section, days: [day], isExtemp: true }] };
     await saveBootstrap(slug, nb);
     onSetupSaved(nb);
     await putNewEntry(slug, { entryId: id, clubId: add.clubId, riderName: rider, horseName: horse, height, day, section: add.section });
-    // Position rule: before the class starts → front; once in progress → end.
-    const newRow = { entryId: id, no: `E${extCount + 1}`, rider, horse, section: add.section, ext: true, f1: "", t1: "", status1: "OK", f2: "", t2: "", status2: "OK", scored: false, committed: false };
-    setRows((rs) => (classStatus === "in_progress" ? [...rs, newRow] : [newRow, ...rs]));
+    // Position rule: END only if Training/FC section OR the class is in session;
+    // otherwise FRONT, numbered 1A, 1B, … (newest furthest to the front).
+    const goesEnd = (boot.config.extempSections || []).includes(add.section) || classStatus === "in_progress";
+    setRows((rs) => {
+      let no: string;
+      if (goesEnd) no = `E${rs.filter((r) => String(r.no).startsWith("E")).length + 1}`;
+      else no = `1${String.fromCharCode(65 + rs.filter((r) => /^1[A-Za-z]+$/.test(String(r.no))).length)}`;
+      const newRow = { entryId: id, no, rider, horse, section: add.section, ext: true, f1: "", t1: "", status1: "OK", f2: "", t2: "", status2: "OK", scored: false, committed: false };
+      return goesEnd ? [...rs, newRow] : [newRow, ...rs];
+    });
     setAdd({ clubId: "", rider: "", horse: "", section: "" });
     setAddOpen(false);
     setAdding("");

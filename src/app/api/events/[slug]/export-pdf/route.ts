@@ -99,9 +99,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   const entries: ExportEntry[] = (rows ?? [])
     .filter((r) => (r.status ?? "active") !== "cancelled" && Array.isArray(r.days) && (r.days as string[]).includes(day))
     .map((r) => ({
-      club: clubBySub.get(r.submission_id) ?? "—",
-      rider: r.rider_name,
-      horse: r.horse_name,
+      club: (clubBySub.get(r.submission_id) ?? "—").toUpperCase(),
+      rider: (r.rider_name ?? "").toUpperCase(),
+      horse: (r.horse_name ?? "").toUpperCase(),
       height: r.height,
       section: r.section,
       riderKey: r.rider_id ?? r.rider_name,

@@ -120,11 +120,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
       .filter(Boolean)
       .join(" · ");
     return {
-      clubName: s.club_name,
+      clubName: (s.club_name ?? "").toUpperCase(),
       contact,
       rows: rows.map((r) => ({
-        rider: r.rider_name,
-        horse: r.horse_name,
+        rider: (r.rider_name ?? "").toUpperCase(),
+        horse: (r.horse_name ?? "").toUpperCase(),
         height: r.height,
         section: r.section,
         days: r.days,

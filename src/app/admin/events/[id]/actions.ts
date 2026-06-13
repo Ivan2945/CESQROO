@@ -93,6 +93,8 @@ export type EditEntryInput = {
   eventId: string;
   riderName: string;
   horseName: string;
+  riderId?: string | null; // set when an EXISTING rider was picked -> re-point
+  horseId?: string | null;
   height: string;
   section: string;
   days: string[];
@@ -117,6 +119,10 @@ export async function updateEntryAction(input: EditEntryInput): Promise<ActionRe
     .single();
   if (!entry) return { ok: false, message: "Participación no encontrada." };
 
+  // Re-point to a different EXISTING rider/horse when one was picked from the list.
+  const riderRepoint = !!input.riderId && input.riderId !== entry.rider_id;
+  const horseRepoint = !!input.horseId && input.horseId !== entry.horse_id;
+
   const { error } = await supabaseAdmin
     .from("event_entries")
     .update({
@@ -127,20 +133,23 @@ export async function updateEntryAction(input: EditEntryInput): Promise<ActionRe
       days: input.days,
       circuit: input.circuit,
       discount: input.discount,
+      ...(riderRepoint ? { rider_id: input.riderId } : {}),
+      ...(horseRepoint ? { horse_id: input.horseId } : {}),
     })
     .eq("id", input.entryId);
   if (error) return { ok: false, message: error.message };
 
-  // Propagate name corrections to the canonical show records.
+  // Propagate typed name corrections to the canonical record — but ONLY when not
+  // re-pointing (a re-point should never rename the previously-linked rider/horse).
   if (input.renameRecord) {
-    if (entry.rider_id) {
+    if (!riderRepoint && entry.rider_id) {
       const parts = rider.split(/\s+/);
       await supabaseAdmin
         .from("show_riders")
         .update({ first_name: parts[0] ?? "", last_name: parts.slice(1).join(" "), full_name: rider })
         .eq("id", entry.rider_id);
     }
-    if (entry.horse_id) {
+    if (!horseRepoint && entry.horse_id) {
       await supabaseAdmin.from("show_horses").update({ name: horse }).eq("id", entry.horse_id);
     }
   }

@@ -171,7 +171,7 @@ export default async function AdminEventDetail({
                         const cancelled = (e.status ?? "active") === "cancelled";
                         return (
                           <tr key={e.id} className={"border-b border-slate-100 " + (cancelled ? "text-slate-400 line-through" : "")}>
-                            <td className="py-2 pr-3">
+                            <td className="py-2 pr-3 uppercase">
                               {e.rider_name}
                               {e.is_extemp && (
                                 <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
@@ -179,7 +179,7 @@ export default async function AdminEventDetail({
                                 </span>
                               )}
                             </td>
-                            <td className="py-2 pr-3">{e.horse_name}</td>
+                            <td className="py-2 pr-3 uppercase">{e.horse_name}</td>
                             <td className="py-2 pr-3">{e.height}</td>
                             <td className="py-2 pr-3">{e.section}</td>
                             <td className="py-2 pr-3">{(e.days ?? []).join(" + ") || "—"}</td>
@@ -188,7 +188,7 @@ export default async function AdminEventDetail({
                             {isAdmin && (
                               <td className="py-2 pr-3 text-right">
                                 <span className="inline-flex gap-3">
-                                  <EditEntryButton entry={e} eventId={event.id} config={config} />
+                                  <EditEntryButton entry={e} eventId={event.id} slug={event.slug} config={config} />
                                   <CancelEntryButton entryId={e.id} eventId={event.id} cancelled={cancelled} />
                                   <DeleteEntryButton entryId={e.id} eventId={event.id} />
                                 </span>

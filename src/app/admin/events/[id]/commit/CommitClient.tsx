@@ -135,8 +135,8 @@ export default function CommitClient({ slug, days }: { slug: string; days: strin
                           <span className="font-bold text-slate-900 dark:text-white">{o.no || "—"}</span>
                         )}
                       </td>
-                      <td className="p-1.5 text-slate-900 dark:text-white">{o.rider}{o.ext && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">EXT</span>}</td>
-                      <td className="p-1.5 text-slate-700 dark:text-slate-300">{o.horse}</td>
+                      <td className="p-1.5 uppercase text-slate-900 dark:text-white">{o.rider}{o.ext && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">EXT</span>}</td>
+                      <td className="p-1.5 uppercase text-slate-700 dark:text-slate-300">{o.horse}</td>
                       <td className="p-1.5 text-center text-slate-700 dark:text-slate-300">{o.section}</td>
                       <td className="p-1.5 text-right">
                         {!committed && c.drawn && (

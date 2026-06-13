@@ -56,7 +56,7 @@ export default function LiveClassClient({ slug, height, day }: { slug: string; h
       {data.current && (
         <div className="mb-5 rounded-xl border border-emerald-300 bg-emerald-50 p-4 dark:border-emerald-800 dark:bg-emerald-950/40">
           <p className="text-[11px] font-bold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">En pista ahora</p>
-          <p className="mt-0.5 text-lg font-bold text-slate-900 dark:text-white">#{data.current.no} {data.current.rider} <span className="font-normal text-slate-500 dark:text-slate-400">· {data.current.horse}</span></p>
+          <p className="mt-0.5 text-lg font-bold uppercase text-slate-900 dark:text-white">#{data.current.no} {data.current.rider} <span className="font-normal text-slate-500 dark:text-slate-400">· {data.current.horse}</span></p>
         </div>
       )}
 
@@ -75,8 +75,8 @@ export default function LiveClassClient({ slug, height, day }: { slug: string; h
                   <tr key={i} className={"border-b border-slate-100 dark:border-slate-800 " + (r.place === 1 ? "bg-emerald-50 dark:bg-emerald-950/40" : "")}>
                     <td className="p-2 text-center font-extrabold text-slate-900 dark:text-white">{r.place ?? "—"}</td>
                     <td className="p-2 text-center text-slate-700 dark:text-slate-300">{r.no}</td>
-                    <td className="p-2 text-slate-900 dark:text-white">{r.rider}</td>
-                    <td className="p-2 text-slate-700 dark:text-slate-300">{r.horse}</td>
+                    <td className="p-2 uppercase text-slate-900 dark:text-white">{r.rider}</td>
+                    <td className="p-2 uppercase text-slate-700 dark:text-slate-300">{r.horse}</td>
                     <td className="p-2 text-center text-slate-700 dark:text-slate-300">{r.section}</td>
                     <td className="p-2 text-center text-slate-700 dark:text-slate-300">{p2(r.jumpPens)}</td>
                     <td className="p-2 text-center font-bold text-slate-900 dark:text-white">{p2(r.totalPens)}</td>
@@ -98,7 +98,7 @@ export default function LiveClassClient({ slug, height, day }: { slug: string; h
             {data.remaining.map((r, i) => (
               <li key={i} className="flex gap-2">
                 <span className="w-8 shrink-0 font-mono text-slate-400 dark:text-slate-500">{r.no}</span>
-                <span>{r.rider} <span className="text-slate-400 dark:text-slate-500">· {r.horse} · {r.section}</span></span>
+                <span className="uppercase">{r.rider} <span className="text-slate-400 dark:text-slate-500">· {r.horse} · {r.section}</span></span>
               </li>
             ))}
           </ol>

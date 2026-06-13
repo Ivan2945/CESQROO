@@ -401,7 +401,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
 
       {lastScore && last && (
         <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 rounded-lg bg-slate-900 px-4 py-2.5 text-sm text-slate-200">
-          <span>Último: <b className="text-white">#{last.no} {last.rider} / {last.horse}</b></span>
+          <span>Último: <b className="text-white uppercase">#{last.no} {last.rider} / {last.horse}</b></span>
           <span>Lugar <b className="text-white">{lastScore.rankSection ?? "—"}º</b></span>
           <span>Obstáculos <b className="text-white">{p2(lastScore.jumpPens)}</b></span>
           <span>Total <b className="text-white">{p2(lastScore.totalPens)}</b></span>
@@ -411,7 +411,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
           <thead><tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-            <th className="p-2">No.</th><th className="p-2">Lugar</th><th className="p-2 text-left">Participante</th><th className="p-2 text-left">Caballo</th><th className="p-2">Secc.</th>
+            <th className="p-2">No.</th><th className="p-2">Lugar</th><th className="p-2 text-left">Binomio</th>
             <th className="p-2">Faltas</th><th className="p-2">Tiempo</th><th className="p-2">Estado</th>
             {hasR2 && <><th className="p-2">Faltas 2</th><th className="p-2">Tiempo 2</th></>}{hasStatus2 && <th className="p-2">Estado 2</th>}
           </tr></thead>
@@ -422,7 +422,10 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
                 <tr key={r.entryId} onFocus={() => markCurrent(r.entryId)} className={"border-b border-slate-200 " + (currentRef.current === r.entryId && classStatus === "in_progress" ? "ring-2 ring-emerald-400 " : "") + (r.scored ? "bg-blue-50" : "")}>
                   <td className="p-2 text-center font-bold">{r.no}</td>
                   <td className="p-2 text-center font-bold text-blue-700">{s?.rankSection != null ? s.rankSection + "º" : ""}</td>
-                  <td className="p-2">{r.rider}{r.ext && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">EXT</span>}</td><td className="p-2">{r.horse}</td><td className="p-2 text-center">{r.section}</td>
+                  <td className="p-2 text-left">
+                    <div className="font-semibold uppercase text-slate-900">{r.rider}{r.ext && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">EXT</span>}</div>
+                    <div className="text-xs uppercase text-slate-500">{r.horse} · {r.section}</div>
+                  </td>
                   <td className="p-2"><input value={r.f1} onChange={(e) => patch(r.entryId, { f1: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-40 rounded border border-slate-300 px-2 py-1" placeholder="obst. · RM" /></td>
                   <td className="p-2"><input type="number" step="0.01" value={r.t1} onChange={(e) => patch(r.entryId, { t1: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-20 rounded border border-slate-300 px-2 py-1 text-right" /></td>
                   <td className="p-2"><select value={r.status1} onChange={(e) => patch(r.entryId, { status1: e.target.value })} className="rounded border border-slate-300 px-1 py-1">{STATUSES.map((x) => <option key={x}>{x}</option>)}</select></td>
@@ -442,7 +445,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead><tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
-                <th className="p-2">Lugar</th><th className="p-2">No.</th><th className="p-2 text-left">Participante</th><th className="p-2 text-left">Caballo</th><th className="p-2">Secc.</th>
+                <th className="p-2">Lugar</th><th className="p-2">No.</th><th className="p-2 text-left">Binomio</th>
                 <th className="p-2">Obst.</th><th className="p-2">Total</th><th className="p-2">Puntos</th><th className="p-2">Est.</th><th className="p-2"></th>
               </tr></thead>
               <tbody>
@@ -451,7 +454,11 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
                   return (
                     <tr key={r.entryId} className={"border-b border-slate-200 " + (s.rankSection === 1 ? "bg-emerald-50" : s.rankSection == null ? "text-slate-400" : "")}>
                       <td className="p-2 text-center font-extrabold">{s.rankSection ?? "—"}</td>
-                      <td className="p-2 text-center">{r.no}</td><td className="p-2">{r.rider}{r.ext && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">EXT</span>}</td><td className="p-2">{r.horse}</td><td className="p-2 text-center">{r.section}</td>
+                      <td className="p-2 text-center">{r.no}</td>
+                      <td className="p-2 text-left">
+                        <div className="font-semibold uppercase">{r.rider}{r.ext && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">EXT</span>}</div>
+                        <div className="text-xs uppercase text-slate-500">{r.horse} · {r.section}</div>
+                      </td>
                       <td className="p-2 text-center">{p2(s.jumpPens)}</td><td className="p-2 text-center font-bold">{p2(s.totalPens)}</td>
                       <td className="p-2 text-center">{p2(points[r.entryId])}</td><td className="p-2 text-center">{r.status1}</td>
                       <td className="p-2 text-center"><button onClick={() => patch(r.entryId, { committed: false })} className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Editar</button></td>

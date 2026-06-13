@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { normalizeConfig, sectionsForHeight, type EventConfig } from "@/lib/events/config";
+import { Combobox } from "@/app/signup/[slug]/Combobox";
 import { updateEntryAction } from "./actions";
 
 type Entry = {
@@ -20,7 +21,7 @@ type Entry = {
 const field = "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-blue-600";
 const label = "block text-xs font-semibold text-slate-600 mb-1";
 
-export function EditEntryButton({ entry, eventId, config: rawConfig }: { entry: Entry; eventId: string; config: EventConfig }) {
+export function EditEntryButton({ entry, eventId, slug, config: rawConfig }: { entry: Entry; eventId: string; slug: string; config: EventConfig }) {
   const config = normalizeConfig(rawConfig);
   const [open, setOpen] = useState(false);
   const [pending, start] = useTransition();
@@ -29,12 +30,24 @@ export function EditEntryButton({ entry, eventId, config: rawConfig }: { entry: 
 
   const [rider, setRider] = useState(entry.rider_name);
   const [horse, setHorse] = useState(entry.horse_name);
+  const [riderId, setRiderId] = useState<string | null>(null);
+  const [horseId, setHorseId] = useState<string | null>(null);
   const [height, setHeight] = useState(entry.height);
   const [section, setSection] = useState(entry.section);
   const [days, setDays] = useState<string[]>(entry.days ?? []);
   const [circuit, setCircuit] = useState(entry.circuit);
   const [discount, setDiscount] = useState(entry.discount);
   const [renameRecord, setRenameRecord] = useState(true);
+
+  // Load the directory of riders/horses for the typeahead (once, when opened).
+  const [riders, setRiders] = useState<{ id: string; first_name: string; last_name: string }[]>([]);
+  const [horses, setHorses] = useState<{ id: string; name: string }[]>([]);
+  useEffect(() => {
+    if (!open || riders.length) return;
+    fetch(`/api/events/${slug}/roster`).then((r) => r.json()).then((d) => { setRiders(d.riders ?? []); setHorses(d.horses ?? []); }).catch(() => {});
+  }, [open, slug, riders.length]);
+  const riderItems = useMemo(() => riders.map((r) => ({ id: r.id, label: `${r.last_name}, ${r.first_name}` })), [riders]);
+  const horseItems = useMemo(() => horses.map((h) => ({ id: h.id, label: h.name })), [horses]);
 
   // Allow the configured sections for the height, plus Training/FC for extemp.
   const sectionOpts = [
@@ -43,7 +56,7 @@ export function EditEntryButton({ entry, eventId, config: rawConfig }: { entry: 
   ].filter((v, i, a) => a.indexOf(v) === i);
 
   function reset() {
-    setRider(entry.rider_name); setHorse(entry.horse_name); setHeight(entry.height);
+    setRider(entry.rider_name); setHorse(entry.horse_name); setRiderId(null); setHorseId(null); setHeight(entry.height);
     setSection(entry.section); setDays(entry.days ?? []); setCircuit(entry.circuit);
     setDiscount(entry.discount); setRenameRecord(true); setErr("");
   }
@@ -51,7 +64,7 @@ export function EditEntryButton({ entry, eventId, config: rawConfig }: { entry: 
   function save() {
     setErr("");
     start(async () => {
-      const res = await updateEntryAction({ entryId: entry.id, eventId, riderName: rider, horseName: horse, height, section, days, circuit, discount, renameRecord });
+      const res = await updateEntryAction({ entryId: entry.id, eventId, riderName: rider, horseName: horse, riderId, horseId, height, section, days, circuit, discount, renameRecord });
       if (res && !res.ok) { setErr(res.message); return; }
       setOpen(false);
       router.refresh();
@@ -71,11 +84,27 @@ export function EditEntryButton({ entry, eventId, config: rawConfig }: { entry: 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="sm:col-span-2">
                 <label className={label}>Jinete</label>
-                <input className={field} value={rider} onChange={(e) => setRider(e.target.value)} />
+                <Combobox
+                  placeholder="Escriba para buscar…"
+                  query={rider}
+                  items={riderItems}
+                  onQueryChange={(t) => { setRider(t); setRiderId(null); }}
+                  onSelectExisting={(id, lbl) => { setRider(lbl); setRiderId(id); }}
+                  onCreateNew={(t) => { setRider(t); setRiderId(null); }}
+                  createLabel={(t) => `Usar “${t}” (corrige el nombre)`}
+                />
               </div>
               <div className="sm:col-span-2">
                 <label className={label}>Caballo</label>
-                <input className={field} value={horse} onChange={(e) => setHorse(e.target.value)} />
+                <Combobox
+                  placeholder="Escriba para buscar…"
+                  query={horse}
+                  items={horseItems}
+                  onQueryChange={(t) => { setHorse(t); setHorseId(null); }}
+                  onSelectExisting={(id, lbl) => { setHorse(lbl); setHorseId(id); }}
+                  onCreateNew={(t) => { setHorse(t); setHorseId(null); }}
+                  createLabel={(t) => `Usar “${t}” (corrige el nombre)`}
+                />
               </div>
               <div>
                 <label className={label}>Altura</label>

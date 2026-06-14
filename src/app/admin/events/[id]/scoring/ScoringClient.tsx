@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Combobox } from "@/app/signup/[slug]/Combobox";
 import {
   scoreClass,
   sectionPoints,
@@ -184,27 +185,40 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
   const [lastId, setLastId] = useState<string | null>(null);
   const [savedMsg, setSavedMsg] = useState("");
   const [addOpen, setAddOpen] = useState(false);
-  const [add, setAdd] = useState({ clubId: "", rider: "", horse: "", section: "", email: "" });
+  const [add, setAdd] = useState({ clubId: "", rider: "", horse: "", section: "" });
+  const [addRiderId, setAddRiderId] = useState<string | null>(null);
+  const [addHorseId, setAddHorseId] = useState<string | null>(null);
   const [adding, setAdding] = useState<string>("");
 
   const sectionOptions = useMemo(
     () => [...new Set([...(boot.config.sections || []), ...(boot.config.extempSections || [])])],
     [boot.config]
   );
+  // Rider/horse suggestions from the cached roster (works offline). Deduped by id.
+  const riderOptions = useMemo(() => {
+    const m = new Map<string, string>();
+    boot.entries.forEach((e) => { const id = e.riderKey || e.rider; if (id && !m.has(id)) m.set(id, e.rider); });
+    return [...m.entries()].map(([id, label]) => ({ id, label }));
+  }, [boot.entries]);
+  const horseOptions = useMemo(() => {
+    const m = new Map<string, string>();
+    boot.entries.forEach((e) => { const id = e.horseKey || e.horse; if (id && !m.has(id)) m.set(id, e.horse); });
+    return [...m.entries()].map(([id, label]) => ({ id, label }));
+  }, [boot.entries]);
 
   // Add a late binomio to this class. Flags it is_extemp; numbered E1, E2, … by
   // how many extemporáneos are already in the class. Same billing as any entry.
   async function addBinomio() {
     const rider = add.rider.trim();
     const horse = add.horse.trim();
-    if (!add.clubId || !rider || !horse || !add.section || !add.email.trim()) { setAdding("Complete club, jinete, caballo, sección y correo."); return; }
+    if (!add.clubId || !rider || !horse || !add.section) { setAdding("Complete club, jinete, caballo y sección."); return; }
     // Local-first: generate the id here so it works fully offline. Append to the
     // cached roster + working list immediately and queue the creation for sync.
     const id = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `tmp-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    const nb = { ...boot, entries: [...boot.entries, { id, rider, horse, height, section: add.section, days: [day], isExtemp: true }] };
+    const nb = { ...boot, entries: [...boot.entries, { id, rider, horse, height, section: add.section, days: [day], isExtemp: true, riderKey: addRiderId ?? undefined, horseKey: addHorseId ?? undefined }] };
     await saveBootstrap(slug, nb);
     onSetupSaved(nb);
-    await putNewEntry(slug, { entryId: id, clubId: add.clubId, riderName: rider, horseName: horse, height, day, section: add.section, email: add.email.trim() });
+    await putNewEntry(slug, { entryId: id, clubId: add.clubId, riderId: addRiderId, riderName: rider, horseId: addHorseId, horseName: horse, height, day, section: add.section });
     // Position rule: END only if Training/FC section OR the class is in session;
     // otherwise FRONT, numbered 1A, 1B, … (newest furthest to the front).
     const goesEnd = (boot.config.extempSections || []).includes(add.section) || classStatus === "in_progress";
@@ -215,10 +229,24 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
       const newRow = { entryId: id, no, rider, horse, section: add.section, ext: true, f1: "", t1: "", status1: "OK", f2: "", t2: "", status2: "OK", scored: false, committed: false };
       return goesEnd ? [...rs, newRow] : [newRow, ...rs];
     });
-    setAdd({ clubId: "", rider: "", horse: "", section: "", email: "" });
+    setAdd({ clubId: "", rider: "", horse: "", section: "" });
+    setAddRiderId(null); setAddHorseId(null);
     setAddOpen(false);
     setAdding("");
     flushQueue(slug).catch(() => {}); // opportunistic sync if online
+  }
+
+  // Change a binomio's section on the fly (re-ranks immediately; persists to the
+  // entry so the public ranking + exports follow). Best-effort online.
+  function setRowSection(entryId: string, section: string) {
+    setRows((rs) => rs.map((r) => (r.entryId === entryId ? { ...r, section } : r)));
+    const nb = { ...boot, entries: boot.entries.map((e) => (e.id === entryId ? { ...e, section } : e)) };
+    saveBootstrap(slug, nb).catch(() => {});
+    onSetupSaved(nb);
+    fetch(`/api/events/${slug}/scoring/set-section`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ entryId, section }),
+    }).catch(() => {});
   }
 
   // ---- Live state for the public view (status + current rider) ----
@@ -380,12 +408,18 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
               {boot.clubs.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-[11px] font-semibold text-slate-600"><span>Participante</span>
-            <input value={add.rider} onChange={(e) => setAdd({ ...add, rider: e.target.value })} className="rounded border border-slate-300 px-2 py-1" placeholder="Nombre Apellido" /></label>
-          <label className="flex flex-col gap-1 text-[11px] font-semibold text-slate-600"><span>Caballo</span>
-            <input value={add.horse} onChange={(e) => setAdd({ ...add, horse: e.target.value })} className="rounded border border-slate-300 px-2 py-1" /></label>
-          <label className="flex flex-col gap-1 text-[11px] font-semibold text-slate-600"><span>Correo</span>
-            <input type="email" value={add.email} onChange={(e) => setAdd({ ...add, email: e.target.value })} className="rounded border border-slate-300 px-2 py-1" placeholder="correo@club.com" /></label>
+          <label className="flex flex-col gap-1 text-[11px] font-semibold text-slate-600" style={{ minWidth: 190 }}><span>Participante</span>
+            <Combobox placeholder="Buscar o crear…" query={add.rider} items={riderOptions}
+              onQueryChange={(t) => { setAdd((a) => ({ ...a, rider: t })); setAddRiderId(null); }}
+              onSelectExisting={(id, l) => { setAdd((a) => ({ ...a, rider: l })); setAddRiderId(id); }}
+              onCreateNew={(t) => { setAdd((a) => ({ ...a, rider: t })); setAddRiderId(null); }}
+              createLabel={(t) => `Crear jinete: “${t}”`} /></label>
+          <label className="flex flex-col gap-1 text-[11px] font-semibold text-slate-600" style={{ minWidth: 190 }}><span>Caballo</span>
+            <Combobox placeholder="Buscar o crear…" query={add.horse} items={horseOptions}
+              onQueryChange={(t) => { setAdd((a) => ({ ...a, horse: t })); setAddHorseId(null); }}
+              onSelectExisting={(id, l) => { setAdd((a) => ({ ...a, horse: l })); setAddHorseId(id); }}
+              onCreateNew={(t) => { setAdd((a) => ({ ...a, horse: t })); setAddHorseId(null); }}
+              createLabel={(t) => `Crear caballo: “${t}”`} /></label>
           <label className="flex flex-col gap-1 text-[11px] font-semibold text-slate-600"><span>Sección</span>
             <select value={add.section} onChange={(e) => setAdd({ ...add, section: e.target.value })} className="rounded border border-slate-300 px-2 py-1">
               <option value="">Seleccione…</option>
@@ -424,7 +458,12 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
                   <td className="p-2 text-center font-bold text-blue-700">{s?.rankSection != null ? s.rankSection + "º" : ""}</td>
                   <td className="p-2 text-left">
                     <div className="font-semibold uppercase text-slate-900">{r.rider}{r.ext && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">EXT</span>}</div>
-                    <div className="text-xs uppercase text-slate-500">{r.horse} · {r.section}</div>
+                    <div className="flex items-center gap-1 text-xs uppercase text-slate-500">
+                      <span>{r.horse} ·</span>
+                      <select value={r.section} onChange={(e) => setRowSection(r.entryId, e.target.value)} onFocus={() => markCurrent(r.entryId)} className="rounded border border-slate-300 px-1 py-0.5 text-[11px] uppercase">
+                        {[...new Set([r.section, ...sectionOptions])].filter(Boolean).map((sec) => <option key={sec} value={sec}>{sec}</option>)}
+                      </select>
+                    </div>
                   </td>
                   <td className="p-2"><input value={r.f1} onChange={(e) => patch(r.entryId, { f1: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-40 rounded border border-slate-300 px-2 py-1" placeholder="obst. · RM" /></td>
                   <td className="p-2"><input type="number" step="0.01" value={r.t1} onChange={(e) => patch(r.entryId, { t1: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-20 rounded border border-slate-300 px-2 py-1 text-right" /></td>

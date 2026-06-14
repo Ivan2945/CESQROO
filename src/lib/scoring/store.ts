@@ -76,6 +76,7 @@ async function saveResultsMap(slug: string, map: Record<string, ResultRow>) {
 export type QueuedEntry = {
   entryId: string; clubId: string; riderName: string; horseName: string;
   height: string; day: string; section: string; email?: string;
+  riderId?: string | null; horseId?: string | null;
 };
 async function getEntryQueue(slug: string): Promise<Record<string, QueuedEntry>> {
   return (await idbGet<Record<string, QueuedEntry>>(`entryq:${slug}`)) ?? {};

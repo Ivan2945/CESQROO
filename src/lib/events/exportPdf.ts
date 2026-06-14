@@ -32,7 +32,8 @@ function drawRow(
   font: PDFFont,
   colX: number[],
   colW: number[],
-  color: Color
+  color: Color,
+  rowH: number = ROW
 ) {
   cells.forEach((t, i) => {
     let s = String(t ?? "");
@@ -41,7 +42,7 @@ function drawRow(
     while (size > MIN_SIZE && font.widthOfTextAtSize(s, size) > maxW) size -= 0.5;
     while (s.length > 1 && font.widthOfTextAtSize(s, size) > maxW) s = s.slice(0, -1);
     const tw = font.widthOfTextAtSize(s, size);
-    const baseline = (ROW + size * 0.7) / 2;
+    const baseline = (rowH + size * 0.7) / 2;
     page.drawText(s, { x: colX[i] + (colW[i] - tw) / 2, y: PAGE_H - yTop - baseline, size, font, color });
   });
 }
@@ -149,6 +150,12 @@ export async function buildDayPdf(opts: {
   const d = await createBrandedDoc(opts);
   const { colW, colX } = colsFromWeights(COLW[variant], d.left, d.right);
 
+  // Compact per-class layout: a single small title line + tighter rows. Write
+  // variants (results/steward) keep a touch more row height for handwriting.
+  const TITLE_SIZE = 9;
+  const TITLE_ADV = 14;
+  const ROWH = isWrite ? 15 : 13;
+
   let page!: PDFPage;
   let yTop = 0;
   const newPage = () => {
@@ -157,44 +164,38 @@ export async function buildDayPdf(opts: {
   };
   newPage();
 
+  const drawHeaderRow = () => {
+    drawRow(page, headers, yTop, d.fontB, colX, colW, d.black, ROWH);
+    hline(page, yTop + ROWH, "solid", d.left, d.right, d.black);
+    yTop += ROWH;
+  };
+
   classes.forEach((cb, ci) => {
     if (ci > 0) {
       if (pageBreaks) {
         newPage();
       } else {
-        const needed = 22 + 26 + ROW + ROW + 8;
+        const needed = TITLE_ADV + ROWH + ROWH + 4;
         if (yTop + needed > PAGE_H - M) newPage();
-        else yTop += 12;
+        else yTop += 8;
       }
     }
 
-    page.drawText(`Prueba ${cb.index}`, { x: d.left, y: PAGE_H - yTop - 14, size: 13, font: d.fontB, color: d.black });
-    yTop += 22;
-    page.drawText(cb.height, { x: d.left, y: PAGE_H - yTop - 13, size: 12, font: d.fontB, color: d.black });
-    yTop += 26;
+    page.drawText(`Prueba ${cb.index} · ${cb.height}`, { x: d.left, y: PAGE_H - yTop - TITLE_SIZE, size: TITLE_SIZE, font: d.fontB, color: d.black });
+    yTop += TITLE_ADV;
 
-    drawRow(page, headers, yTop, d.fontB, colX, colW, d.black);
-    hline(page, yTop + ROW, "solid", d.left, d.right, d.black);
-    yTop += ROW;
+    drawHeaderRow();
 
     cb.order.forEach((e, i) => {
-      if (yTop + ROW > PAGE_H - M) {
+      if (yTop + ROWH > PAGE_H - M) {
         newPage();
-        page.drawText(`Prueba ${cb.index} (cont.) — ${cb.height}`, {
-          x: d.left,
-          y: PAGE_H - yTop - 13,
-          size: 12,
-          font: d.fontB,
-          color: d.black,
-        });
-        yTop += 26;
-        drawRow(page, headers, yTop, d.fontB, colX, colW, d.black);
-        hline(page, yTop + ROW, "solid", d.left, d.right, d.black);
-        yTop += ROW;
+        page.drawText(`Prueba ${cb.index} (cont.) · ${cb.height}`, { x: d.left, y: PAGE_H - yTop - TITLE_SIZE, size: TITLE_SIZE, font: d.fontB, color: d.black });
+        yTop += TITLE_ADV;
+        drawHeaderRow();
       }
-      drawRow(page, rowFor(variant, e.startNo ?? i + 1, e), yTop, d.font, colX, colW, d.black);
-      if (isWrite) hline(page, yTop + ROW, "dotted", d.left, d.right, d.gray);
-      yTop += ROW;
+      drawRow(page, rowFor(variant, e.startNo ?? i + 1, e), yTop, d.font, colX, colW, d.black, ROWH);
+      if (isWrite) hline(page, yTop + ROWH, "dotted", d.left, d.right, d.gray);
+      yTop += ROWH;
     });
   });
 

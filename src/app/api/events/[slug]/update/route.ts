@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { normalizeConfig, isValidPair, isValidDay } from "@/lib/events/config";
+import { normalizeConfig, isAllowedSection, isValidDay } from "@/lib/events/config";
 import type { UpdatePayload, EntryInput } from "@/lib/types/events";
 
 export const dynamic = "force-dynamic";
@@ -51,7 +51,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     const hasHorse = !!e.horseId || !!e.newHorseName?.trim();
     if (!hasRider) return `Participación ${n}: seleccione o cree un jinete.`;
     if (!hasHorse) return `Participación ${n}: seleccione o cree un caballo.`;
-    if (!isValidPair(config, e.height, e.section)) return `Participación ${n}: altura/sección no válida.`;
+    if (!isAllowedSection(config, e.height, e.section)) return `Participación ${n}: altura/sección no válida.`;
     if (!Array.isArray(e.days) || e.days.length === 0) return `Participación ${n}: elija al menos un día.`;
     if (!e.days.every((d) => isValidDay(config, d))) return `Participación ${n}: día no válido.`;
     return null;

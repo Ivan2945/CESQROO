@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { normalizeConfig, sectionsForHeight } from "@/lib/events/config";
+import { normalizeConfig, selectableSections } from "@/lib/events/config";
 import type { ClubOption, EventRow, RosterRider, RosterHorse, ExistingEntry, EntryInput } from "@/lib/types/events";
 import { Combobox, card, fieldInput, fieldLabel } from "../Combobox";
 
@@ -132,7 +132,7 @@ export default function EditClient({ slug }: { slug: string }) {
       rs.map((r, idx) => {
         if (idx !== i) return r;
         const next = { ...r, ...patch };
-        if ("height" in patch && !sectionsForHeight(config, next.height).includes(next.section)) next.section = "";
+        if ("height" in patch && !selectableSections(config, next.height).includes(next.section)) next.section = "";
         return next;
       })
     );
@@ -298,7 +298,7 @@ export default function EditClient({ slug }: { slug: string }) {
             <h2 className="mb-3 text-lg font-semibold text-slate-900">Participaciones ({rows.length})</h2>
             <div className="space-y-4">
               {rows.map((r, i) => {
-                const allowed = r.height ? sectionsForHeight(config, r.height) : [];
+                const allowed = r.height ? selectableSections(config, r.height) : [];
                 return (
                   <div key={r.id ?? `new-${i}`} className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
                     <div className="mb-3 flex items-center justify-between">

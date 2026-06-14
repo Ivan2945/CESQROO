@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { normalizeConfig, sectionsForHeight } from "@/lib/events/config";
+import { normalizeConfig, selectableSections } from "@/lib/events/config";
 import type { ClubOption, EventRow, RosterRider, RosterHorse, EntryInput } from "@/lib/types/events";
 import { Combobox } from "./Combobox";
 
@@ -81,9 +81,8 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
 
   const isOther = clubId === OTHER;
   const config = normalizeConfig(event?.config);
-  // In extemp (late-add) mode, Training/FC become selectable for any height.
-  const sectionsFor = (h: string) =>
-    extemp ? [...sectionsForHeight(config, h), ...config.extempSections] : sectionsForHeight(config, h);
+  // Training/FC are always selectable for any height (on both forms).
+  const sectionsFor = (h: string) => selectableSections(config, h);
   // A day is closed for normal sign-ups once it's closed/committed. The extemp
   // form bypasses this — late additions are its whole purpose.
   const dayClosed = (d: string) => {

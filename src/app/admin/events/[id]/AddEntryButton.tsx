@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { normalizeConfig, sectionsForHeight, type EventConfig } from "@/lib/events/config";
+import { normalizeConfig, selectableSections, type EventConfig } from "@/lib/events/config";
 import { Combobox } from "@/app/signup/[slug]/Combobox";
 import { addEntryAction } from "./actions";
 
@@ -38,7 +38,7 @@ export function AddEntryButton({ eventId, slug, config: rawConfig }: { eventId: 
 
   const riderItems = useMemo(() => riders.map((r) => ({ id: r.id, label: `${r.last_name}, ${r.first_name}` })), [riders]);
   const horseItems = useMemo(() => horses.map((h) => ({ id: h.id, label: h.name })), [horses]);
-  const sectionOpts = [...sectionsForHeight(config, height), ...(isExtemp ? config.extempSections : [])].filter((v, i, a) => a.indexOf(v) === i);
+  const sectionOpts = selectableSections(config, height);
 
   function reset() {
     setClubId(""); setRider(""); setRiderId(null); setHorse(""); setHorseId(null);

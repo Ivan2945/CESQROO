@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { sectionsForHeight, type EventConfig } from "@/lib/events/config";
+import { selectableSections, type EventConfig } from "@/lib/events/config";
 
 // A row is a flat string map. Known field keys: club, representante, coach,
 // telefono, email, jinete, nombre, apellido, caballo, altura, seccion, dias,
@@ -70,7 +70,7 @@ export async function importEntries(
     const horse = norm(r.caballo);
     const height = canonical(norm(r.altura), config.heights);
     const rawSection = norm(r.seccion);
-    const section = height ? canonical(rawSection, sectionsForHeight(config, height)) : null;
+    const section = height ? canonical(rawSection, selectableSections(config, height)) : null;
 
     // Days: explicit "Dias" column (semicolon list) + per-day Yes/No columns
     const daySet = new Set<string>();

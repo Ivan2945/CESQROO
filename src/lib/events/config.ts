@@ -125,8 +125,20 @@ export function sectionsForHeight(config: EventConfig, height: string): string[]
   return Array.isArray(sbh) && sbh.length > 0 ? sbh : config.sections;
 }
 
+// Sections a user may pick for a height, INCLUDING the always-valid extra
+// sections (Training / FC). Used by the sign-up + edit forms and validation.
+export function selectableSections(config: EventConfig, height: string): string[] {
+  return [...new Set([...sectionsForHeight(config, height), ...config.extempSections])];
+}
+
 export function isValidPair(config: EventConfig, height: string, section: string): boolean {
   return config.heights.includes(height) && sectionsForHeight(config, height).includes(section);
+}
+
+// Looser check: any configured section OR an extra section (Training/FC), which
+// are always valid for any height.
+export function isAllowedSection(config: EventConfig, height: string, section: string): boolean {
+  return config.heights.includes(height) && selectableSections(config, height).includes(section);
 }
 
 export function isValidDay(config: EventConfig, day: string): boolean {

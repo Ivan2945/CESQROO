@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { normalizeConfig, sectionsForHeight, type EventConfig } from "@/lib/events/config";
+import { normalizeConfig, selectableSections, type EventConfig } from "@/lib/events/config";
 import { Combobox } from "@/app/signup/[slug]/Combobox";
 import { updateEntryAction } from "./actions";
 
@@ -49,11 +49,8 @@ export function EditEntryButton({ entry, eventId, slug, config: rawConfig }: { e
   const riderItems = useMemo(() => riders.map((r) => ({ id: r.id, label: `${r.last_name}, ${r.first_name}` })), [riders]);
   const horseItems = useMemo(() => horses.map((h) => ({ id: h.id, label: h.name })), [horses]);
 
-  // Allow the configured sections for the height, plus Training/FC for extemp.
-  const sectionOpts = [
-    ...sectionsForHeight(config, height),
-    ...(entry.is_extemp ? config.extempSections : []),
-  ].filter((v, i, a) => a.indexOf(v) === i);
+  // Configured sections for the height, plus the always-valid Training/FC.
+  const sectionOpts = selectableSections(config, height);
 
   function reset() {
     setRider(entry.rider_name); setHorse(entry.horse_name); setRiderId(null); setHorseId(null); setHeight(entry.height);

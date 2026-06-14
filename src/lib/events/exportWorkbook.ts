@@ -12,10 +12,6 @@ export type ExportEntry = {
   startNo?: number | string; // committed start number/label (1, 6A, 1B, …)
 };
 
-// Try to keep repeat appearances of the same rider OR horse this many
-// positions apart within a class. Best-effort when the class is too small.
-const MIN_GAP = 5;
-
 const CAT_ABBREV: Record<string, string> = {
   Abierta: "Ab",
   Libre: "Li",
@@ -32,49 +28,78 @@ function shuffle<T>(arr: T[]): T[] {
   return a;
 }
 
-// Penalty grows the closer two same-rider/same-horse entries are than MIN_GAP.
-function penalty(order: ExportEntry[]): number {
-  let p = 0;
-  for (let i = 0; i < order.length; i++) {
-    for (let j = i + 1; j < order.length && j - i < MIN_GAP; j++) {
-      if (order[i].riderKey === order[j].riderKey || order[i].horseKey === order[j].horseKey) {
-        p += MIN_GAP - (j - i);
-      }
+// Spacing quality of an order: maximize the SMALLEST gap between any two
+// appearances of the same rider OR horse, then maximize the total of those gaps.
+// Returned as a single number (min-gap dominates) — higher is better.
+function spacingScore(order: ExportEntry[]): number {
+  const pos: Record<string, number[]> = {};
+  order.forEach((e, i) => {
+    (pos["r:" + e.riderKey] ??= []).push(i);
+    (pos["h:" + e.horseKey] ??= []).push(i);
+  });
+  let minGap = Infinity;
+  let sum = 0;
+  let repeats = 0;
+  for (const k in pos) {
+    const arr = pos[k];
+    for (let i = 1; i < arr.length; i++) {
+      const g = arr[i] - arr[i - 1];
+      if (g < minGap) minGap = g;
+      sum += g;
+      repeats++;
     }
   }
-  return p;
+  if (repeats === 0) return 1e9; // nobody repeats — any order is fine
+  return minGap * 100000 + sum;
 }
 
-// Random draw with best-effort spacing of repeat riders/horses.
+// Greedy construction: at each slot, place the binomio whose rider AND horse
+// were used longest ago (spreads repeats as far apart as possible).
+function greedySpread(entries: ExportEntry[]): ExportEntry[] {
+  const pool = shuffle(entries);
+  const result: ExportEntry[] = [];
+  const lastAt = new Map<string, number>();
+  const NEG = -1e9;
+  while (pool.length) {
+    const pos = result.length;
+    let bestIdx = 0;
+    let bestD = -Infinity;
+    for (let i = 0; i < pool.length; i++) {
+      const e = pool[i];
+      const lr = lastAt.get("r:" + e.riderKey) ?? NEG;
+      const lh = lastAt.get("h:" + e.horseKey) ?? NEG;
+      const d = Math.min(pos - lr, pos - lh) + Math.random() * 0.01; // jitter breaks ties
+      if (d > bestD) { bestD = d; bestIdx = i; }
+    }
+    const [e] = pool.splice(bestIdx, 1);
+    lastAt.set("r:" + e.riderKey, pos);
+    lastAt.set("h:" + e.horseKey, pos);
+    result.push(e);
+  }
+  return result;
+}
+
+// Random draw that spaces repeat riders/horses AS FAR APART AS POSSIBLE.
 export function drawOrder(entries: ExportEntry[]): ExportEntry[] {
   if (entries.length <= 2) return shuffle(entries);
-  let best = shuffle(entries);
-  let bestP = penalty(best);
-
-  for (let attempt = 0; attempt < 60 && bestP > 0; attempt++) {
-    const cur = shuffle(entries);
-    let cp = penalty(cur);
-    // Local search: greedily swap pairs while it reduces the penalty.
-    for (let pass = 0; pass < 40 && cp > 0; pass++) {
-      let improved = false;
-      for (let i = 0; i < cur.length; i++) {
-        for (let j = i + 1; j < cur.length; j++) {
-          [cur[i], cur[j]] = [cur[j], cur[i]];
-          const np = penalty(cur);
-          if (np < cp) {
-            cp = np;
-            improved = true;
-          } else {
-            [cur[i], cur[j]] = [cur[j], cur[i]];
-          }
-        }
-      }
-      if (!improved) break;
-    }
-    if (cp < bestP) {
-      best = cur.slice();
-      bestP = cp;
-    }
+  let best = greedySpread(entries);
+  let bestScore = spacingScore(best);
+  for (let r = 0; r < 8; r++) {
+    const c = greedySpread(entries);
+    const s = spacingScore(c);
+    if (s > bestScore) { best = c; bestScore = s; }
+  }
+  // Hill-climb: random swaps kept only when they improve the spacing.
+  const n = best.length;
+  const iters = Math.min(5000, n * n * 4);
+  for (let it = 0; it < iters; it++) {
+    const i = Math.floor(Math.random() * n);
+    const j = Math.floor(Math.random() * n);
+    if (i === j) continue;
+    const cand = best.slice();
+    [cand[i], cand[j]] = [cand[j], cand[i]];
+    const s = spacingScore(cand);
+    if (s > bestScore) { best = cand; bestScore = s; }
   }
   return best;
 }

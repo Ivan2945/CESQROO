@@ -6,8 +6,8 @@ const PAGE_W = 612; // US Letter, points
 const PAGE_H = 792;
 const M = 40;
 const ROW = 18;
-const SIZE = 10;
-const MIN_SIZE = 6;
+const SIZE = 8; // list row font (2pt smaller than before)
+const MIN_SIZE = 5;
 
 const COLW: Record<Variant, number[]> = {
   impresion: [0.8, 3, 3.5, 2.6, 1.6],

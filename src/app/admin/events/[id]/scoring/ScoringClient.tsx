@@ -189,6 +189,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
   const [addRiderId, setAddRiderId] = useState<string | null>(null);
   const [addHorseId, setAddHorseId] = useState<string | null>(null);
   const [adding, setAdding] = useState<string>("");
+  const [queue, setQueue] = useState("");
 
   const sectionOptions = useMemo(
     () => [...new Set([...(boot.config.sections || []), ...(boot.config.extempSections || [])])],
@@ -359,9 +360,40 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
     setTimeout(() => setSavedMsg(""), 2500);
   }
 
-  function redraw() {
-    const order = buildStartList(boot.entries, height, day, 1);
-    setRows(order.map((o) => ({ entryId: o.entryId, no: o.no, rider: o.rider, horse: o.horse, section: o.section, f1: "", t1: "", status1: "OK", f2: "", t2: "", status2: "OK", scored: false, committed: false })));
+  // Persist the current order + numbers (labels kept exactly) to the class setup.
+  function saveOrder(ordered: Row[]) {
+    const startOrder = ordered.map((r) => ({ entry_id: r.entryId, no: r.no }));
+    fetch(`/api/events/${slug}/scoring/setup`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ height, day, format, params, startOrder }),
+    }).then(async (res) => {
+      if (!res.ok) return;
+      const setups = boot.setups.filter((s) => !(s.height === height && s.day === day));
+      setups.push({ height, day, format, params, start_order: startOrder });
+      const nb = { ...boot, setups };
+      await saveBootstrap(slug, nb);
+      onSetupSaved(nb);
+    }).catch(() => {});
+  }
+
+  // The ONLY way to reorder: type the start numbers (e.g. "5,7,6A,1") and bring
+  // them to the top of the list, in that order. Consumes the first each click.
+  function applyQueue() {
+    const seq = queue.split(/[,\s]+/).map((s) => s.trim().toUpperCase()).filter(Boolean);
+    if (seq.length === 0) return;
+    setRows((rs) => {
+      const orig = new Map(rs.map((r, i) => [r.entryId, i]));
+      const key = (r: Row) => seq.indexOf(String(r.no).trim().toUpperCase());
+      const next = [...rs].sort((a, b) => {
+        const ai = key(a), bi = key(b);
+        const ap = ai < 0 ? 1000 + (orig.get(a.entryId) ?? 0) : ai;
+        const bp = bi < 0 ? 1000 + (orig.get(b.entryId) ?? 0) : bi;
+        return ap - bp;
+      });
+      saveOrder(next);
+      return next;
+    });
+    setQueue((q) => q.replace(/^\s*[^,]*,?\s*/, ""));
   }
 
   function startSession() {
@@ -384,7 +416,8 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
         <select value={format} onChange={(e) => { setFormat(e.target.value); setParams(defaultParams(e.target.value)); }} className="rounded-lg border border-slate-300 px-2 py-1 text-sm">
           {FORMAT_KINDS.map((k) => <option key={k} value={k}>{FORMAT_LABELS[k]}</option>)}
         </select>
-        <button onClick={redraw} className="rounded-md bg-indigo-50 px-3 py-1 text-sm font-semibold text-indigo-700">Sortear orden</button>
+        <input value={queue} onChange={(e) => setQueue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); applyQueue(); } }} placeholder="Orden: 5,7,9…" inputMode="text" className="w-32 rounded-md border border-slate-300 px-2 py-1 text-sm" />
+        <button onClick={applyQueue} className="rounded-md bg-indigo-600 px-3 py-1 text-sm font-semibold text-white">Subir al inicio</button>
         {hasSession && <button onClick={startSession} className="rounded-md bg-blue-600 px-3 py-1 text-sm font-semibold text-white">Iniciar 2da ronda</button>}
         <button onClick={saveSetup} className="rounded-md bg-slate-800 px-3 py-1 text-sm font-semibold text-white">Guardar configuración</button>
         <button onClick={() => setAddOpen((v) => !v)} className="rounded-md bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-800">+ Agregar binomio</button>
@@ -454,7 +487,9 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
               const s = r.scored ? byId[r.entryId] : null;
               return (
                 <tr key={r.entryId} onFocus={() => markCurrent(r.entryId)} className={"border-b border-slate-200 " + (currentRef.current === r.entryId && classStatus === "in_progress" ? "ring-2 ring-emerald-400 " : "") + (r.scored ? "bg-blue-50" : "")}>
-                  <td className="p-2 text-center font-bold">{r.no}</td>
+                  <td className="p-2 text-center">
+                    <input value={String(r.no ?? "")} onChange={(e) => patch(r.entryId, { no: e.target.value })} onBlur={() => setRows((rs) => { saveOrder(rs); return rs; })} className="w-12 rounded border border-slate-300 px-1 py-0.5 text-center font-bold" />
+                  </td>
                   <td className="p-2 text-center font-bold text-blue-700">{s?.rankSection != null ? s.rankSection + "º" : ""}</td>
                   <td className="p-2 text-left">
                     <div className="font-semibold uppercase text-slate-900">{r.rider}{r.ext && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">EXT</span>}</div>

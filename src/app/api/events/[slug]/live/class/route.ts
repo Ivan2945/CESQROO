@@ -1,6 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { scoreClass } from "@/lib/scoring/formats";
-import { sectionPoints } from "@/lib/scoring/points";
 import { classFormatFromSetup, defaultFormatForHeight } from "@/lib/scoring/portal";
 import type { ScoreInput } from "@/lib/scoring/types";
 import { parseFaultShorthand, hasFallMarker } from "@/lib/scoring/faults";
@@ -76,19 +75,54 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
       };
     });
   const scored = scoreClass(fmt, inputs);
-  const pts = sectionPoints(scored);
 
-  const ranking = scored
-    .filter((s) => s.rankSection != null)
+  const status = setupRow?.status ?? "pending";
+  const hasR2 = ["table_a_jo", "two_phase", "two_phase_special", "optimum_two_round"].includes(format);
+  const optimumSec = Number(setupParams.optimumSec) || null;
+  // Ideal-time classes don't reveal the ranking until the class is finalized.
+  const showRanking = !(format === "optimum_window" && status !== "finished");
+
+  const orderIdx = new Map(order.map((o, i) => [o.entryId, i]));
+  const noByEntry = new Map(order.map((o) => [o.entryId, o.no]));
+  const eff = (t: number | null | undefined, f: string | null | undefined) => {
+    const x = num(t);
+    return x == null ? null : hasFallMarker(f ?? "") ? x + 6 : x;
+  };
+  // Per-round time allowances (for per-phase TOTAL faults = jump + time penalty).
+  const taN = (k: string) => Number(setupParams[k]) || 0;
+  const ta1 = format === "table_a_jo" ? taN("taSec") : taN("ta1Sec");
+  const ta2 = format === "table_a_jo" ? taN("joTaSec") : taN("ta2Sec");
+  const noTimePen = format === "optimum_two_round" || format === "optimum_window";
+  const timeOver = (t: number | null, ta: number) => (t != null && ta > 0 && t > ta ? Math.ceil(t - ta) : 0);
+
+  const dataRows = scored
+    .filter((s) => s.rankSection != null) // completed & placeable
     .map((s) => {
       const e = entryById.get(s.id);
+      const r = resByEntry.get(s.id)!;
+      const jf1 = parseFaultShorthand(r.r1_faults);
+      const jf2 = parseFaultShorthand(r.r2_faults);
+      const t1 = eff(r.r1_time, r.r1_faults);
+      const t2 = eff(r.r2_time, r.r2_faults);
+      const r2done = hasR2 && t2 != null;
+      const p1F = jf1 + (noTimePen ? 0 : timeOver(t1, ta1));
+      const p2F = r2done ? jf2 + (noTimePen ? 0 : timeOver(t2, ta2)) : null;
       return {
-        place: s.rankSection, no: order.find((o) => o.entryId === s.id)?.no ?? "",
+        entryId: s.id,
+        place: showRanking ? s.rankSection : null,
+        no: noByEntry.get(s.id) ?? "",
         rider: e?.rider_name || "", horse: e?.horse_name || "", section: s.section,
-        jumpPens: s.jumpPens, totalPens: s.totalPens, points: pts.get(s.id) ?? 0,
+        // Single round: ONE total-faults figure + the time.
+        faults: s.totalPens, time: t1,
+        // Multi-round: per-round TOTAL faults (jump + time) and round times.
+        p1F, p1T: t1, p2F, p2T: r2done ? t2 : null, totalF: p1F + (p2F ?? 0),
+        // Ideal time: obstacle faults + time always; time faults + diff only on release.
+        obstFaults: jf1, timeFaults: s.timePens, diff: format === "optimum_window" ? s.tieTime : null,
       };
-    })
-    .sort((a, b) => (a.section || "").localeCompare(b.section || "") || (a.place ?? 1e9) - (b.place ?? 1e9));
+    });
+  const ranking = showRanking
+    ? dataRows.sort((a, b) => (a.section || "").localeCompare(b.section || "") || (a.place ?? 1e9) - (b.place ?? 1e9))
+    : dataRows.sort((a, b) => (orderIdx.get(a.entryId) ?? 1e9) - (orderIdx.get(b.entryId) ?? 1e9));
 
   const remaining = order
     .filter((o) => !hasResult(o.entryId))
@@ -99,8 +133,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
 
   return Response.json({
     event: { name: event.name, slug: event.slug },
-    height, day,
-    status: setupRow?.status ?? "pending",
+    height, day, status, format, hasR2, optimumSec, showRanking,
     total: order.length,
     ranking,
     remaining,

@@ -98,7 +98,9 @@ export function formatHasSecondRound(format: string): boolean {
   return ["table_a_jo", "two_phase", "two_phase_special", "optimum_two_round"].includes(format);
 }
 export function formatHasSecondStatus(format: string): boolean {
-  return ["table_a_jo", "two_phase", "optimum_two_round"].includes(format);
+  // Two-phase special is one trip but can be eliminated in either phase, so it
+  // also needs a 2nd-phase status box.
+  return ["table_a_jo", "two_phase", "two_phase_special", "optimum_two_round"].includes(format);
 }
 // Formats whose 2nd round is a separate session (bring qualifiers back).
 export function formatHasSession(format: string): boolean {

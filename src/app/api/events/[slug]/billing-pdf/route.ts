@@ -1,7 +1,7 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeConfig } from "@/lib/events/config";
-import { computeStatement, type BillingEntry } from "@/lib/events/billing";
+import { computeStatement, npDaysFromResults, type BillingEntry } from "@/lib/events/billing";
 import { buildStatementsPdf, type StatementClub } from "@/lib/events/exportPdf";
 
 export const runtime = "nodejs";
@@ -32,6 +32,7 @@ type SubRow = {
 };
 
 type EntryRow = BillingEntry & {
+  id: string;
   submission_id: string;
   horse_name: string;
   discount: boolean;
@@ -97,10 +98,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   const subIds = submissions.map((s) => s.id);
   const { data: ent } = await supabaseAdmin
     .from("event_entries")
-    .select("submission_id, rider_id, rider_name, horse_name, height, section, days, circuit, discount, status, is_extemp")
+    .select("id, submission_id, rider_id, rider_name, horse_name, height, section, days, circuit, discount, status, is_extemp")
     .in("submission_id", subIds)
     .order("created_at", { ascending: true });
   const entries = (ent as EntryRow[]) ?? [];
+
+  // No-shows (NP) bill like a per-day cancellation.
+  const { data: npRows } = await supabaseAdmin
+    .from("event_results")
+    .select("entry_id, day, r1_status")
+    .eq("event_id", event.id)
+    .eq("r1_status", "NP");
+  const npDaysByEntry = npDaysFromResults(npRows);
 
   const bySub = new Map<string, EntryRow[]>();
   entries.forEach((e) => {
@@ -133,7 +142,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
         status: r.status,
         is_extemp: r.is_extemp,
       })),
-      stmt: computeStatement(rows, config),
+      stmt: computeStatement(rows, config, npDaysByEntry),
     };
   });
 

@@ -64,6 +64,39 @@ async function idbSet(key: string, val: unknown): Promise<void> {
 export const saveBootstrap = (slug: string, data: BootstrapData) => idbSet(`bootstrap:${slug}`, data);
 export const loadBootstrap = (slug: string) => idbGet<BootstrapData>(`bootstrap:${slug}`);
 
+// Re-pull the roster/setups from the server WITHOUT losing local work. Pushes
+// any pending edits first, then merges back any offline-created binomios that
+// haven't synced yet, and re-seeds results without clobbering newer local
+// edits. Returns the merged snapshot (already saved), or null if offline/failed.
+export async function refreshBootstrap(slug: string): Promise<BootstrapData | null> {
+  if (typeof navigator !== "undefined" && navigator.onLine === false) return null;
+  // Send local edits up first so the snapshot we pull reflects them.
+  await flushQueue(slug);
+  let data: BootstrapData;
+  try {
+    const res = await fetch(`/api/events/${slug}/scoring/bootstrap`, { cache: "no-store" });
+    if (!res.ok) return null;
+    data = (await res.json()) as BootstrapData;
+  } catch {
+    return null;
+  }
+  // Keep any offline-created binomios the server hasn't accepted yet.
+  const queue = await getEntryQueue(slug);
+  const serverIds = new Set(data.entries.map((e) => e.id));
+  for (const q of Object.values(queue)) {
+    if (!serverIds.has(q.entryId)) {
+      data.entries.push({
+        id: q.entryId, rider: q.riderName, horse: q.horseName,
+        height: q.height, section: q.section, days: [q.day],
+        riderKey: q.riderId ?? undefined, horseKey: q.horseId ?? undefined, isExtemp: true,
+      });
+    }
+  }
+  await saveBootstrap(slug, data);
+  await seedResults(slug, data.results);
+  return data;
+}
+
 // ---- Results (full map by entry|height|day) --------------------------------
 export async function loadResults(slug: string): Promise<Record<string, ResultRow>> {
   return (await idbGet<Record<string, ResultRow>>(`results:${slug}`)) ?? {};

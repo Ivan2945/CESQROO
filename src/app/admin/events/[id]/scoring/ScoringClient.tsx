@@ -20,6 +20,7 @@ import {
 import {
   saveBootstrap,
   loadBootstrap,
+  refreshBootstrap,
   seedResults,
   loadResults,
   putResult,
@@ -73,6 +74,8 @@ export default function ScoringClient({ slug, eventName }: { slug: string; event
   const [offline, setOffline] = useState(false);
   const [pending, setPending] = useState(0);
   const [sel, setSel] = useState<{ height: string; day: string } | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [refreshTick, setRefreshTick] = useState(0);
 
   // ---- Bootstrap: network first, fall back to cached snapshot ----
   useEffect(() => {
@@ -104,6 +107,25 @@ export default function ScoringClient({ slug, eventName }: { slug: string; event
     setOffline(r == null);
     setPending(await queueSize(slug));
   }, [slug]);
+
+  // Pull the latest roster/draw from the server (e.g. after late Training/FC
+  // sign-ups during a class). Merge-safe: never wipes scores entered offline.
+  const doRefresh = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      const data = await refreshBootstrap(slug);
+      if (data) {
+        setBoot(data);
+        setOffline(false);
+        setRefreshTick((t) => t + 1); // remount the open class so new binomios appear
+      } else {
+        setOffline(true);
+      }
+      setPending(await queueSize(slug));
+    } finally {
+      setRefreshing(false);
+    }
+  }, [slug]);
   useEffect(() => {
     const on = () => { setOffline(false); doSync(); };
     const off = () => setOffline(true);
@@ -125,13 +147,16 @@ export default function ScoringClient({ slug, eventName }: { slug: string; event
         </span>
         {pending > 0 && <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800">{pending} por sincronizar</span>}
         <button onClick={doSync} className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700">Sincronizar</button>
+        <button onClick={doRefresh} disabled={refreshing} className="rounded-md border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 disabled:opacity-50">
+          {refreshing ? "Actualizando…" : "Actualizar lista"}
+        </button>
       </div>
 
       {!sel ? (
         <ClassPicker boot={boot} onPick={(height, day) => setSel({ height, day })} />
       ) : (
         <ClassScoring
-          key={`${sel.height}|${sel.day}`}
+          key={`${sel.height}|${sel.day}|${refreshTick}`}
           slug={slug}
           boot={boot}
           height={sel.height}

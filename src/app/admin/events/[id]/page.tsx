@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeConfig } from "@/lib/events/config";
-import { computeStatement } from "@/lib/events/billing";
+import { computeStatement, npDaysFromResults } from "@/lib/events/billing";
 import { DeleteSubmissionButton, DeleteEntryButton, CancelEntryButton, MergeDuplicatesButton } from "./DeleteButtons";
 import { EditEntryButton } from "./EditEntryButton";
 import { AddEntryButton } from "./AddEntryButton";
@@ -78,6 +78,16 @@ export default async function AdminEventDetail({
     bySubmission.set(e.submission_id, arr);
   });
 
+  // No-shows (NP) bill like a cancellation, per day — pull the result statuses.
+  const { data: npRows } = entries.length
+    ? await supabaseAdmin
+        .from("event_results")
+        .select("entry_id, day, r1_status")
+        .eq("event_id", id)
+        .eq("r1_status", "NP")
+    : { data: [] as { entry_id: string; day: string; r1_status: string | null }[] };
+  const npDaysByEntry = npDaysFromResults(npRows);
+
   const totalEntries = entries.length;
 
   return (
@@ -129,7 +139,7 @@ export default async function AdminEventDetail({
         <div className="space-y-5">
           {(submissions as Submission[]).map((s) => {
             const rows = bySubmission.get(s.id) ?? [];
-            const stmt = computeStatement(rows, config);
+            const stmt = computeStatement(rows, config, npDaysByEntry);
             return (
               <section key={s.id} className="rounded-xl border border-slate-200 bg-white p-5">
                 <div className="mb-1 flex items-center gap-2">

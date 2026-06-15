@@ -13,10 +13,10 @@ export default function ExtempClient({ slug }: { slug: string }) {
   return (
     <div className="mx-auto max-w-4xl">
       <header className="mb-6">
-        <p className="text-xs font-semibold uppercase tracking-widest text-amber-600">Extemporáneos</p>
-        <h1 className="mt-1 text-3xl font-bold text-slate-900 dark:text-white">Movimientos de último momento</h1>
+        <p className="text-xs font-semibold uppercase tracking-widest text-amber-600">Día en Curso</p>
+        <h1 className="mt-1 text-3xl font-bold text-slate-900 dark:text-white">Inscripciones / Cancelaciones (Día en Curso)</h1>
         <p className="mt-1 text-slate-600 dark:text-slate-300">
-          ¿Necesita inscribir una participación de último momento o cancelar una existente?
+          Altas y cancelaciones de último momento para días ya en curso o cerrados.
         </p>
       </header>
 

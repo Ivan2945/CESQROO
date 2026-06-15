@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { buildClassStatusMap, lockedDays, type DayStateMap } from "@/lib/events/locks";
+import { buildClassStatusMap, startedDays, dayCommitted, type DayStateMap } from "@/lib/events/locks";
 import type { ExtempCancelPayload } from "@/lib/types/events";
 
 export const dynamic = "force-dynamic";
@@ -61,45 +61,60 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     return Response.json({ error: "No se encontraron esas participaciones para su club." }, { status: 404 });
   }
 
-  // Per-day cancellation: a fully open entry is cancelled outright; a partly
-  // locked entry keeps its locked days active and splits the open days off into
-  // a new cancelled row (so billing still applies the cancellation policy to
-  // them); a fully locked entry can't be cancelled by the club.
+  // Cancellation is allowed until a class actually STARTS (in progress / finished)
+  // — a committed-but-not-started class can still be cancelled. Cancelling never
+  // deletes: it sets status='cancelled' (shown crossed out / NP). For a multi-day
+  // entry where some classes have started, we keep the started days live (results
+  // stay intact) and split the not-started days off into a cancelled row.
   let cancelled = 0;
   const blocked: string[] = [];
   for (const e of rows) {
     const all = Array.isArray(e.days) ? e.days : [];
-    const locked = lockedDays(dayState, classStatus, e.height, all);
-    const open = all.filter((d) => !locked.includes(d));
+    const started = startedDays(classStatus, e.height, all); // can't cancel these
+    const cancelDays = all.filter((d) => !started.includes(d));
 
-    if (open.length === 0) {
+    if (cancelDays.length === 0) {
       blocked.push(`${e.rider_name} (${e.height} ${all.join(", ")})`);
       continue;
     }
-    if (locked.length === 0) {
+    if (started.length === 0) {
+      // Nothing started: cancel the whole entry. Its id stays in any committed
+      // start order, so it shows there as NP / crossed out.
       const { error } = await supabaseAdmin
         .from("event_entries").update({ status: "cancelled", is_extemp: true }).eq("id", e.id);
       if (error) return Response.json({ error: "No se pudo cancelar: " + error.message }, { status: 500 });
       cancelled += 1;
       continue;
     }
-    // Mixed: keep the locked days on the live entry, cancel the open days.
+    // Mixed: keep the started days on the original entry (results stay linked),
+    // clone the not-started days into a cancelled row.
     const { error: upErr } = await supabaseAdmin
-      .from("event_entries").update({ days: locked }).eq("id", e.id);
+      .from("event_entries").update({ days: started }).eq("id", e.id);
     if (upErr) return Response.json({ error: "No se pudo cancelar: " + upErr.message }, { status: 500 });
-    const { error: insErr } = await supabaseAdmin.from("event_entries").insert({
+    const { data: clone, error: insErr } = await supabaseAdmin.from("event_entries").insert({
       submission_id: e.submission_id, event_id: event.id, club_id: e.club_id,
       rider_id: e.rider_id, horse_id: e.horse_id, rider_name: e.rider_name, horse_name: e.horse_name,
-      height: e.height, section: e.section, days: open,
+      height: e.height, section: e.section, days: cancelDays,
       circuit: e.circuit, discount: e.discount, status: "cancelled", is_extemp: true,
-    });
-    if (insErr) return Response.json({ error: "No se pudo cancelar: " + insErr.message }, { status: 500 });
+    }).select("id").single();
+    if (insErr || !clone) return Response.json({ error: "No se pudo cancelar: " + (insErr?.message ?? "") }, { status: 500 });
+    // For committed (but not started) cancelled days, point the start order at
+    // the cancelled clone so it shows there as NP instead of the live entry.
+    for (const d of cancelDays) {
+      if (!dayCommitted(dayState, d)) continue;
+      const { data: setup } = await supabaseAdmin
+        .from("event_class_setup").select("id, start_order").eq("event_id", event.id).eq("height", e.height).eq("day", d).maybeSingle();
+      const so = setup?.start_order as { entry_id: string; no: number | string }[] | null;
+      if (!so) continue;
+      const next = so.map((o) => (o.entry_id === e.id ? { ...o, entry_id: clone.id } : o));
+      await supabaseAdmin.from("event_class_setup").update({ start_order: next }).eq("id", setup!.id);
+    }
     cancelled += 1;
   }
 
   if (cancelled === 0 && blocked.length > 0) {
     return Response.json(
-      { error: `No se puede cancelar: ya está comprometido o en calificación — ${blocked.join("; ")}. Contacte al organizador.` },
+      { error: `No se puede cancelar: la clase ya inició o finalizó — ${blocked.join("; ")}. Contacte al organizador.` },
       { status: 409 }
     );
   }
@@ -107,6 +122,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     ok: true,
     count: cancelled,
     blocked: blocked.length,
-    ...(blocked.length ? { message: `Algunas no se pudieron cancelar (comprometidas o en calificación): ${blocked.join("; ")}.` } : {}),
+    ...(blocked.length ? { message: `Algunas no se pudieron cancelar (la clase ya inició): ${blocked.join("; ")}.` } : {}),
   });
 }

@@ -30,6 +30,30 @@ export function dayIsLocked(
   return st === "in_progress" || st === "finished";
 }
 
+// Is this (height, day) class actually under way (being judged or finished)?
+// Distinct from "committed": a day can be committed (draw locked) yet not
+// started, in which case cancellations are still allowed.
+export function dayStarted(classStatus: ClassStatusMap, height: string, day: string): boolean {
+  const st = classStatus.get(classKey(height, day));
+  return st === "in_progress" || st === "finished";
+}
+
+export function startedDays(
+  classStatus: ClassStatusMap,
+  height: string,
+  days: string[] | null | undefined
+): string[] {
+  return (Array.isArray(days) ? days : []).filter((d) => dayStarted(classStatus, height, d));
+}
+
+export function dayCommitted(dayState: DayStateMap, day: string): boolean {
+  return !!dayState[day]?.committed;
+}
+
+export function committedDays(dayState: DayStateMap, days: string[] | null | undefined): string[] {
+  return (Array.isArray(days) ? days : []).filter((d) => dayCommitted(dayState, d));
+}
+
 // Which of an entry's days are locked.
 export function lockedDays(
   dayState: DayStateMap,

@@ -113,7 +113,7 @@ export default async function AdminEventDetail({
               Importar
             </Link>
             <Link href={`/signup/${event.slug}/extemporaneo`} className="text-sm font-semibold text-amber-600">
-              Extemporáneo
+              Inscripciones/Cancelaciones (Día en Curso)
             </Link>
             <a href={`/api/events/${event.slug}/billing-pdf`} className="text-sm font-semibold text-emerald-600">
               Estados de cuenta (PDF)

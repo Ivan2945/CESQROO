@@ -279,7 +279,7 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
               ¿Ya te inscribiste? Editar tu inscripción →
             </a>
             <a href={`/signup/${slug}/extemporaneo`} className="font-semibold text-amber-600">
-              Inscripción / cancelación de último momento →
+              Inscripciones/Cancelaciones (Día en Curso) →
             </a>
           </p>
         )}

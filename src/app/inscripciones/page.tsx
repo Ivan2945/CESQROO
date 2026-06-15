@@ -78,7 +78,7 @@ export default async function InscripcionesLanding() {
                     href={`/signup/${ev.slug}/extemporaneo`}
                     className="inline-flex items-center justify-center rounded-lg border border-amber-300 bg-amber-50 px-5 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100"
                   >
-                    Extemporáneos →
+                    Inscripciones/Cancelaciones (Día en Curso) →
                   </Link>
                   <Link
                     href={`/resultados/${ev.slug}`}

@@ -18,8 +18,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   const email = (body.email || "").trim().toLowerCase();
   if (!clubId || !email) return Response.json({ error: "Seleccione su club e ingrese su correo." }, { status: 400 });
 
-  const { data: event } = await supabaseAdmin.from("events").select("id").eq("slug", slug).single();
+  const { data: event } = await supabaseAdmin.from("events").select("id, day_state").eq("slug", slug).single();
   if (!event) return Response.json({ error: "Evento no encontrado." }, { status: 404 });
+
+  // Days whose draw is committed/closed — the editor locks those entries' core
+  // fields and the committed-day checkboxes for non-admins.
+  const dayState = (event.day_state ?? {}) as Record<string, { committed?: boolean }>;
+  const committedDays = Object.keys(dayState).filter((d) => dayState[d]?.committed);
 
   const { data: subs } = await supabaseAdmin
     .from("event_submissions")
@@ -53,6 +58,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     clubId,
     clubName: matched[0].club_name,
     submissionId: matched[0].id,
+    committedDays,
     entries: entries ?? [],
     riders: riders ?? [],
     horses: horses ?? [],

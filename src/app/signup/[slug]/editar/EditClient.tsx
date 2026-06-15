@@ -80,6 +80,7 @@ export default function EditClient({ slug }: { slug: string }) {
   const [horses, setHorses] = useState<RosterHorse[]>([]);
   const [rows, setRows] = useState<EditRow[]>([]);
   const [deletedIds, setDeletedIds] = useState<string[]>([]);
+  const [committedDays, setCommittedDays] = useState<string[]>([]);
 
   const config = normalizeConfig(event?.config);
 
@@ -117,6 +118,7 @@ export default function EditClient({ slug }: { slug: string }) {
       setClubName(data.clubName);
       setRiders(data.riders ?? []);
       setHorses(data.horses ?? []);
+      setCommittedDays(data.committedDays ?? []);
       setRows((data.entries as ExistingEntry[]).map(fromExisting));
       setDeletedIds([]);
       setPhase("edit");
@@ -207,6 +209,7 @@ export default function EditClient({ slug }: { slug: string }) {
       if (re.ok && !rd.error) {
         setRiders(rd.riders ?? []);
         setHorses(rd.horses ?? []);
+        setCommittedDays(rd.committedDays ?? []);
         setRows((rd.entries as ExistingEntry[]).map(fromExisting));
         setDeletedIds([]);
       }
@@ -299,26 +302,41 @@ export default function EditClient({ slug }: { slug: string }) {
             <div className="space-y-4">
               {rows.map((r, i) => {
                 const allowed = r.height ? selectableSections(config, r.height) : [];
+                // An existing entry that competes on a closed/committed day is
+                // locked for non-admins: its rider/horse/class/section can't
+                // change and the committed day can't be toggled. Still-open days
+                // remain editable, and brand-new rows are fully editable.
+                const locked = !!r.id && r.days.some((d) => committedDays.includes(d));
                 return (
                   <div key={r.id ?? `new-${i}`} className="rounded-lg border border-slate-200 bg-slate-50/60 p-4">
                     <div className="mb-3 flex items-center justify-between">
                       <span className="text-sm font-bold tracking-wide text-blue-700">
                         Participación {i + 1} {r.id ? "" : "(nueva)"}
+                        {locked && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800">🔒 Día cerrado</span>}
                       </span>
                       <button
                         type="button"
                         onClick={() => removeRow(i)}
-                        className="rounded-md border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50"
+                        disabled={locked}
+                        title={locked ? "Día cerrado — para cancelar use la página de Día en Curso" : undefined}
+                        className="rounded-md border border-red-200 px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
                       >
                         Eliminar
                       </button>
                     </div>
+                    {locked && (
+                      <p className="mb-3 text-xs text-amber-700">
+                        Esta participación ya está en un día cerrado: no se puede cambiar jinete, caballo, altura ni sección.
+                        Puedes añadir/quitar días aún abiertos. Para cancelarla usa la página de Inscripciones/Cancelaciones (Día en Curso).
+                      </p>
+                    )}
 
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div>
                         <label className={fieldLabel}>Jinete {req}</label>
                         <Combobox
                           placeholder="Escriba para buscar…"
+                          disabled={locked}
                           query={r.riderQuery}
                           items={riderItems}
                           onQueryChange={(t) => updateRow(i, { riderQuery: t, riderId: null, riderNew: false })}
@@ -359,6 +377,7 @@ export default function EditClient({ slug }: { slug: string }) {
                         <label className={fieldLabel}>Caballo {req}</label>
                         <Combobox
                           placeholder="Escriba para buscar…"
+                          disabled={locked}
                           query={r.horseQuery}
                           items={horseItems}
                           onQueryChange={(t) => updateRow(i, { horseQuery: t, horseId: null, horseNew: false })}
@@ -372,7 +391,7 @@ export default function EditClient({ slug }: { slug: string }) {
 
                       <div>
                         <label className={fieldLabel}>Altura {req}</label>
-                        <select className={fieldInput} value={r.height} onChange={(ev) => updateRow(i, { height: ev.target.value })}>
+                        <select className={fieldInput} value={r.height} disabled={locked} onChange={(ev) => updateRow(i, { height: ev.target.value })}>
                           <option value="" disabled>
                             Seleccione…
                           </option>
@@ -389,7 +408,7 @@ export default function EditClient({ slug }: { slug: string }) {
                         <select
                           className={fieldInput}
                           value={r.section}
-                          disabled={!r.height}
+                          disabled={!r.height || locked}
                           onChange={(ev) => updateRow(i, { section: ev.target.value })}
                         >
                           <option value="" disabled>
@@ -408,16 +427,19 @@ export default function EditClient({ slug }: { slug: string }) {
                       <span className="text-sm font-semibold text-slate-700">Días {req}</span>
                       {config.days.map((d) => {
                         const on = r.days.includes(d);
+                        const dayLocked = committedDays.includes(d); // committed day: can't add or remove
                         return (
                           <label
                             key={d}
+                            title={dayLocked ? "Día cerrado" : undefined}
                             className={
-                              "inline-flex cursor-pointer items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-semibold " +
+                              "inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-semibold " +
+                              (dayLocked ? "cursor-not-allowed opacity-50 " : "cursor-pointer ") +
                               (on ? "border-blue-600 bg-blue-50 text-blue-800" : "border-slate-300 bg-white text-slate-700")
                             }
                           >
-                            <input type="checkbox" className="accent-blue-600" checked={on} onChange={() => toggleDay(i, d)} />
-                            {d}
+                            <input type="checkbox" className="accent-blue-600" checked={on} disabled={dayLocked} onChange={() => toggleDay(i, d)} />
+                            {d}{dayLocked ? " 🔒" : ""}
                           </label>
                         );
                       })}

@@ -26,7 +26,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   const [{ data: ent }, { data: setupRow }, { data: results }] = await Promise.all([
     supabaseAdmin
       .from("event_entries")
-      .select("id, rider_id, horse_id, rider_name, horse_name, height, section, days, status, is_extemp")
+      .select("id, club_id, rider_id, horse_id, rider_name, horse_name, height, section, days, status, is_extemp")
       .eq("event_id", event.id),
     supabaseAdmin
       .from("event_class_setup")
@@ -40,6 +40,17 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
 
   const active = (ent ?? []).filter((e) => (e.status ?? "active") !== "cancelled");
   const entryById = new Map(active.map((e) => [e.id, e]));
+
+  // Club name per entry (for the public results).
+  const clubIds = [...new Set(active.map((e) => e.club_id).filter(Boolean))] as string[];
+  const { data: clubRows } = clubIds.length
+    ? await supabaseAdmin.from("show_clubs").select("id, name").in("id", clubIds)
+    : { data: [] as { id: string; name: string }[] };
+  const clubById = new Map((clubRows ?? []).map((c) => [c.id, c.name]));
+  const clubOf = (id: string) => {
+    const e = entryById.get(id);
+    return (e?.club_id && clubById.get(e.club_id)) || "";
+  };
   const format = setupRow?.format || defaultFormatForHeight(height);
   const setupParams = (setupRow?.params ?? {}) as Record<string, number>;
   const fmt = classFormatFromSetup(format, setupParams);
@@ -78,12 +89,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
 
   const status = setupRow?.status ?? "pending";
   const hasR2 = ["table_a_jo", "two_phase", "two_phase_special", "optimum_two_round"].includes(format);
-  const optimumSec = Number(setupParams.optimumSec) || null;
   // Ideal-time classes don't reveal the ranking until the class is finalized.
   const showRanking = !(format === "optimum_window" && status !== "finished");
 
   const orderIdx = new Map(order.map((o, i) => [o.entryId, i]));
-  const noByEntry = new Map(order.map((o) => [o.entryId, o.no]));
   const eff = (t: number | null | undefined, f: string | null | undefined) => {
     const x = num(t);
     return x == null ? null : hasFallMarker(f ?? "") ? x + 6 : x;
@@ -105,19 +114,27 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
       const t1 = eff(r.r1_time, r.r1_faults);
       const t2 = eff(r.r2_time, r.r2_faults);
       const r2done = hasR2 && t2 != null;
-      const p1F = jf1 + (noTimePen ? 0 : timeOver(t1, ta1));
-      const p2F = r2done ? jf2 + (noTimePen ? 0 : timeOver(t2, ta2)) : null;
+      const tp1 = noTimePen ? 0 : timeOver(t1, ta1);
+      const tp2 = r2done && !noTimePen ? timeOver(t2, ta2) : 0;
       return {
         entryId: s.id,
         place: showRanking ? s.rankSection : null,
-        no: noByEntry.get(s.id) ?? "",
         rider: e?.rider_name || "", horse: e?.horse_name || "", section: s.section,
-        // Single round: ONE total-faults figure + the time.
-        faults: s.totalPens, time: t1,
-        // Multi-round: per-round TOTAL faults (jump + time) and round times.
-        p1F, p1T: t1, p2F, p2T: r2done ? t2 : null, totalF: p1F + (p2F ?? 0),
-        // Ideal time: obstacle faults + time always; time faults + diff only on release.
-        obstFaults: jf1, timeFaults: s.timePens, diff: format === "optimum_window" ? s.tieTime : null,
+        club: clubOf(s.id),
+        // Per round/phase raw figures (the client builds the "faults/time" cell).
+        jf1, tp1, t1,
+        jf2, tp2, t2, r2done,
+        // Per-format aggregate jump / time penalties (single-round R, and the
+        // two-phase-special Final column).
+        sJump: s.jumpPens, sTimePen: s.timePens,
+        // Time difference vs the target: ideal-time = |óptimo − tiempo|;
+        // FEM 7.4 = |rd2 − rd1|.
+        diff:
+          format === "optimum_window"
+            ? s.tieTime
+            : format === "optimum_two_round" && r2done && t1 != null && t2 != null
+              ? Math.abs(t2 - t1)
+              : null,
       };
     });
   const ranking = showRanking
@@ -126,14 +143,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
 
   const remaining = order
     .filter((o) => !hasResult(o.entryId))
-    .map((o) => ({ no: o.no, rider: o.rider, horse: o.horse, section: o.section }));
+    .map((o) => ({ no: o.no, rider: o.rider, horse: o.horse, section: o.section, club: clubOf(o.entryId) }));
 
   const cur = setupRow?.current_entry_id ? entryById.get(setupRow.current_entry_id) : null;
   const current = cur ? { rider: cur.rider_name, horse: cur.horse_name, no: order.find((o) => o.entryId === cur.id)?.no ?? "" } : null;
 
   return Response.json({
     event: { name: event.name, slug: event.slug },
-    height, day, status, format, hasR2, optimumSec, showRanking,
+    height, day, status, format, hasR2, showRanking,
     total: order.length,
     ranking,
     remaining,

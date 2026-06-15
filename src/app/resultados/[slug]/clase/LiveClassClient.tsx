@@ -4,22 +4,40 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 type RankRow = {
-  place: number | null; no: number | string; rider: string; horse: string; section: string;
-  faults: number | null; time: number | null; // single-round
-  p1F: number | null; p1T: number | null; p2F: number | null; p2T: number | null; totalF: number | null; // multi-round
-  obstFaults: number | null; timeFaults: number | null; diff: number | null; // ideal-time
+  place: number | null; rider: string; horse: string; section: string; club: string;
+  jf1: number | null; tp1: number | null; t1: number | null;          // round/phase 1
+  jf2: number | null; tp2: number | null; t2: number | null; r2done: boolean; // round/phase 2
+  sJump: number | null; sTimePen: number | null;                       // per-format aggregate pens
+  diff: number | null;                                                 // FEM 7.4 |rd2 − rd1|
 };
-type Remaining = { no: number | string; rider: string; horse: string; section: string };
+type Remaining = { no: number | string; rider: string; horse: string; section: string; club: string };
 type Data = {
   event: { name: string; slug: string };
   height: string; day: string; status: string; total: number;
-  format: string; hasR2: boolean; optimumSec: number | null; showRanking: boolean;
+  format: string; hasR2: boolean; showRanking: boolean;
   ranking: RankRow[]; remaining: Remaining[];
   current: { rider: string; horse: string; no: number | string } | null;
 };
 
-const p2 = (v: number | null | undefined) => (v == null ? "—" : Math.round(v * 100) / 100);
-const t2 = (v: number | null | undefined) => (v == null ? "—" : Number(v).toFixed(2));
+const num2 = (v: number | null | undefined) => (v == null ? "—" : Number(v).toFixed(2));
+
+// A result cell "faults/time". When time penalties apply it expands to
+// "total (obst+tiempo)/time", e.g. 5 (4+1)/45.25. hideTimePen keeps the time
+// faults out of view (ideal-time classes before the class is finalized).
+function rCell(jump: number | null, timePen: number | null, time: number | null, hideTimePen = false) {
+  if (jump == null && time == null) return "—";
+  const tp = hideTimePen ? 0 : timePen ?? 0;
+  const j = jump ?? 0;
+  const total = j + tp;
+  const tStr = time == null ? "—" : num2(time);
+  return tp > 0 ? `${total} (${j}+${tp})/${tStr}` : `${total}/${tStr}`;
+}
+
+// FEM 7.4 final cell: round-2 faults over the time difference, e.g. 0/0.25.
+function rDiffCell(jump: number | null, diff: number | null) {
+  if (diff == null) return "—";
+  return `${jump ?? 0}/${num2(diff)}`;
+}
 
 export default function LiveClassClient({ slug, height, day }: { slug: string; height: string; day: string }) {
   const [data, setData] = useState<Data | null>(null);
@@ -46,6 +64,15 @@ export default function LiveClassClient({ slug, height, day }: { slug: string; h
   if (!data) return <p className="mt-10 text-center text-slate-500 dark:text-slate-400">Cargando…</p>;
 
   const live = data.status === "in_progress";
+  // Column layout per format: two-phase special & FEM 7.4 get R1/R2/Final;
+  // jump-off & standard two-phase get R1/R2; everything else a single R.
+  const threeCol = data.format === "two_phase_special" || data.format === "optimum_two_round";
+  const twoCol = data.format === "table_a_jo" || data.format === "two_phase";
+  // Ideal time gets its own two columns: R (faltas/tiempo) and Dif. (faltas/dif).
+  const idealCol = data.format === "optimum_window";
+  // Ideal-time class before it's finalized: keep time faults and the difference
+  // (which would reveal the ranking) out of view until the class is finalized.
+  const idealHide = idealCol && !data.showRanking;
 
   return (
     <div className="mx-auto max-w-3xl px-1 py-2">
@@ -83,43 +110,49 @@ export default function LiveClassClient({ slug, height, day }: { slug: string; h
             <table className="w-full text-sm">
               <thead><tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:text-slate-400">
                 {data.showRanking && <th className="p-2">Lugar</th>}
-                <th className="p-2">No.</th><th className="p-2 text-left">Jinete</th><th className="p-2 text-left">Caballo</th><th className="p-2">Secc.</th>
-                {data.hasR2 ? (
-                  <><th className="p-2">Faltas 1</th><th className="p-2">Tiempo 1</th><th className="p-2">Faltas 2</th><th className="p-2">Tiempo 2</th>{data.format === "two_phase_special" && <th className="p-2">F. Total</th>}</>
-                ) : data.format === "optimum_window" ? (
-                  <><th className="p-2">Obstáculos</th>{data.showRanking && <th className="p-2">Pen. tiempo</th>}<th className="p-2">Tiempo</th>{data.showRanking && <th className="p-2">Dif. óptimo</th>}</>
+                <th className="p-2 text-left">Jinete</th><th className="p-2 text-left">Caballo</th><th className="p-2 text-left">Club</th><th className="p-2">Secc.</th>
+                {threeCol ? (
+                  <><th className="p-2">R1</th><th className="p-2">R2</th><th className="p-2">Final</th></>
+                ) : twoCol ? (
+                  <><th className="p-2">R1</th><th className="p-2">R2</th></>
+                ) : idealCol ? (
+                  <><th className="p-2">R</th><th className="p-2">Dif.</th></>
                 ) : (
-                  <><th className="p-2">Faltas</th><th className="p-2">Tiempo</th></>
+                  <th className="p-2">R</th>
                 )}
               </tr></thead>
               <tbody>
                 {data.ranking.map((r, i) => (
                   <tr key={i} className={"border-b border-slate-100 dark:border-slate-800 " + (data.showRanking && r.place === 1 ? "bg-emerald-50 dark:bg-emerald-950/40" : "")}>
                     {data.showRanking && <td className="p-2 text-center font-extrabold text-slate-900 dark:text-white">{r.place ?? "—"}</td>}
-                    <td className="p-2 text-center text-slate-700 dark:text-slate-300">{r.no}</td>
                     <td className="p-2 uppercase text-slate-900 dark:text-white">{r.rider}</td>
                     <td className="p-2 uppercase text-slate-700 dark:text-slate-300">{r.horse}</td>
+                    <td className="p-2 uppercase text-slate-500 dark:text-slate-400">{r.club || "—"}</td>
                     <td className="p-2 text-center text-slate-700 dark:text-slate-300">{r.section}</td>
-                    {data.hasR2 ? (
+                    {threeCol ? (
                       <>
-                        <td className="p-2 text-center text-slate-700 dark:text-slate-300">{p2(r.p1F)}</td>
-                        <td className="p-2 text-center text-slate-700 dark:text-slate-300">{t2(r.p1T)}</td>
-                        <td className="p-2 text-center text-slate-700 dark:text-slate-300">{r.p2T == null ? "—" : p2(r.p2F)}</td>
-                        <td className="p-2 text-center text-slate-700 dark:text-slate-300">{t2(r.p2T)}</td>
-                        {data.format === "two_phase_special" && <td className="p-2 text-center font-bold text-slate-900 dark:text-white">{p2(r.totalF)}</td>}
+                        <td className="p-2 text-center text-slate-700 dark:text-slate-300">{rCell(r.jf1, r.tp1, r.t1)}</td>
+                        <td className="p-2 text-center text-slate-700 dark:text-slate-300">{r.r2done ? rCell(r.jf2, r.tp2, r.t2) : "—"}</td>
+                        <td className="p-2 text-center font-bold text-slate-900 dark:text-white">
+                          {data.format === "optimum_two_round"
+                            ? (r.r2done ? (r.jf2 ?? 0) : "—")
+                            : rCell(r.sJump, r.sTimePen, r.r2done ? r.t2 : r.t1)}
+                        </td>
                       </>
-                    ) : data.format === "optimum_window" ? (
+                    ) : twoCol ? (
                       <>
-                        <td className="p-2 text-center text-slate-700 dark:text-slate-300">{p2(r.obstFaults)}</td>
-                        {data.showRanking && <td className="p-2 text-center text-slate-700 dark:text-slate-300">{p2(r.timeFaults)}</td>}
-                        <td className="p-2 text-center text-slate-900 dark:text-white">{t2(r.time)}</td>
-                        {data.showRanking && <td className="p-2 text-center text-slate-700 dark:text-slate-300">{t2(r.diff)}</td>}
+                        <td className="p-2 text-center text-slate-700 dark:text-slate-300">{rCell(r.jf1, r.tp1, r.t1)}</td>
+                        <td className="p-2 text-center text-slate-700 dark:text-slate-300">{r.r2done ? rCell(r.jf2, r.tp2, r.t2) : "—"}</td>
+                      </>
+                    ) : idealCol ? (
+                      <>
+                        <td className="p-2 text-center font-bold text-slate-900 dark:text-white">{rCell(r.sJump, r.sTimePen, r.t1, idealHide)}</td>
+                        <td className="p-2 text-center text-slate-700 dark:text-slate-300">
+                          {idealHide ? "—" : rDiffCell((r.sJump ?? 0) + (r.sTimePen ?? 0), r.diff)}
+                        </td>
                       </>
                     ) : (
-                      <>
-                        <td className="p-2 text-center font-bold text-slate-900 dark:text-white">{p2(r.faults)}</td>
-                        <td className="p-2 text-center text-slate-900 dark:text-white">{t2(r.time)}</td>
-                      </>
+                      <td className="p-2 text-center font-bold text-slate-900 dark:text-white">{rCell(r.sJump, r.sTimePen, r.t1, idealHide)}</td>
                     )}
                   </tr>
                 ))}
@@ -127,8 +160,10 @@ export default function LiveClassClient({ slug, height, day }: { slug: string; h
             </table>
           </div>
         )}
-        {data.hasR2 && data.ranking.length > 0 && (
-          <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">Faltas = totales (obstáculos + tiempo) por ronda · Faltas 2 / Tiempo 2 solo si pasó a la 2ª</p>
+        {data.ranking.length > 0 && (
+          <p className="mt-2 text-[11px] text-slate-400 dark:text-slate-500">
+            R = faltas/tiempo · con faltas de tiempo: total (obstáculo+tiempo)/tiempo
+          </p>
         )}
       </section>
 
@@ -141,7 +176,7 @@ export default function LiveClassClient({ slug, height, day }: { slug: string; h
             {data.remaining.map((r, i) => (
               <li key={i} className="flex gap-2">
                 <span className="w-8 shrink-0 font-mono text-slate-400 dark:text-slate-500">{r.no}</span>
-                <span className="uppercase">{r.rider} <span className="text-slate-400 dark:text-slate-500">· {r.horse} · {r.section}</span></span>
+                <span className="uppercase">{r.rider} <span className="text-slate-400 dark:text-slate-500">· {r.horse}{r.club ? ` · ${r.club}` : ""} · {r.section}</span></span>
               </li>
             ))}
           </ol>

@@ -450,6 +450,32 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
     setQueue((q) => q.replace(/^\s*[^,]*,?\s*/, ""));
   }
 
+  // Sort the list by start number, lowest to highest (does NOT re-draw / renumber).
+  // Labels like "1A"/"1B" are front-inserted extemps that run BEFORE their number,
+  // newest first — so within a number: lettered entries (reverse-alpha) then the
+  // plain number. Result e.g.: 1B, 1A, 1, 2, 3A, 3, 4.
+  function sortByNumber() {
+    const parse = (no: number | string) => {
+      const str = String(no ?? "").trim().toUpperCase();
+      const m = str.match(/^(\d+)([A-Z]*)$/);
+      if (m) return { n: parseInt(m[1], 10), suf: m[2] };
+      const n = Number(str);
+      return { n: Number.isFinite(n) ? n : Infinity, suf: str };
+    };
+    setRows((rs) => {
+      const next = [...rs].sort((a, b) => {
+        const pa = parse(a.no), pb = parse(b.no);
+        if (pa.n !== pb.n) return pa.n - pb.n;
+        if (pa.suf === pb.suf) return 0;
+        if (pa.suf === "") return 1; // plain number comes after its lettered extemps
+        if (pb.suf === "") return -1;
+        return pb.suf.localeCompare(pa.suf); // letters reverse-alpha: 1B before 1A
+      });
+      saveOrder(next);
+      return next;
+    });
+  }
+
   function startSession() {
     let n = 0;
     setRows((rs) => rs.map((r) => { const s = byId[r.entryId]; if (r.committed && s && s.advanced) { n++; return { ...r, committed: false }; } return r; }));
@@ -567,6 +593,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
         </select>
         <input value={queue} onChange={(e) => setQueue(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); applyQueue(); } }} placeholder="Orden: 5,7,9…" inputMode="text" className="w-32 rounded-md border border-slate-300 px-2 py-1 text-sm" />
         <button onClick={applyQueue} className="rounded-md bg-indigo-600 px-3 py-1 text-sm font-semibold text-white">Subir al inicio</button>
+        <button onClick={sortByNumber} className="rounded-md border border-indigo-300 bg-indigo-50 px-3 py-1 text-sm font-semibold text-indigo-700">Ordenar por número</button>
         {hasSession && <button onClick={startSession} className="rounded-md bg-blue-600 px-3 py-1 text-sm font-semibold text-white">Iniciar 2da ronda</button>}
         <button onClick={saveSetup} className="rounded-md bg-slate-800 px-3 py-1 text-sm font-semibold text-white">Guardar configuración</button>
         <button onClick={() => setAddOpen((v) => !v)} className="rounded-md bg-amber-100 px-3 py-1 text-sm font-semibold text-amber-800">+ Agregar binomio</button>

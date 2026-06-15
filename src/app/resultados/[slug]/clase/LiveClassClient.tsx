@@ -21,8 +21,8 @@ type Data = {
 
 const num2 = (v: number | null | undefined) => (v == null ? "—" : Number(v).toFixed(2));
 
-// A result cell "faults/time". When time penalties apply it expands to
-// "total (obst+tiempo)/time", e.g. 5 (4+1)/45.25. hideTimePen keeps the time
+// A result cell "faults//time". When time penalties apply it expands to
+// "total (obst+tiempo)//time", e.g. 5 (4+1)//45.25. hideTimePen keeps the time
 // faults out of view (ideal-time classes before the class is finalized).
 function rCell(jump: number | null, timePen: number | null, time: number | null, hideTimePen = false) {
   if (jump == null && time == null) return "—";
@@ -30,13 +30,13 @@ function rCell(jump: number | null, timePen: number | null, time: number | null,
   const j = jump ?? 0;
   const total = j + tp;
   const tStr = time == null ? "—" : num2(time);
-  return tp > 0 ? `${total} (${j}+${tp})/${tStr}` : `${total}/${tStr}`;
+  return tp > 0 ? `${total} (${j}+${tp})//${tStr}` : `${total}//${tStr}`;
 }
 
-// FEM 7.4 final cell: round-2 faults over the time difference, e.g. 0/0.25.
+// Ideal-time difference cell: faults over the time difference, e.g. 0//0.25.
 function rDiffCell(jump: number | null, diff: number | null) {
   if (diff == null) return "—";
-  return `${jump ?? 0}/${num2(diff)}`;
+  return `${jump ?? 0}//${num2(diff)}`;
 }
 
 export default function LiveClassClient({ slug, height, day }: { slug: string; height: string; day: string }) {
@@ -110,7 +110,7 @@ export default function LiveClassClient({ slug, height, day }: { slug: string; h
             <table className="w-full text-sm">
               <thead><tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:text-slate-400">
                 {data.showRanking && <th className="p-2">Lugar</th>}
-                <th className="p-2 text-left">Jinete</th><th className="p-2 text-left">Caballo</th><th className="p-2 text-left">Club</th><th className="p-2">Secc.</th>
+                <th className="p-2 text-left">Club</th><th className="p-2 text-left">Jinete</th><th className="p-2 text-left">Caballo</th><th className="p-2">Secc.</th>
                 {threeCol ? (
                   <><th className="p-2">R1</th><th className="p-2">R2</th><th className="p-2">Final</th></>
                 ) : twoCol ? (
@@ -125,9 +125,9 @@ export default function LiveClassClient({ slug, height, day }: { slug: string; h
                 {data.ranking.map((r, i) => (
                   <tr key={i} className={"border-b border-slate-100 dark:border-slate-800 " + (data.showRanking && r.place === 1 ? "bg-emerald-50 dark:bg-emerald-950/40" : "")}>
                     {data.showRanking && <td className="p-2 text-center font-extrabold text-slate-900 dark:text-white">{r.place ?? "—"}</td>}
+                    <td className="p-2 uppercase text-slate-500 dark:text-slate-400">{r.club || "—"}</td>
                     <td className="p-2 uppercase text-slate-900 dark:text-white">{r.rider}</td>
                     <td className="p-2 uppercase text-slate-700 dark:text-slate-300">{r.horse}</td>
-                    <td className="p-2 uppercase text-slate-500 dark:text-slate-400">{r.club || "—"}</td>
                     <td className="p-2 text-center text-slate-700 dark:text-slate-300">{r.section}</td>
                     {threeCol ? (
                       <>
@@ -176,7 +176,10 @@ export default function LiveClassClient({ slug, height, day }: { slug: string; h
             {data.remaining.map((r, i) => (
               <li key={i} className="flex gap-2">
                 <span className="w-8 shrink-0 font-mono text-slate-400 dark:text-slate-500">{r.no}</span>
-                <span className="uppercase">{r.rider} <span className="text-slate-400 dark:text-slate-500">· {r.horse}{r.club ? ` · ${r.club}` : ""} · {r.section}</span></span>
+                <span className="uppercase">
+                  <span className="text-slate-500 dark:text-slate-400">{r.club || "—"}</span> · {r.rider}
+                  <span className="text-slate-400 dark:text-slate-500"> · {r.horse} · {r.section}</span>
+                </span>
               </li>
             ))}
           </ol>

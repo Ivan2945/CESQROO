@@ -25,7 +25,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const [{ data: ent }, { data: setups }, { data: results }, { data: clubs }] = await Promise.all([
     supabaseAdmin
       .from("event_entries")
-      .select("id, rider_id, horse_id, rider_name, horse_name, height, section, days, status, is_extemp")
+      .select("id, club_id, rider_id, horse_id, rider_name, horse_name, height, section, days, status, is_extemp")
       .eq("event_id", event.id),
     supabaseAdmin
       .from("event_class_setup")
@@ -41,10 +41,12 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   // Include cancelled binomios too, flagged — the judging screen shows them as
   // NP (already "scored", off the pending list) and the public view crosses
   // them out. They never disappear from the lists.
+  const clubName = new Map((clubs ?? []).map((c) => [c.id, c.name]));
   const entries = (ent ?? []).map((e) => ({
     id: e.id,
     rider: e.rider_name,
     horse: e.horse_name,
+    club: (e.club_id && clubName.get(e.club_id)) || "",
     height: e.height,
     section: e.section,
     days: Array.isArray(e.days) ? e.days : [],

@@ -47,9 +47,26 @@ const FORMAT_KINDS = Object.keys(FORMAT_LABELS);
 const num = (v: string) => (v.trim() === "" ? null : Number(v));
 const ceilTA = (d: number, c: number) => (d > 0 && c > 0 ? Math.ceil((d / c) * 60) : 0);
 const p2 = (v: number | null | undefined) => (v == null ? "—" : Math.round(v * 100) / 100);
+const t2fmt = (v: number | null | undefined) => (v == null ? "—" : Number(v).toFixed(2));
+
+// Result cell "faults // time" (expands to "total (obst+tiempo) // time" when
+// there are time penalties), mirroring the public results view.
+function rCell(jump: number | null, timePen: number | null, time: number | null) {
+  if (jump == null && time == null) return "—";
+  const tp = timePen ?? 0;
+  const j = jump ?? 0;
+  const total = j + tp;
+  const tStr = time == null ? "—" : t2fmt(time);
+  return tp > 0 ? `${total} (${j}+${tp}) // ${tStr}` : `${total} // ${tStr}`;
+}
+// Difference cell "faults // diff" (ideal-time / FEM 7.4).
+function rDiffCell(jump: number | null, diff: number | null) {
+  if (diff == null) return "—";
+  return `${jump ?? 0} // ${t2fmt(diff)}`;
+}
 
 type Row = {
-  entryId: string; no: number | string; rider: string; horse: string; section: string;
+  entryId: string; no: number | string; rider: string; horse: string; section: string; club?: string;
   f1: string; t1: string; status1: string;
   f2: string; t2: string; status2: string;
   scored: boolean; committed: boolean; ext?: boolean; cancelled?: boolean;
@@ -252,7 +269,8 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
       let no: string;
       if (goesEnd) no = `E${rs.filter((r) => String(r.no).startsWith("E")).length + 1}`;
       else no = `1${String.fromCharCode(65 + rs.filter((r) => /^1[A-Za-z]+$/.test(String(r.no))).length)}`;
-      const newRow = { entryId: id, no, rider, horse, section: add.section, ext: true, f1: "", t1: "", status1: "OK", f2: "", t2: "", status2: "OK", scored: false, committed: false };
+      const club = boot.clubs.find((c) => c.id === add.clubId)?.name || "";
+      const newRow = { entryId: id, no, rider, horse, section: add.section, club, ext: true, f1: "", t1: "", status1: "OK", f2: "", t2: "", status2: "OK", scored: false, committed: false };
       return goesEnd ? [...rs, newRow] : [newRow, ...rs];
     });
     setAdd({ clubId: "", rider: "", horse: "", section: "" });
@@ -319,16 +337,17 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
         const ext = !!be?.isExtemp;
         // A cancelled binomio counts as NP and is treated as already scored, so
         // it drops off the pending-to-score list (it shows crossed out below).
+        const club = be?.club || "";
         if (be?.cancelled) {
           return {
-            entryId: o.entryId, no: o.no, rider: o.rider, horse: o.horse, section: o.section, ext, cancelled: true,
+            entryId: o.entryId, no: o.no, rider: o.rider, horse: o.horse, section: o.section, club, ext, cancelled: true,
             f1: "", t1: "", status1: "NP", f2: "", t2: "", status2: "NP",
             scored: true, committed: true,
           };
         }
         const committed = !!r && (r.r1Faults !== "" || r.r1Time != null || r.r1Status !== "OK");
         return {
-          entryId: o.entryId, no: o.no, rider: o.rider, horse: o.horse, section: o.section, ext,
+          entryId: o.entryId, no: o.no, rider: o.rider, horse: o.horse, section: o.section, club, ext,
           f1: r?.r1Faults ?? "", t1: r?.r1Time != null ? String(r.r1Time) : "", status1: r?.r1Status ?? "OK",
           f2: r?.r2Faults ?? "", t2: r?.r2Time != null ? String(r.r2Time) : "", status2: r?.r2Status ?? "OK",
           scored: committed, committed,
@@ -449,6 +468,95 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
     ((byId[a.entryId]?.rankSection ?? 1e9) - (byId[b.entryId]?.rankSection ?? 1e9)));
   const pendingRows = rows.filter((r) => !r.committed);
 
+  // ---- Per-format result data (mirrors the public results view) ------------
+  const threeColJ = format === "two_phase_special" || format === "optimum_two_round";
+  const twoColJ = format === "table_a_jo" || format === "two_phase";
+  const idealColJ = format === "optimum_window";
+  const taN = (k: string) => Number(params[k]) || 0;
+  const ta1v = format === "table_a_jo" ? taN("taSec") : taN("ta1Sec");
+  const ta2v = format === "table_a_jo" ? taN("joTaSec") : taN("ta2Sec");
+  const noTimePenF = format === "optimum_two_round" || format === "optimum_window";
+  const timeOverF = (t: number | null, ta: number) => (t != null && ta > 0 && t > ta ? Math.ceil(t - ta) : 0);
+  const effTime = (tStr: string, fStr: string) => { const x = num(tStr); return x == null ? null : hasFallMarker(fStr) ? x + 6 : x; };
+
+  // Raw per-round figures + per-format aggregates for one row.
+  function parts(r: Row) {
+    const s = byId[r.entryId];
+    const jf1 = parseFaultShorthand(r.f1);
+    const jf2 = parseFaultShorthand(r.f2);
+    const t1 = effTime(r.t1, r.f1);
+    const t2 = effTime(r.t2, r.f2);
+    const r2done = hasR2 && t2 != null;
+    const tp1 = noTimePenF ? 0 : timeOverF(t1, ta1v);
+    const tp2 = r2done && !noTimePenF ? timeOverF(t2, ta2v) : 0;
+    const diff =
+      format === "optimum_window" ? (s?.tieTime ?? null)
+      : format === "optimum_two_round" && r2done && t1 != null && t2 != null ? Math.abs(t2 - t1)
+      : null;
+    return { s, jf1, jf2, t1, t2, r2done, tp1, tp2, sJump: s?.jumpPens ?? null, sTimePen: s?.timePens ?? null, diff };
+  }
+
+  // Number of result columns for the current format.
+  const resultCols = threeColJ ? 3 : twoColJ ? 2 : idealColJ ? 2 : 1;
+
+  // Live accumulated faults while a binomio is being scored (before commit).
+  function liveFaults(r: Row): number | null {
+    if (r.f1 === "" && r.t1 === "" && r.f2 === "" && r.t2 === "") return null;
+    const p = parts(r);
+    if (!hasR2) {
+      if (format === "optimum_window") {
+        let tp = 0;
+        const lower = taN("lowerSec"), upper = taN("upperSec");
+        if (p.t1 != null) { if (lower && p.t1 < lower) tp = Math.ceil(lower - p.t1); else if (upper && p.t1 > upper) tp = Math.ceil(p.t1 - upper); }
+        return p.jf1 + tp;
+      }
+      if (format === "time_only" || format === "table_c") return p.jf1;
+      return p.jf1 + p.tp1;
+    }
+    const p1 = p.jf1 + p.tp1;
+    const has2 = r.f2 !== "" || r.t2 !== "";
+    const p2v = has2 ? p.jf2 + p.tp2 : 0;
+    return p1 + p2v;
+  }
+
+  // Render the result cell(s) for one row, by format (judge sees everything).
+  function resultCells(r: Row) {
+    // Non-finishers (EL/RT/NP/FC/T, and cancelled=NP) show their status code.
+    if (r.status1 !== "OK") {
+      return <td colSpan={resultCols} className="p-2 text-center font-bold text-rose-600">{r.status1}</td>;
+    }
+    const p = parts(r);
+    if (threeColJ) {
+      return (<>
+        <td className="p-2 text-center text-slate-700">{rCell(p.jf1, p.tp1, p.t1)}</td>
+        <td className="p-2 text-center text-slate-700">{p.r2done ? rCell(p.jf2, p.tp2, p.t2) : "—"}</td>
+        <td className="p-2 text-center font-bold text-slate-900">
+          {format === "optimum_two_round" ? (p.r2done ? rDiffCell(p.jf2, p.diff) : p.jf1) : rCell(p.sJump, p.sTimePen, p.r2done ? p.t2 : p.t1)}
+        </td>
+      </>);
+    }
+    if (twoColJ) {
+      return (<>
+        <td className="p-2 text-center text-slate-700">{rCell(p.jf1, p.tp1, p.t1)}</td>
+        <td className="p-2 text-center text-slate-700">{p.r2done ? rCell(p.jf2, p.tp2, p.t2) : "—"}</td>
+      </>);
+    }
+    if (idealColJ) {
+      return (<>
+        <td className="p-2 text-center font-bold text-slate-900">{rCell(p.sJump, p.sTimePen, p.t1)}</td>
+        <td className="p-2 text-center text-slate-700">{rDiffCell((p.sJump ?? 0) + (p.sTimePen ?? 0), p.diff)}</td>
+      </>);
+    }
+    return <td className="p-2 text-center font-bold text-slate-900">{rCell(p.sJump, p.sTimePen, p.t1)}</td>;
+  }
+  const resultHeaders = threeColJ
+    ? <><th className="p-2">R1</th><th className="p-2">R2</th><th className="p-2">Final</th></>
+    : twoColJ
+      ? <><th className="p-2">R1</th><th className="p-2">R2</th></>
+      : idealColJ
+        ? <><th className="p-2">R</th><th className="p-2">Dif.</th></>
+        : <th className="p-2">R</th>;
+
   return (
     <div className="mt-3 space-y-4">
       <div className="flex flex-wrap items-center gap-3">
@@ -507,14 +615,28 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
 
       <ParamPanel format={format} params={params} setParams={setParams} />
 
-      {lastScore && last && (
-        <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 rounded-lg bg-slate-900 px-4 py-2.5 text-sm text-slate-200">
-          <span>Último: <b className="text-white uppercase">#{last.no} {last.rider} / {last.horse}</b></span>
-          <span>Lugar <b className="text-white">{lastScore.rankSection ?? "—"}º</b></span>
-          <span>Obstáculos <b className="text-white">{p2(lastScore.jumpPens)}</b></span>
-          <span>Total <b className="text-white">{p2(lastScore.totalPens)}</b></span>
-        </div>
-      )}
+      {lastScore && last && (() => {
+        const p = parts(last);
+        const resumen = last.status1 !== "OK" ? last.status1 : threeColJ
+          ? `R1 ${rCell(p.jf1, p.tp1, p.t1)} · R2 ${p.r2done ? rCell(p.jf2, p.tp2, p.t2) : "—"} · Final ${format === "optimum_two_round" ? (p.r2done ? rDiffCell(p.jf2, p.diff) : p.jf1) : rCell(p.sJump, p.sTimePen, p.r2done ? p.t2 : p.t1)}`
+          : twoColJ
+            ? `R1 ${rCell(p.jf1, p.tp1, p.t1)} · R2 ${p.r2done ? rCell(p.jf2, p.tp2, p.t2) : "—"}`
+            : idealColJ
+              ? `R ${rCell(p.sJump, p.sTimePen, p.t1)} · Dif ${rDiffCell((p.sJump ?? 0) + (p.sTimePen ?? 0), p.diff)}`
+              : `R ${rCell(p.sJump, p.sTimePen, p.t1)}`;
+        return (
+          <div className="flex flex-wrap items-baseline gap-x-5 gap-y-1 rounded-lg bg-slate-900 px-4 py-2.5 text-sm text-slate-200">
+            <span>Último: <b className="text-white uppercase">#{last.no} {last.rider} / {last.horse}{last.club ? ` · ${last.club}` : ""}</b></span>
+            <span>Lugar <b className="text-white">{lastScore.rankSection ?? "—"}º</b></span>
+            <span>Obst. <b className="text-white">{p2(lastScore.jumpPens)}</b></span>
+            <span>Pen. tiempo <b className="text-white">{p2(lastScore.timePens)}</b></span>
+            <span>Total <b className="text-white">{p2(lastScore.totalPens)}</b></span>
+            <span className="text-slate-300">{resumen}</span>
+            <span>Puntos <b className="text-white">{p2(points[last.entryId])}</b></span>
+            <span>Estado <b className="text-white">{last.status1}</b></span>
+          </div>
+        );
+      })()}
 
       <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
         <table className="w-full text-sm">
@@ -522,6 +644,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
             <th className="p-2">No.</th><th className="p-2">Lugar</th><th className="p-2 text-left">Binomio</th>
             <th className="p-2">Faltas</th><th className="p-2">Tiempo</th><th className="p-2">Estado</th>
             {hasR2 && <><th className="p-2">Faltas 2</th><th className="p-2">Tiempo 2</th></>}{hasStatus2 && <th className="p-2">Estado 2</th>}
+            <th className="p-2">Faltas (vivo)</th>
           </tr></thead>
           <tbody>
             {pendingRows.map((r) => {
@@ -535,7 +658,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
                   <td className="p-2 text-left">
                     <div className="font-semibold uppercase text-slate-900">{r.rider}{r.ext && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">EXT</span>}</div>
                     <div className="flex items-center gap-1 text-xs uppercase text-slate-500">
-                      <span>{r.horse} ·</span>
+                      <span>{r.horse}{r.club ? ` · ${r.club}` : ""} ·</span>
                       <select value={r.section} onChange={(e) => setRowSection(r.entryId, e.target.value)} onFocus={() => markCurrent(r.entryId)} className="rounded border border-slate-300 px-1 py-0.5 text-[11px] uppercase">
                         {[...new Set([r.section, ...sectionOptions])].filter(Boolean).map((sec) => <option key={sec} value={sec}>{sec}</option>)}
                       </select>
@@ -547,6 +670,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
                   {hasR2 && <><td className="p-2"><input value={r.f2} onChange={(e) => patch(r.entryId, { f2: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-28 rounded border border-slate-300 px-2 py-1" /></td>
                   <td className="p-2"><input type="number" step="0.01" value={r.t2} onChange={(e) => patch(r.entryId, { t2: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-20 rounded border border-slate-300 px-2 py-1 text-right" /></td></>}
                   {hasStatus2 && <td className="p-2"><select value={r.status2} onChange={(e) => patch(r.entryId, { status2: e.target.value })} className="rounded border border-slate-300 px-1 py-1">{STATUSES.map((x) => <option key={x}>{x}</option>)}</select></td>}
+                  <td className="p-2 text-center"><span className="inline-block min-w-7 rounded bg-slate-900 px-2 py-0.5 font-bold text-white">{(() => { const lf = liveFaults(r); return lf == null ? "—" : lf; })()}</span></td>
                 </tr>
               );
             })}
@@ -561,6 +685,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
             <table className="w-full text-sm">
               <thead><tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
                 <th className="p-2">Lugar</th><th className="p-2">No.</th><th className="p-2 text-left">Binomio</th>
+                {resultHeaders}
                 <th className="p-2">Obst.</th><th className="p-2">Total</th><th className="p-2">Puntos</th><th className="p-2">Est.</th><th className="p-2"></th>
               </tr></thead>
               <tbody>
@@ -572,8 +697,9 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
                       <td className="p-2 text-center">{r.no}</td>
                       <td className="p-2 text-left">
                         <div className="font-semibold uppercase">{r.rider}{r.ext && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 no-underline">EXT</span>}{r.cancelled && <span className="ml-1.5 rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 no-underline">CANCELADA</span>}</div>
-                        <div className="text-xs uppercase text-slate-500">{r.horse} · {r.section}</div>
+                        <div className="text-xs uppercase text-slate-500">{r.horse}{r.club ? ` · ${r.club}` : ""} · {r.section}</div>
                       </td>
+                      {resultCells(r)}
                       <td className="p-2 text-center">{p2(s.jumpPens)}</td><td className="p-2 text-center font-bold">{p2(s.totalPens)}</td>
                       <td className="p-2 text-center">{p2(points[r.entryId])}</td><td className="p-2 text-center">{r.status1}</td>
                       <td className="p-2 text-center">{r.cancelled ? null : <button onClick={() => patch(r.entryId, { committed: false })} className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Editar</button>}</td>

@@ -686,7 +686,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
               <thead><tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
                 <th className="p-2">Lugar</th><th className="p-2">No.</th><th className="p-2 text-left">Binomio</th>
                 {resultHeaders}
-                <th className="p-2">Obst.</th><th className="p-2">Total</th><th className="p-2">Puntos</th><th className="p-2">Est.</th><th className="p-2"></th>
+                <th className="p-2">Est.</th><th className="p-2"></th>
               </tr></thead>
               <tbody>
                 {committed.map((r) => {
@@ -700,8 +700,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
                         <div className="text-xs uppercase text-slate-500">{r.horse}{r.club ? ` · ${r.club}` : ""} · {r.section}</div>
                       </td>
                       {resultCells(r)}
-                      <td className="p-2 text-center">{p2(s.jumpPens)}</td><td className="p-2 text-center font-bold">{p2(s.totalPens)}</td>
-                      <td className="p-2 text-center">{p2(points[r.entryId])}</td><td className="p-2 text-center">{r.status1}</td>
+                      <td className="p-2 text-center">{r.status1}</td>
                       <td className="p-2 text-center">{r.cancelled ? null : <button onClick={() => patch(r.entryId, { committed: false })} className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Editar</button>}</td>
                     </tr>
                   );

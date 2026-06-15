@@ -1,7 +1,7 @@
 import { requireAdmin } from "@/lib/auth/requireAdmin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import CatalogMerge, { type MergeItem } from "../_merge/CatalogMerge";
-import { mergeShowClubs } from "../_merge/actions";
+import CatalogManager, { type MergeItem } from "../_merge/CatalogMerge";
+import { mergeShowClubs, editShowClub } from "../_merge/actions";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -25,16 +25,17 @@ export default async function ShowClubsPage() {
     label: c.name || "(sin nombre)",
     count: counts.get(c.id) ?? 0,
     subs: subCounts.get(c.id) ?? 0,
+    name: c.name ?? "",
   }));
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-6">
       <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Show — Clubes</h1>
       <p className="mt-1 mb-5 text-sm text-slate-500 dark:text-slate-400">
-        Combina clubes duplicados. Las participaciones e inscripciones se reasignan al registro que conserves; el
-        duplicado se elimina. {items.length} club(es) en total.
+        Marca dos o más clubes duplicados, elige el maestro y combínalos — las participaciones e inscripciones se
+        reasignan al maestro. También puedes <b>editar</b> un nombre con el botón Editar. {items.length} club(es) en total.
       </p>
-      <CatalogMerge items={items} noun="club" subsLabel="inscripciones" mergeAction={mergeShowClubs} />
+      <CatalogManager items={items} kind="club" noun="club" subsLabel="inscripciones" mergeAction={mergeShowClubs} editAction={editShowClub} />
     </main>
   );
 }

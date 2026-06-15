@@ -1,7 +1,7 @@
 import { requireAdmin } from "@/lib/auth/requireAdmin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import CatalogMerge, { type MergeItem } from "../_merge/CatalogMerge";
-import { mergeShowRiders } from "../_merge/actions";
+import CatalogManager, { type MergeItem } from "../_merge/CatalogMerge";
+import { mergeShowRiders, editShowRider } from "../_merge/actions";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -21,16 +21,19 @@ export default async function ShowRidersPage() {
     id: r.id,
     label: r.full_name || `${r.first_name ?? ""} ${r.last_name ?? ""}`.trim() || "(sin nombre)",
     count: counts.get(r.id) ?? 0,
+    first: r.first_name ?? "",
+    last: r.last_name ?? "",
   }));
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-6">
       <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Show — Jinetes</h1>
       <p className="mt-1 mb-5 text-sm text-slate-500 dark:text-slate-400">
-        Combina jinetes duplicados (p. ej. “NAVA SOFIA” y “SOFIA NAVA”). Las participaciones se reasignan al
-        registro que conserves; el duplicado se elimina. {items.length} jinete(s) en total.
+        Marca dos o más jinetes duplicados (p. ej. “NAVA SOFIA” y “SOFIA NAVA”), elige el maestro y combínalos —
+        las participaciones se reasignan y toman el nombre del maestro. También puedes <b>editar</b> un nombre mal
+        escrito (p. ej. “Magallon, Diego”) con el botón Editar. {items.length} jinete(s) en total.
       </p>
-      <CatalogMerge items={items} noun="jinete" mergeAction={mergeShowRiders} />
+      <CatalogManager items={items} kind="rider" noun="jinete" mergeAction={mergeShowRiders} editAction={editShowRider} />
     </main>
   );
 }

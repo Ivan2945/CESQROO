@@ -1,7 +1,7 @@
 import { requireAdmin } from "@/lib/auth/requireAdmin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import CatalogMerge, { type MergeItem } from "../_merge/CatalogMerge";
-import { mergeShowHorses } from "../_merge/actions";
+import CatalogManager, { type MergeItem } from "../_merge/CatalogMerge";
+import { mergeShowHorses, editShowHorse } from "../_merge/actions";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -21,16 +21,17 @@ export default async function ShowHorsesPage() {
     id: h.id,
     label: h.name || "(sin nombre)",
     count: counts.get(h.id) ?? 0,
+    name: h.name ?? "",
   }));
 
   return (
     <main className="mx-auto max-w-3xl px-4 py-6">
       <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Show — Caballos</h1>
       <p className="mt-1 mb-5 text-sm text-slate-500 dark:text-slate-400">
-        Combina caballos duplicados. Las participaciones se reasignan al registro que conserves; el duplicado se
-        elimina. {items.length} caballo(s) en total.
+        Marca dos o más caballos duplicados, elige el maestro y combínalos — las participaciones se reasignan y
+        toman el nombre del maestro. También puedes <b>editar</b> un nombre con el botón Editar. {items.length} caballo(s) en total.
       </p>
-      <CatalogMerge items={items} noun="caballo" mergeAction={mergeShowHorses} />
+      <CatalogManager items={items} kind="horse" noun="caballo" mergeAction={mergeShowHorses} editAction={editShowHorse} />
     </main>
   );
 }

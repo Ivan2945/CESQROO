@@ -18,7 +18,9 @@ function Picker({
 }) {
   const [q, setQ] = useState("");
   const ql = q.trim().toLowerCase();
-  const filtered = (ql ? items.filter((i) => i.label.toLowerCase().includes(ql) || (i.sub ?? "").toLowerCase().includes(ql)) : items).slice(0, 40);
+  const filtered = ql
+    ? items.filter((i) => i.label.toLowerCase().includes(ql) || (i.sub ?? "").toLowerCase().includes(ql))
+    : items;
   return (
     <div className="flex-1 min-w-[260px]">
       <div className="mb-1 text-xs font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">{title}</div>

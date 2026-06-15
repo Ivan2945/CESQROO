@@ -27,6 +27,7 @@ type Entry = {
   submission_id: string;
   rider_id: string | null;
   rider_name: string;
+  horse_id: string | null;
   horse_name: string;
   height: string;
   section: string;
@@ -67,7 +68,7 @@ export default async function AdminEventDetail({
   if (subIds.length) {
     const { data: ent } = await supabaseAdmin
       .from("event_entries")
-      .select("id, submission_id, rider_id, rider_name, horse_name, height, section, days, circuit, discount, status, is_extemp")
+      .select("id, submission_id, rider_id, rider_name, horse_id, horse_name, height, section, days, circuit, discount, status, is_extemp")
       .in("submission_id", subIds);
     entries = (ent as Entry[]) ?? [];
   }

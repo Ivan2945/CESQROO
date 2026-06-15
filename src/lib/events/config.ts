@@ -18,7 +18,13 @@ export type EventConfig = {
     nominationFee: number;
     entryFeeDefault: number;
     entryFeeByHeight: Record<string, number>;
+    // How nominations are counted: once per rider, or once per rider+horse
+    // combination (binomio).
+    nominationBasis: "rider" | "pair";
     nominationExempt: string[];
+    // Per-section exceptions: a section listed in nominationExempt is exempt
+    // EXCEPT at these heights, where it must still pay. e.g. { Libre: ["1.10m","1.20m"] }.
+    nominationExemptExcept: Record<string, string[]>;
     // What a cancelled start costs: full credit (free), a fixed fee kept, or no refund.
     cancellation: { mode: "credit" | "fee" | "no_refund"; fee: number };
     // The "Descuento" flag: percent or flat ($/start) off entry fees, and
@@ -45,7 +51,9 @@ export const TEMPLATE_CONFIG: EventConfig = {
     nominationFee: 350,
     entryFeeDefault: 750,
     entryFeeByHeight: {},
+    nominationBasis: "rider",
     nominationExempt: ["Cruces"],
+    nominationExemptExcept: {},
     cancellation: { mode: "credit", fee: 0 },
     discount: { mode: "percent", value: 50, waivesNomination: true },
   },
@@ -93,11 +101,21 @@ function normalizePricing(raw: unknown): EventConfig["pricing"] {
     if (Number.isFinite(v)) entryFeeByHeight[k] = v;
   }
   const cMode = p.cancellation?.mode;
+  const exceptRaw = (p.nominationExemptExcept && typeof p.nominationExemptExcept === "object" ? p.nominationExemptExcept : {}) as Record<string, unknown>;
+  const nominationExemptExcept: Record<string, string[]> = {};
+  for (const k of Object.keys(exceptRaw)) {
+    if (Array.isArray(exceptRaw[k])) {
+      const hs = (exceptRaw[k] as unknown[]).map(String);
+      if (hs.length) nominationExemptExcept[k] = hs;
+    }
+  }
   return {
     nominationFee: Number.isFinite(Number(p.nominationFee)) ? Number(p.nominationFee) : 350,
     entryFeeDefault: Number.isFinite(Number(p.entryFeeDefault)) ? Number(p.entryFeeDefault) : 750,
     entryFeeByHeight,
+    nominationBasis: p.nominationBasis === "pair" ? "pair" : "rider",
     nominationExempt: Array.isArray(p.nominationExempt) ? p.nominationExempt.map(String) : ["Cruces"],
+    nominationExemptExcept,
     cancellation: {
       mode: cMode === "fee" || cMode === "no_refund" ? cMode : "credit",
       fee: Number.isFinite(Number(p.cancellation?.fee)) ? Number(p.cancellation?.fee) : 0,

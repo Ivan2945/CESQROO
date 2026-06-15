@@ -4,6 +4,8 @@ export type BillingEntry = {
   id?: string; // event_entries id (used to match per-day NP no-shows)
   rider_id: string | null;
   rider_name: string;
+  horse_id?: string | null; // for per-pair nomination grouping
+  horse_name?: string;
   height: string;
   section: string;
   days: string[] | null;
@@ -89,25 +91,43 @@ export function computeStatement(
     }
   }
 
-  // Nomination: group active entries by rider; charge once unless exempt /
-  // circuit / discounted (when the discount waives nomination). A rider whose
-  // only starts were cancelled or no-shows doesn't trigger a nomination fee.
-  const byRider = new Map<string, BillingEntry[]>();
+  // Nomination: counted once per rider, or once per rider+horse (binomio),
+  // depending on nominationBasis. A unit is exempt if it's in the circuit, the
+  // discount waives it, or all its entries fall under a class exemption — UNLESS
+  // a section exemption is overridden at this height (e.g. Libre is waived but
+  // not at 1.10m/1.20m), which forces payment. Units whose only starts were
+  // cancelled / no-shows don't trigger a fee.
+  const except = config.pricing.nominationExemptExcept ?? {};
+  const byPair = config.pricing.nominationBasis === "pair";
+  const riderKey = (e: BillingEntry) => e.rider_id || `name:${e.rider_name.trim().toLowerCase()}`;
+  const unitKey = (e: BillingEntry) =>
+    byPair ? `${riderKey(e)}|${e.horse_id || `h:${(e.horse_name ?? "").trim().toLowerCase()}`}` : riderKey(e);
+  // This entry's section is exempt but its height is an exception -> must pay.
+  const entryMandatory = (e: BillingEntry) =>
+    !exempt.has(e.height) && exempt.has(e.section) && (except[e.section] ?? []).includes(e.height);
+  // This entry is exempt: an exempt height, or an exempt section not excepted here.
+  const entryExempt = (e: BillingEntry) =>
+    exempt.has(e.height) || (exempt.has(e.section) && !(except[e.section] ?? []).includes(e.height));
+
+  const groups = new Map<string, BillingEntry[]>();
   for (const e of entries) {
     if (isCancelled(e)) continue;
     if (billableDayCount(e) === 0) continue;
-    const key = e.rider_id || `name:${e.rider_name.trim().toLowerCase()}`;
-    (byRider.get(key) ?? byRider.set(key, []).get(key)!).push(e);
+    const key = unitKey(e);
+    (groups.get(key) ?? groups.set(key, []).get(key)!).push(e);
   }
   let nominationRiders = 0;
-  for (const rs of byRider.values()) {
+  for (const rs of groups.values()) {
     const isCircuit = rs.some((e) => e.circuit);
-    const hasExempt = rs.some((e) => exempt.has(e.height) || exempt.has(e.section));
+    if (isCircuit) continue; // circuit members never pay nomination
+    // A mandatory (excepted) entry overrides the class exemption.
+    const exemptByClass = !rs.some(entryMandatory) && rs.some(entryExempt);
     const hasDiscount = (discount?.waivesNomination ?? false) && rs.some((e) => e.discount);
-    if (isCircuit || hasExempt || hasDiscount) {
-      if (hasDiscount && !isCircuit && !hasExempt) discountSavings += nominationFee; // savings only if it would otherwise be charged
+    if (hasDiscount) {
+      if (!exemptByClass) discountSavings += nominationFee; // savings only if it would otherwise be charged
       continue;
     }
+    if (exemptByClass) continue;
     nominationRiders++;
   }
   const nominationFees = nominationRiders * nominationFee;

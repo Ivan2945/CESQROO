@@ -121,6 +121,8 @@ export default function ConfigEditor({
     return o;
   });
   const [nominationExempt, setNominationExempt] = useState<string[]>(initialConfig.pricing.nominationExempt);
+  const [nominationBasis, setNominationBasis] = useState<"rider" | "pair">(initialConfig.pricing.nominationBasis);
+  const [nominationExemptExcept, setNominationExemptExcept] = useState<Record<string, string[]>>(initialConfig.pricing.nominationExemptExcept);
   const [cancelMode, setCancelMode] = useState<"credit" | "fee" | "no_refund">(initialConfig.pricing.cancellation.mode);
   const [cancelFee, setCancelFee] = useState(String(initialConfig.pricing.cancellation.fee));
   const [discountMode, setDiscountMode] = useState<"percent" | "flat">(initialConfig.pricing.discount.mode);
@@ -134,6 +136,14 @@ export default function ConfigEditor({
     setPriceByHeight(() => Object.fromEntries(heights.map((h) => [h, entryFeeDefault])));
   const toggleExempt = (key: string) =>
     setNominationExempt((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
+  const toggleExcept = (section: string, height: string) =>
+    setNominationExemptExcept((prev) => {
+      const cur = prev[section] ?? [];
+      const next = cur.includes(height) ? cur.filter((h) => h !== height) : [...cur, height];
+      const out = { ...prev };
+      if (next.length) out[section] = next; else delete out[section];
+      return out;
+    });
 
   // Keep height/section keys in sync when those lists change
   function setHeightsSynced(next: string[]) {
@@ -220,7 +230,12 @@ export default function ConfigEditor({
         nominationFee: Number(nominationFee) || 0,
         entryFeeDefault: def,
         entryFeeByHeight,
+        nominationBasis,
         nominationExempt,
+        // Keep exceptions only for sections that are still exempt sections.
+        nominationExemptExcept: Object.fromEntries(
+          Object.entries(nominationExemptExcept).filter(([s]) => nominationExempt.includes(s) && sections.includes(s))
+        ),
         cancellation: { mode: cancelMode, fee: Number(cancelFee) || 0 },
         discount: { mode: discountMode, value: Number(discountValue) || 0, waivesNomination: discountWaives },
       },
@@ -494,6 +509,18 @@ export default function ConfigEditor({
         </div>
 
         <div className="mt-4">
+          <h4 className="text-sm font-semibold text-slate-700">¿Cómo se cobra la nominación?</h4>
+          <p className="mb-2 text-xs text-slate-500">
+            Por jinete: una nominación por jinete sin importar cuántos caballos monte. Por binomio: una nominación por
+            cada combinación jinete–caballo (p. ej. Jaime Vázquez & Balou y Jaime Vázquez & Loretto = 2).
+          </p>
+          <select value={nominationBasis} onChange={(e) => setNominationBasis(e.target.value as "rider" | "pair")} className={input + " w-full max-w-xs"}>
+            <option value="rider">Por jinete</option>
+            <option value="pair">Por binomio (jinete + caballo)</option>
+          </select>
+        </div>
+
+        <div className="mt-4">
           <h4 className="text-sm font-semibold text-slate-700">Exenciones de nominación</h4>
           <p className="mb-2 text-xs text-slate-500">
             Un jinete queda exento si compite en cualquiera de estas alturas o secciones (además de los miembros del circuito).
@@ -516,6 +543,41 @@ export default function ConfigEditor({
             })}
           </div>
         </div>
+
+        {/* Exceptions: an exempt SECTION still pays at these heights */}
+        {sections.filter((s) => nominationExempt.includes(s)).length > 0 && (
+          <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50/50 p-3">
+            <h4 className="text-sm font-semibold text-slate-700">Excepciones por altura</h4>
+            <p className="mb-2 text-xs text-slate-500">
+              Para una sección exenta, marca las alturas donde SÍ se cobra nominación (p. ej. “Libre” exenta salvo en
+              1.10m y 1.20m).
+            </p>
+            <div className="space-y-3">
+              {sections.filter((s) => nominationExempt.includes(s)).map((s) => (
+                <div key={s}>
+                  <div className="mb-1 text-sm font-semibold text-slate-800">{s} — paga en:</div>
+                  <div className="flex flex-wrap gap-2">
+                    {heights.map((h) => {
+                      const on = (nominationExemptExcept[s] ?? []).includes(h);
+                      return (
+                        <label
+                          key={h}
+                          className={
+                            "inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs " +
+                            (on ? "border-rose-500 bg-rose-50 text-rose-700" : "border-slate-300 bg-white text-slate-600")
+                          }
+                        >
+                          <input type="checkbox" className="accent-rose-600" checked={on} onChange={() => toggleExcept(s, h)} />
+                          {h}
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>

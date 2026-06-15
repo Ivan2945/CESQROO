@@ -127,12 +127,15 @@ function scoreOne(fmt: ClassFormat, e: ScoreInput): Raw {
       return { jumpPens: jp, timePens: tp, totalPens: 0, tieTime: t1, advanced: true, tier: elimJO ? 1 : 0 };
     }
     case "optimum_two_round": {
-      // FEM 7.4: only a zero-jump-fault round 1 qualifies. Round-1 time is the
-      // target; round 2 ranked by round-2 faults then |rd2 − rd1|.
+      // FEM 7.4: round 1 is NOT against the clock — only jump faults (refusals /
+      // knockdowns) count. A zero-jump-fault round qualifies for round 2; the
+      // round-1 time becomes that rider's target. Round 2 is ranked by round-2
+      // faults then |rd2 − rd1|. Non-qualifiers are ranked by round-1 faults
+      // ONLY, so equal-fault riders share a placing (no time tie-break).
       const jp1 = e.r1.faults;
       const qualified = jp1 === 0;
       if (!qualified) {
-        return { jumpPens: jp1, timePens: 0, totalPens: jp1, tieTime: t1, advanced: false, tier: 2 };
+        return { jumpPens: jp1, timePens: 0, totalPens: jp1, tieTime: 0, advanced: false, tier: 2 };
       }
       const s2 = statusOf(e.r2);
       if (e.r2 && e.r2.timeSec != null && completed(s2)) {

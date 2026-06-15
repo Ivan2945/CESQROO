@@ -30,13 +30,13 @@ function rCell(jump: number | null, timePen: number | null, time: number | null,
   const j = jump ?? 0;
   const total = j + tp;
   const tStr = time == null ? "—" : num2(time);
-  return tp > 0 ? `${total} (${j}+${tp})//${tStr}` : `${total}//${tStr}`;
+  return tp > 0 ? `${total} (${j}+${tp}) // ${tStr}` : `${total} // ${tStr}`;
 }
 
-// Ideal-time difference cell: faults over the time difference, e.g. 0//0.25.
+// Ideal-time difference cell: faults over the time difference, e.g. 0 // 0.25.
 function rDiffCell(jump: number | null, diff: number | null) {
   if (diff == null) return "—";
-  return `${jump ?? 0}//${num2(diff)}`;
+  return `${jump ?? 0} // ${num2(diff)}`;
 }
 
 export default function LiveClassClient({ slug, height, day }: { slug: string; height: string; day: string }) {
@@ -172,17 +172,24 @@ export default function LiveClassClient({ slug, height, day }: { slug: string; h
         {data.remaining.length === 0 ? (
           <p className="text-sm text-slate-500 dark:text-slate-400">Nadie pendiente.</p>
         ) : (
-          <ol className="space-y-1 text-sm text-slate-800 dark:text-slate-200">
-            {data.remaining.map((r, i) => (
-              <li key={i} className="flex gap-2">
-                <span className="w-8 shrink-0 font-mono text-slate-400 dark:text-slate-500">{r.no}</span>
-                <span className="uppercase">
-                  <span className="text-slate-500 dark:text-slate-400">{r.club || "—"}</span> · {r.rider}
-                  <span className="text-slate-400 dark:text-slate-500"> · {r.horse} · {r.section}</span>
-                </span>
-              </li>
-            ))}
-          </ol>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                <th className="p-2">No.</th><th className="p-2 text-left">Club</th><th className="p-2 text-left">Jinete</th><th className="p-2 text-left">Caballo</th><th className="p-2">Secc.</th>
+              </tr></thead>
+              <tbody>
+                {data.remaining.map((r, i) => (
+                  <tr key={i} className="border-b border-slate-100 dark:border-slate-800">
+                    <td className="p-2 text-center font-mono text-slate-400 dark:text-slate-500">{r.no}</td>
+                    <td className="p-2 uppercase text-slate-500 dark:text-slate-400">{r.club || "—"}</td>
+                    <td className="p-2 uppercase text-slate-900 dark:text-white">{r.rider}</td>
+                    <td className="p-2 uppercase text-slate-700 dark:text-slate-300">{r.horse}</td>
+                    <td className="p-2 text-center text-slate-700 dark:text-slate-300">{r.section}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
 

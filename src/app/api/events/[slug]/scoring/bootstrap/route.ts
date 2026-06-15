@@ -38,20 +38,21 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
     supabaseAdmin.from("show_clubs").select("id, name").order("name"),
   ]);
 
-  // Active binomios only (cancelled entries don't compete).
-  const entries = (ent ?? [])
-    .filter((e) => (e.status ?? "active") !== "cancelled")
-    .map((e) => ({
-      id: e.id,
-      rider: e.rider_name,
-      horse: e.horse_name,
-      height: e.height,
-      section: e.section,
-      days: Array.isArray(e.days) ? e.days : [],
-      riderKey: e.rider_id ?? e.rider_name,
-      horseKey: e.horse_id ?? e.horse_name,
-      isExtemp: !!e.is_extemp,
-    }));
+  // Include cancelled binomios too, flagged — the judging screen shows them as
+  // NP (already "scored", off the pending list) and the public view crosses
+  // them out. They never disappear from the lists.
+  const entries = (ent ?? []).map((e) => ({
+    id: e.id,
+    rider: e.rider_name,
+    horse: e.horse_name,
+    height: e.height,
+    section: e.section,
+    days: Array.isArray(e.days) ? e.days : [],
+    riderKey: e.rider_id ?? e.rider_name,
+    horseKey: e.horse_id ?? e.horse_name,
+    isExtemp: !!e.is_extemp,
+    cancelled: (e.status ?? "active") === "cancelled",
+  }));
 
   return Response.json({
     event: {

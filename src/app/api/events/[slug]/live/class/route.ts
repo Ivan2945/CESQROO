@@ -38,11 +38,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
       .eq("event_id", event.id).eq("height", height).eq("day", day),
   ]);
 
-  const active = (ent ?? []).filter((e) => (e.status ?? "active") !== "cancelled");
-  const entryById = new Map(active.map((e) => [e.id, e]));
+  // Keep cancelled entries in the roster (shown crossed out, never scored).
+  const allEntries = ent ?? [];
+  const entryById = new Map(allEntries.map((e) => [e.id, e]));
+  const isCancelled = (id: string) => (entryById.get(id)?.status ?? "active") === "cancelled";
 
   // Club name per entry (for the public results).
-  const clubIds = [...new Set(active.map((e) => e.club_id).filter(Boolean))] as string[];
+  const clubIds = [...new Set(allEntries.map((e) => e.club_id).filter(Boolean))] as string[];
   const { data: clubRows } = clubIds.length
     ? await supabaseAdmin.from("show_clubs").select("id, name").in("id", clubIds)
     : { data: [] as { id: string; name: string }[] };
@@ -62,11 +64,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
     ? committedOrder.map((o) => ({
         entryId: o.entry_id, no: o.no,
         rider: entryById.get(o.entry_id)?.rider_name || "", horse: entryById.get(o.entry_id)?.horse_name || "",
-        section: entryById.get(o.entry_id)?.section || "",
+        section: entryById.get(o.entry_id)?.section || "", cancelled: isCancelled(o.entry_id),
       }))
-    : active
+    : allEntries
         .filter((e) => e.height === height && (Array.isArray(e.days) ? e.days : []).includes(day))
-        .map((e) => ({ entryId: e.id, no: "" as number | string, rider: e.rider_name, horse: e.horse_name, section: e.section || "" }));
+        .map((e) => ({ entryId: e.id, no: "" as number | string, rider: e.rider_name, horse: e.horse_name, section: e.section || "", cancelled: (e.status ?? "active") === "cancelled" }));
 
   const resByEntry = new Map((results ?? []).map((r) => [r.entry_id, r]));
   const hasResult = (id: string) => {
@@ -74,9 +76,9 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
     return !!r && (r.r1_time != null || (r.r1_faults && r.r1_faults !== "") || (r.r1_status && r.r1_status !== "OK"));
   };
 
-  // Build ranking inputs from scored binomios.
+  // Build ranking inputs from scored binomios (cancelled entries never rank).
   const inputs: ScoreInput[] = order
-    .filter((o) => hasResult(o.entryId))
+    .filter((o) => !isCancelled(o.entryId) && hasResult(o.entryId))
     .map((o) => {
       const r = resByEntry.get(o.entryId)!;
       return {
@@ -104,45 +106,59 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   const noTimePen = format === "optimum_two_round" || format === "optimum_window";
   const timeOver = (t: number | null, ta: number) => (t != null && ta > 0 && t > ta ? Math.ceil(t - ta) : 0);
 
-  const dataRows = scored
-    .filter((s) => s.rankSection != null) // completed & placeable
-    .map((s) => {
-      const e = entryById.get(s.id);
-      const r = resByEntry.get(s.id)!;
-      const jf1 = parseFaultShorthand(r.r1_faults);
-      const jf2 = parseFaultShorthand(r.r2_faults);
-      const t1 = eff(r.r1_time, r.r1_faults);
-      const t2 = eff(r.r2_time, r.r2_faults);
-      const r2done = hasR2 && t2 != null;
-      const tp1 = noTimePen ? 0 : timeOver(t1, ta1);
+  // Every judged binomio belongs in the results — placeable ones get a rank;
+  // eliminated / retired / no-show / cancelled ones show their status with no
+  // place (they must NOT disappear). "Done" = has a result, or is cancelled.
+  const byId = new Map(scored.map((s) => [s.id, s]));
+  const dataRows = order
+    .filter((o) => isCancelled(o.entryId) || hasResult(o.entryId))
+    .map((o) => {
+      const id = o.entryId;
+      const e = entryById.get(id);
+      const cancelled = isCancelled(id);
+      const s = byId.get(id);
+      const r = resByEntry.get(id);
+      // Cancelled = no-show (NP); otherwise the judged round-1 status.
+      const status = cancelled ? "NP" : (r?.r1_status || "OK");
+      const placeable = !cancelled && !!s && s.rankSection != null;
+      const jf1 = r ? parseFaultShorthand(r.r1_faults) : 0;
+      const jf2 = r ? parseFaultShorthand(r.r2_faults) : 0;
+      const t1 = r ? eff(r.r1_time, r.r1_faults) : null;
+      const t2 = r ? eff(r.r2_time, r.r2_faults) : null;
+      const r2done = !cancelled && hasR2 && t2 != null;
+      const tp1 = cancelled || noTimePen ? 0 : timeOver(t1, ta1);
       const tp2 = r2done && !noTimePen ? timeOver(t2, ta2) : 0;
       return {
-        entryId: s.id,
-        place: showRanking ? s.rankSection : null,
-        rider: e?.rider_name || "", horse: e?.horse_name || "", section: s.section,
-        club: clubOf(s.id),
-        // Per round/phase raw figures (the client builds the "faults/time" cell).
+        entryId: id,
+        place: showRanking && placeable ? s!.rankSection : null,
+        status,
+        rider: e?.rider_name || "", horse: e?.horse_name || "", section: o.section || s?.section || "",
+        club: clubOf(id),
+        // Per round/phase raw figures (the client builds the "faults // time" cell).
         jf1, tp1, t1,
         jf2, tp2, t2, r2done,
         // Per-format aggregate jump / time penalties (single-round R, and the
         // two-phase-special Final column).
-        sJump: s.jumpPens, sTimePen: s.timePens,
+        sJump: s?.jumpPens ?? null, sTimePen: s?.timePens ?? null,
         // Time difference vs the target: ideal-time = |óptimo − tiempo|;
-        // FEM 7.4 = |rd2 − rd1|.
+        // FEM 7.4 = |rd2 − rd1|. Only meaningful for placed rows.
         diff:
-          format === "optimum_window"
-            ? s.tieTime
-            : format === "optimum_two_round" && r2done && t1 != null && t2 != null
-              ? Math.abs(t2 - t1)
-              : null,
+          !placeable
+            ? null
+            : format === "optimum_window"
+              ? s!.tieTime
+              : format === "optimum_two_round" && r2done && t1 != null && t2 != null
+                ? Math.abs(t2 - t1)
+                : null,
       };
     });
   const ranking = showRanking
     ? dataRows.sort((a, b) => (a.section || "").localeCompare(b.section || "") || (a.place ?? 1e9) - (b.place ?? 1e9))
     : dataRows.sort((a, b) => (orderIdx.get(a.entryId) ?? 1e9) - (orderIdx.get(b.entryId) ?? 1e9));
 
+  // Yet-to-go = no result and not cancelled.
   const remaining = order
-    .filter((o) => !hasResult(o.entryId))
+    .filter((o) => !isCancelled(o.entryId) && !hasResult(o.entryId))
     .map((o) => ({ no: o.no, rider: o.rider, horse: o.horse, section: o.section, club: clubOf(o.entryId) }));
 
   const cur = setupRow?.current_entry_id ? entryById.get(setupRow.current_entry_id) : null;

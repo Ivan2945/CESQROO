@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 type RankRow = {
-  place: number | null; rider: string; horse: string; section: string; club: string;
+  place: number | null; status: string; rider: string; horse: string; section: string; club: string;
   jf1: number | null; tp1: number | null; t1: number | null;          // round/phase 1
   jf2: number | null; tp2: number | null; t2: number | null; r2done: boolean; // round/phase 2
   sJump: number | null; sTimePen: number | null;                       // per-format aggregate pens
@@ -73,6 +73,7 @@ export default function LiveClassClient({ slug, height, day }: { slug: string; h
   // Ideal-time class before it's finalized: keep time faults and the difference
   // (which would reveal the ranking) out of view until the class is finalized.
   const idealHide = idealCol && !data.showRanking;
+  const resultCols = threeCol ? 3 : twoCol ? 2 : idealCol ? 2 : 1;
 
   return (
     <div className="mx-auto max-w-3xl px-1 py-2">
@@ -123,13 +124,15 @@ export default function LiveClassClient({ slug, height, day }: { slug: string; h
               </tr></thead>
               <tbody>
                 {data.ranking.map((r, i) => (
-                  <tr key={i} className={"border-b border-slate-100 dark:border-slate-800 " + (data.showRanking && r.place === 1 ? "bg-emerald-50 dark:bg-emerald-950/40" : "")}>
+                  <tr key={i} className={"border-b border-slate-100 dark:border-slate-800 " + (r.status !== "OK" ? "opacity-60 " : "") + (data.showRanking && r.place === 1 ? "bg-emerald-50 dark:bg-emerald-950/40" : "")}>
                     {data.showRanking && <td className="p-2 text-center font-extrabold text-slate-900 dark:text-white">{r.place ?? "—"}</td>}
                     <td className="p-2 uppercase text-slate-500 dark:text-slate-400">{r.club || "—"}</td>
                     <td className="p-2 uppercase text-slate-900 dark:text-white">{r.rider}</td>
                     <td className="p-2 uppercase text-slate-700 dark:text-slate-300">{r.horse}</td>
                     <td className="p-2 text-center text-slate-700 dark:text-slate-300">{r.section}</td>
-                    {threeCol ? (
+                    {r.status !== "OK" ? (
+                      <td colSpan={resultCols} className="p-2 text-center font-bold text-rose-600 dark:text-rose-400">{r.status}</td>
+                    ) : threeCol ? (
                       <>
                         <td className="p-2 text-center text-slate-700 dark:text-slate-300">{rCell(r.jf1, r.tp1, r.t1)}</td>
                         <td className="p-2 text-center text-slate-700 dark:text-slate-300">{r.r2done ? rCell(r.jf2, r.tp2, r.t2) : "—"}</td>

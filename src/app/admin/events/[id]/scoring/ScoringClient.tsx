@@ -52,7 +52,7 @@ type Row = {
   entryId: string; no: number | string; rider: string; horse: string; section: string;
   f1: string; t1: string; status1: string;
   f2: string; t2: string; status2: string;
-  scored: boolean; committed: boolean; ext?: boolean;
+  scored: boolean; committed: boolean; ext?: boolean; cancelled?: boolean;
 };
 
 // Sensible starting params per format (seconds + dist/cad for the helpers).
@@ -172,7 +172,7 @@ export default function ScoringClient({ slug, eventName }: { slug: string; event
 // ---- Category / day picker --------------------------------------------------
 function ClassPicker({ boot, onPick }: { boot: BootstrapData; onPick: (h: string, d: string) => void }) {
   const { config, entries } = boot;
-  const countFor = (h: string, d: string) => entries.filter((e) => e.height === h && (e.days || []).includes(d)).length;
+  const countFor = (h: string, d: string) => entries.filter((e) => !e.cancelled && e.height === h && (e.days || []).includes(d)).length;
   return (
     <div className="space-y-5">
       {config.days.map((day) => (
@@ -315,8 +315,18 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
         : buildStartList(boot.entries, height, day, 1);
       setRows(order.map((o) => {
         const r = stored[`${o.entryId}|${height}|${day}`];
+        const be = boot.entries.find((x) => x.id === o.entryId);
+        const ext = !!be?.isExtemp;
+        // A cancelled binomio counts as NP and is treated as already scored, so
+        // it drops off the pending-to-score list (it shows crossed out below).
+        if (be?.cancelled) {
+          return {
+            entryId: o.entryId, no: o.no, rider: o.rider, horse: o.horse, section: o.section, ext, cancelled: true,
+            f1: "", t1: "", status1: "NP", f2: "", t2: "", status2: "NP",
+            scored: true, committed: true,
+          };
+        }
         const committed = !!r && (r.r1Faults !== "" || r.r1Time != null || r.r1Status !== "OK");
-        const ext = !!boot.entries.find((x) => x.id === o.entryId)?.isExtemp;
         return {
           entryId: o.entryId, no: o.no, rider: o.rider, horse: o.horse, section: o.section, ext,
           f1: r?.r1Faults ?? "", t1: r?.r1Time != null ? String(r.r1Time) : "", status1: r?.r1Status ?? "OK",
@@ -551,16 +561,16 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
                 {committed.map((r) => {
                   const s = byId[r.entryId] || ({} as ScoredRow);
                   return (
-                    <tr key={r.entryId} className={"border-b border-slate-200 " + (s.rankSection === 1 ? "bg-emerald-50" : s.rankSection == null ? "text-slate-400" : "")}>
+                    <tr key={r.entryId} className={"border-b border-slate-200 " + (r.cancelled ? "text-slate-400 line-through " : s.rankSection === 1 ? "bg-emerald-50" : s.rankSection == null ? "text-slate-400" : "")}>
                       <td className="p-2 text-center font-extrabold">{s.rankSection ?? "—"}</td>
                       <td className="p-2 text-center">{r.no}</td>
                       <td className="p-2 text-left">
-                        <div className="font-semibold uppercase">{r.rider}{r.ext && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">EXT</span>}</div>
+                        <div className="font-semibold uppercase">{r.rider}{r.ext && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700 no-underline">EXT</span>}{r.cancelled && <span className="ml-1.5 rounded-full bg-rose-100 px-1.5 py-0.5 text-[10px] font-bold text-rose-700 no-underline">CANCELADA</span>}</div>
                         <div className="text-xs uppercase text-slate-500">{r.horse} · {r.section}</div>
                       </td>
                       <td className="p-2 text-center">{p2(s.jumpPens)}</td><td className="p-2 text-center font-bold">{p2(s.totalPens)}</td>
                       <td className="p-2 text-center">{p2(points[r.entryId])}</td><td className="p-2 text-center">{r.status1}</td>
-                      <td className="p-2 text-center"><button onClick={() => patch(r.entryId, { committed: false })} className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Editar</button></td>
+                      <td className="p-2 text-center">{r.cancelled ? null : <button onClick={() => patch(r.entryId, { committed: false })} className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Editar</button>}</td>
                     </tr>
                   );
                 })}

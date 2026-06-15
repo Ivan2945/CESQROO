@@ -135,7 +135,7 @@ export default function LiveClassClient({ slug, height, day }: { slug: string; h
                         <td className="p-2 text-center text-slate-700 dark:text-slate-300">{r.r2done ? rCell(r.jf2, r.tp2, r.t2) : "—"}</td>
                         <td className="p-2 text-center font-bold text-slate-900 dark:text-white">
                           {data.format === "optimum_two_round"
-                            ? (r.r2done ? (r.jf2 ?? 0) : "—")
+                            ? (r.r2done ? rDiffCell(r.jf2, r.diff) : (r.jf1 ?? 0))
                             : rCell(r.sJump, r.sTimePen, r.r2done ? r.t2 : r.t1)}
                         </td>
                       </>

@@ -439,8 +439,14 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
 
   const last = lastId ? rows.find((r) => r.entryId === lastId) : null;
   const lastScore = last ? byId[last.entryId] : null;
+  // Within a section: ranked placings first, then unplaced grouped FC, T, RT, EL, NP.
+  const grp = (r: Row) => {
+    if (byId[r.entryId]?.rankSection != null) return 0;
+    return (({ FC: 1, T: 2, RT: 3, EL: 4, NP: 5 }) as Record<string, number>)[r.status1] ?? 6;
+  };
   const committed = rows.filter((r) => r.committed).sort((a, b) =>
-    (a.section || "").localeCompare(b.section || "") || ((byId[a.entryId]?.rankSection ?? 1e9) - (byId[b.entryId]?.rankSection ?? 1e9)));
+    (a.section || "").localeCompare(b.section || "") || grp(a) - grp(b) ||
+    ((byId[a.entryId]?.rankSection ?? 1e9) - (byId[b.entryId]?.rankSection ?? 1e9)));
   const pendingRows = rows.filter((r) => !r.committed);
 
   return (

@@ -152,8 +152,20 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
                 : null,
       };
     });
+  // Within a section: ranked placings first, then the unplaced grouped in order
+  // FC, T, RT, EL, NP.
+  const grp = (r: { place: number | null; status: string }) => {
+    if (r.place != null) return 0;
+    return (({ FC: 1, T: 2, RT: 3, EL: 4, NP: 5 }) as Record<string, number>)[r.status] ?? 6;
+  };
   const ranking = showRanking
-    ? dataRows.sort((a, b) => (a.section || "").localeCompare(b.section || "") || (a.place ?? 1e9) - (b.place ?? 1e9))
+    ? dataRows.sort(
+        (a, b) =>
+          (a.section || "").localeCompare(b.section || "") ||
+          grp(a) - grp(b) ||
+          (a.place ?? 1e9) - (b.place ?? 1e9) ||
+          (orderIdx.get(a.entryId) ?? 0) - (orderIdx.get(b.entryId) ?? 0)
+      )
     : dataRows.sort((a, b) => (orderIdx.get(a.entryId) ?? 1e9) - (orderIdx.get(b.entryId) ?? 1e9));
 
   // Yet-to-go = no result and not cancelled.

@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 
 type ClassRow = { height: string; day: string; total: number; scored: number; status: string };
-type Data = { event: { name: string; slug: string; saturdayDate: string | null; sundayDate: string | null }; days: string[]; classes: ClassRow[] };
+type Data = { event: { name: string; slug: string; saturdayDate: string | null; sundayDate: string | null }; days: string[]; committedDays?: string[]; classes: ClassRow[] };
 
 function StatusBadge({ status }: { status: string }) {
   if (status === "in_progress")
@@ -44,6 +44,7 @@ export default function LiveEventClient({ slug }: { slug: string }) {
   const dates = [data.event.saturdayDate, data.event.sundayDate].filter(Boolean).join(" – ");
   const shown = data.classes.filter((c) => c.day === day);
   const anyLive = data.classes.some((c) => c.status === "in_progress");
+  const dayCommitted = (data.committedDays ?? []).includes(day);
 
   return (
     <div className="mx-auto max-w-3xl px-1 py-2">
@@ -62,6 +63,29 @@ export default function LiveEventClient({ slug }: { slug: string }) {
           </button>
         ))}
       </div>
+
+      {day && (
+        <div className="mb-5 flex flex-col items-center gap-1">
+          {dayCommitted ? (
+            <a
+              href={`/api/events/${slug}/public-list?day=${encodeURIComponent(day)}`}
+              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+            >
+              ⬇ Descargar orden de salida — {day}
+            </a>
+          ) : (
+            <>
+              <button
+                disabled
+                className="inline-flex cursor-not-allowed items-center gap-2 rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-400 dark:bg-slate-800 dark:text-slate-500"
+              >
+                ⬇ Descargar orden de salida — {day}
+              </button>
+              <span className="text-xs text-slate-400 dark:text-slate-500">Disponible cuando se publique el orden del día.</span>
+            </>
+          )}
+        </div>
+      )}
 
       {shown.length === 0 ? (
         <p className="text-center text-slate-500 dark:text-slate-400">No hay clases para este día.</p>

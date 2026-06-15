@@ -12,12 +12,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
 
   const { data: event } = await supabaseAdmin
     .from("events")
-    .select("id, name, slug, saturday_date, sunday_date, config")
+    .select("id, name, slug, saturday_date, sunday_date, config, day_state")
     .eq("slug", slug)
     .single();
   if (!event) return Response.json({ error: "Evento no encontrado." }, { status: 404 });
 
   const config = normalizeConfig(event.config ?? {});
+  const dayState = (event.day_state ?? {}) as Record<string, { committed?: boolean }>;
+  const committedDays = config.days.filter((d) => dayState[d]?.committed);
 
   const [{ data: ent }, { data: setups }, { data: results }] = await Promise.all([
     supabaseAdmin.from("event_entries").select("height, days, status").eq("event_id", event.id),
@@ -42,6 +44,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   return Response.json({
     event: { name: event.name, slug: event.slug, saturdayDate: event.saturday_date, sundayDate: event.sunday_date },
     days: config.days,
+    committedDays,
     classes,
   });
 }

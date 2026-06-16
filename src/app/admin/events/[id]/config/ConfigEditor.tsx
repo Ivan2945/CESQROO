@@ -87,6 +87,9 @@ export default function ConfigEditor({
   initialSundayDate,
   initialPdfLogo,
   initialConfig,
+  initialSeriesId,
+  regions,
+  series,
 }: {
   eventId: string;
   eventSlug: string;
@@ -96,6 +99,9 @@ export default function ConfigEditor({
   initialSundayDate: string | null;
   initialPdfLogo: string | null;
   initialConfig: EventConfig;
+  initialSeriesId: string | null;
+  regions: { id: string; name: string }[];
+  series: { id: string; name: string; region_id: string }[];
 }) {
   const router = useRouter();
   const [name, setName] = useState(initialName);
@@ -131,6 +137,15 @@ export default function ConfigEditor({
   const [discountValue, setDiscountValue] = useState(String(initialConfig.pricing.discount.value));
   const [discountWaives, setDiscountWaives] = useState(initialConfig.pricing.discount.waivesNomination);
   const [extempSections, setExtempSections] = useState<string[]>(initialConfig.extempSections);
+  // Region + circuit (series) assignment
+  const initialRegionId = initialSeriesId ? series.find((s) => s.id === initialSeriesId)?.region_id ?? "" : "";
+  const [regionId, setRegionId] = useState(initialRegionId);
+  const [seriesId, setSeriesId] = useState(initialSeriesId ?? "");
+  const seriesInRegion = series.filter((s) => s.region_id === regionId);
+  function onRegionChange(id: string) {
+    setRegionId(id);
+    if (!series.some((s) => s.id === seriesId && s.region_id === id)) setSeriesId("");
+  }
   // Standings (championship points) — per-event override
   const initSt = initialConfig.standings;
   const modeOf = (s?: { enabled?: boolean }): ScopeMode => (s?.enabled === true ? "on" : s?.enabled === false ? "off" : "inherit");
@@ -273,6 +288,7 @@ export default function ConfigEditor({
       saturdayDate: saturdayDate || null,
       sundayDate: sundayDate || null,
       pdfLogo: pdfLogo || null,
+      seriesId: seriesId || null,
       config,
     });
     setSaving(false);
@@ -345,6 +361,45 @@ export default function ConfigEditor({
           Las fechas se muestran en la página pública de inscripciones. Déjelas en blanco si aún no las define.
         </p>
       </section>
+
+      {/* Region + circuit assignment */}
+      {regions.length > 0 && (
+        <section className={card}>
+          <h3 className={h2}>Región y Circuito</h3>
+          <p className="mb-3 text-xs text-slate-500">
+            Asigna este evento a una región y, si aplica, a un circuito (serie). El circuito define las reglas de puntos.
+          </p>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">Región</label>
+              <select className={input + " w-full"} value={regionId} onChange={(e) => onRegionChange(e.target.value)}>
+                <option value="">— Seleccione —</option>
+                {regions.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-sm font-semibold text-slate-700">Circuito</label>
+              <select
+                className={input + " w-full"}
+                value={seriesId}
+                onChange={(e) => setSeriesId(e.target.value)}
+                disabled={!regionId || seriesInRegion.length === 0}
+              >
+                <option value="">{!regionId ? "Elija región primero" : seriesInRegion.length ? "— Sin circuito —" : "No hay circuitos en esta región"}</option>
+                {seriesInRegion.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </section>
+      )}
 
       {/* PDF header / branding */}
       <section className={card}>

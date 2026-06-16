@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseBrowser";
 
@@ -12,6 +12,17 @@ export default function LoginPage() {
 
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  // If already signed in (e.g. an admin landing on app.lacompe.digital), skip
+  // the form and go straight to the right home.
+  useEffect(() => {
+    (async () => {
+      const { data } = await supabase.auth.getSession();
+      if (!data.session) return;
+      const { data: isAdmin } = await supabase.rpc("is_admin");
+      router.replace(isAdmin ? "/admin" : "/club");
+    })();
+  }, [router]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();

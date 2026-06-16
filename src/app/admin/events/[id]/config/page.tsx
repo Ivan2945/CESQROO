@@ -15,10 +15,17 @@ export default async function EventConfigPage({
 
   const { data: event, error } = await supabaseAdmin
     .from("events")
-    .select("id, name, slug, is_open, saturday_date, sunday_date, pdf_logo, config")
+    .select("id, name, slug, is_open, saturday_date, sunday_date, pdf_logo, config, series_id")
     .eq("id", id)
     .single();
   if (error || !event) throw new Error("Evento no encontrado.");
+
+  // Regions + circuits (series) for the pickers. Tables may not exist before the
+  // multi-circuit migration runs — fall back to empty (pickers hide themselves).
+  const [{ data: regions }, { data: series }] = await Promise.all([
+    supabaseAdmin.from("regions").select("id, name").order("name"),
+    supabaseAdmin.from("series").select("id, name, region_id").order("name"),
+  ]);
 
   return (
     <ConfigEditor
@@ -30,6 +37,9 @@ export default async function EventConfigPage({
       initialSundayDate={event.sunday_date}
       initialPdfLogo={event.pdf_logo}
       initialConfig={normalizeConfig(event.config)}
+      initialSeriesId={(event as { series_id?: string | null }).series_id ?? null}
+      regions={regions ?? []}
+      series={series ?? []}
     />
   );
 }

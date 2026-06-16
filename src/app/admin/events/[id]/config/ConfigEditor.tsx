@@ -136,9 +136,11 @@ export default function ConfigEditor({
   const modeOf = (s?: { enabled?: boolean }): ScopeMode => (s?.enabled === true ? "on" : s?.enabled === false ? "off" : "inherit");
   const [miniMode, setMiniMode] = useState<ScopeMode>(modeOf(initSt?.mini_series));
   const [miniBasis, setMiniBasis] = useState<"class" | "registered">(initSt?.mini_series?.basis ?? "class");
+  const [miniElig, setMiniElig] = useState<"all" | "circuit">(initSt?.mini_series?.eligibility ?? "all");
   const [miniCap, setMiniCap] = useState<"first_class" | "none">(initSt?.mini_series?.per_day_cap ?? "none");
   const [seasonMode, setSeasonMode] = useState<ScopeMode>(modeOf(initSt?.season));
   const [seasonBasis, setSeasonBasis] = useState<"class" | "registered">(initSt?.season?.basis ?? "registered");
+  const [seasonElig, setSeasonElig] = useState<"all" | "circuit">(initSt?.season?.eligibility ?? "all");
   const [seasonCap, setSeasonCap] = useState<"first_class" | "none">(initSt?.season?.per_day_cap ?? "first_class");
   const [riderOverride, setRiderOverride] = useState<boolean>(Array.isArray(initSt?.rider_points_heights));
   const [riderHeights, setRiderHeights] = useState<string[]>(initSt?.rider_points_heights ?? []);
@@ -227,8 +229,8 @@ export default function ConfigEditor({
 
   function buildStandings(): EventStandingsConfig | undefined {
     const out: EventStandingsConfig = {};
-    if (miniMode !== "inherit") out.mini_series = miniMode === "on" ? { enabled: true, basis: miniBasis, per_day_cap: miniCap } : { enabled: false };
-    if (seasonMode !== "inherit") out.season = seasonMode === "on" ? { enabled: true, basis: seasonBasis, per_day_cap: seasonCap } : { enabled: false };
+    if (miniMode !== "inherit") out.mini_series = miniMode === "on" ? { enabled: true, basis: miniBasis, eligibility: miniElig, per_day_cap: miniCap } : { enabled: false };
+    if (seasonMode !== "inherit") out.season = seasonMode === "on" ? { enabled: true, basis: seasonBasis, eligibility: seasonElig, per_day_cap: seasonCap } : { enabled: false };
     if (riderOverride) out.rider_points_heights = riderHeights;
     return Object.keys(out).length ? out : undefined;
   }
@@ -674,6 +676,10 @@ export default function ConfigEditor({
                   <option value="class">Por clase (todos)</option>
                   <option value="registered">Registrados (re-ranqueo)</option>
                 </select>
+                <select value={miniElig} onChange={(e) => setMiniElig(e.target.value as "all" | "circuit")} className={input}>
+                  <option value="all">Puntúan todos</option>
+                  <option value="circuit">Solo inscritos al circuito</option>
+                </select>
                 <select value={miniCap} onChange={(e) => setMiniCap(e.target.value as "first_class" | "none")} className={input}>
                   <option value="none">Sin tope por día</option>
                   <option value="first_class">Tope: 1ª prueba del día</option>
@@ -697,6 +703,10 @@ export default function ConfigEditor({
                 <select value={seasonBasis} onChange={(e) => setSeasonBasis(e.target.value as "class" | "registered")} className={input}>
                   <option value="class">Por clase (todos)</option>
                   <option value="registered">Registrados (re-ranqueo)</option>
+                </select>
+                <select value={seasonElig} onChange={(e) => setSeasonElig(e.target.value as "all" | "circuit")} className={input}>
+                  <option value="all">Puntúan todos</option>
+                  <option value="circuit">Solo inscritos al circuito</option>
                 </select>
                 <select value={seasonCap} onChange={(e) => setSeasonCap(e.target.value as "first_class" | "none")} className={input}>
                   <option value="none">Sin tope por día</option>

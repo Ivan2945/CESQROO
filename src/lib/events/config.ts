@@ -6,7 +6,7 @@
 // scope can inherit the series default (omit it), be turned on (with a method +
 // cap), or off (standalone show). rider_points_heights, when present, overrides
 // which heights score by RIDER in Abierta.
-export type EventStandingsScope = { enabled?: boolean; basis?: "class" | "registered"; per_day_cap?: "first_class" | "none" };
+export type EventStandingsScope = { enabled?: boolean; basis?: "class" | "registered"; eligibility?: "all" | "circuit"; per_day_cap?: "first_class" | "none" };
 export type EventStandingsConfig = {
   mini_series?: EventStandingsScope;
   season?: EventStandingsScope;
@@ -115,6 +115,7 @@ function normalizeEventStandings(raw: unknown): EventStandingsConfig | undefined
     const out: EventStandingsScope = {};
     if (typeof o.enabled === "boolean") out.enabled = o.enabled;
     if (o.basis === "class" || o.basis === "registered") out.basis = o.basis;
+    if (o.eligibility === "all" || o.eligibility === "circuit") out.eligibility = o.eligibility;
     if (o.per_day_cap === "first_class" || o.per_day_cap === "none") out.per_day_cap = o.per_day_cap;
     return Object.keys(out).length ? out : undefined;
   };

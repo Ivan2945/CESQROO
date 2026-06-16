@@ -18,8 +18,8 @@ update public.series set standings_config = '{
   "rider_points_heights": ["40cm", "60cm", "75cm"],
   "rider_points_section": "Abierta",
   "scopes": {
-    "mini_series": { "basis": "class",      "per_day_cap": "first_class" },
-    "season":      { "basis": "registered", "per_day_cap": "first_class" }
+    "mini_series": { "basis": "class",      "eligibility": "circuit", "per_day_cap": "first_class" },
+    "season":      { "basis": "registered", "eligibility": "circuit", "per_day_cap": "first_class" }
   }
 }'::jsonb
 where slug = 'cesqroo';
@@ -28,8 +28,8 @@ update public.series set standings_config = '{
   "sections": ["Abierta", "Especial"],
   "section_fallback": ["Libre"],
   "scopes": {
-    "mini_series": { "basis": "class", "per_day_cap": "none" },
-    "season":      { "basis": "class", "per_day_cap": "none" }
+    "mini_series": { "basis": "class", "eligibility": "all", "per_day_cap": "none" },
+    "season":      { "basis": "class", "eligibility": "all", "per_day_cap": "none" }
   }
 }'::jsonb
 where slug = 'coparefugio';

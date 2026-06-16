@@ -26,6 +26,9 @@ import type { ClassFormat, ScoreInput } from "./types";
 
 export type StandingsRule = {
   basis: "class" | "registered";
+  // Who may earn points in NON rider-scored classes: everyone, or only entries
+  // flagged "Inscrito Circuito" at sign-up. Rider-scored classes always pay all.
+  eligibility: "all" | "circuit";
   sections: string[]; // scored separately, in this order
   section_fallback: string[]; // used at a height with none of `sections` present
   per_day_cap: "first_class" | "none" | { max: number };
@@ -37,7 +40,7 @@ export type StandingsRule = {
 export type StandingEntryInput = ScoreInput & {
   binomioKey: string; // STABLE rider+horse identity (e.g. riderId::horseId)
   riderKey: string; // STABLE rider identity (e.g. riderId)
-  registered: boolean;
+  circuit: boolean; // the "Inscrito Circuito" sign-up flag
   startNo?: number; // running order within the class (for "first horse" tie-break)
   rider?: string;
   horse?: string;
@@ -149,13 +152,21 @@ export function computeStandings(classes: ClassForStandings[], rule: StandingsRu
   for (const cls of classes) {
     for (const section of sectionsByHeight.get(cls.height) ?? []) {
       const rider = isRiderScored(cls.height, section);
-      let pool = cls.entries.filter((e) => e.section === section);
-      if (rule.basis === "registered") pool = pool.filter((e) => e.registered);
-      if (pool.length === 0) continue;
+      const inSection = cls.entries.filter((e) => e.section === section);
+      if (inSection.length === 0) continue;
 
-      const scored = scoreClass(cls.format, pool.map(strip));
+      // Eligibility: rider-scored classes pay everyone; otherwise the rule may
+      // restrict to circuit-marked entries ("Inscrito Circuito").
+      const eligible = (e: StandingEntryInput) => rider || rule.eligibility !== "circuit" || !!e.circuit;
+      // Ranking pool: "registered" re-ranks only the eligible; "class" ranks the
+      // full section (ineligible occupy places but earn nothing).
+      const rankPool = rule.basis === "registered" ? inSection.filter(eligible) : inSection;
+      if (rankPool.length === 0) continue;
+
+      const scored = scoreClass(cls.format, rankPool.map(strip));
       const pts = sectionPoints(scored); // entryId -> points
-      for (const e of pool) {
+      for (const e of rankPool) {
+        if (!eligible(e)) continue;
         const p = pts.get(e.id);
         if (p == null) continue;
         parts.push({

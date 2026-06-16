@@ -59,8 +59,8 @@ select r.id, 'CESQROO', 'cesqroo', 'cesqroo', '{
   "rider_points_heights": ["40cm", "60cm", "75cm"],
   "rider_points_section": "Abierta",
   "scopes": {
-    "mini_series": { "basis": "class",      "per_day_cap": "first_class" },
-    "season":      { "basis": "registered", "per_day_cap": "first_class" }
+    "mini_series": { "basis": "class",      "eligibility": "circuit", "per_day_cap": "first_class" },
+    "season":      { "basis": "registered", "eligibility": "circuit", "per_day_cap": "first_class" }
   }
 }'::jsonb
 from public.regions r where r.slug = 'centro'
@@ -71,8 +71,8 @@ select r.id, 'Copa Refugio', 'coparefugio', 'coparefugio', '{
   "sections": ["Abierta", "Especial"],
   "section_fallback": ["Libre"],
   "scopes": {
-    "mini_series": { "basis": "class", "per_day_cap": "none" },
-    "season":      { "basis": "class", "per_day_cap": "none" }
+    "mini_series": { "basis": "class", "eligibility": "all", "per_day_cap": "none" },
+    "season":      { "basis": "class", "eligibility": "all", "per_day_cap": "none" }
   }
 }'::jsonb
 from public.regions r where r.slug = 'centro'

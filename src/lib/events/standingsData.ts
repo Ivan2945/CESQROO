@@ -27,7 +27,7 @@ const num = (v: number | null | undefined) => (v == null ? null : Number(v));
 
 export type Scope = "mini_series" | "season";
 
-type ScopeRule = { basis: StandingsRule["basis"]; per_day_cap: StandingsRule["per_day_cap"] };
+type ScopeRule = { basis: StandingsRule["basis"]; eligibility?: StandingsRule["eligibility"]; per_day_cap: StandingsRule["per_day_cap"] };
 type SeriesStandingsConfig = {
   sections?: string[];
   section_fallback?: string[];
@@ -44,6 +44,7 @@ function resolveRule(cfg: SeriesStandingsConfig | null | undefined, scope: Scope
   const s = cfg?.scopes?.[scope];
   return {
     basis: s?.basis ?? "class",
+    eligibility: s?.eligibility ?? "all",
     per_day_cap: s?.per_day_cap ?? "none",
     sections: cfg?.sections ?? DEFAULT_SECTIONS,
     section_fallback: cfg?.section_fallback ?? DEFAULT_FALLBACK,
@@ -54,7 +55,7 @@ function resolveRule(cfg: SeriesStandingsConfig | null | undefined, scope: Scope
 
 // Per-EVENT override (stored on event.config.standings). Lets an admin pick the
 // method per scope, or turn a scope off. A standalone show = both scopes off.
-export type EventScopeOverride = { enabled?: boolean; basis?: StandingsRule["basis"]; per_day_cap?: StandingsRule["per_day_cap"] };
+export type EventScopeOverride = { enabled?: boolean; basis?: StandingsRule["basis"]; eligibility?: StandingsRule["eligibility"]; per_day_cap?: StandingsRule["per_day_cap"] };
 export type EventStandingsCfg = { mini_series?: EventScopeOverride; season?: EventScopeOverride; rider_points_heights?: string[] };
 
 // Effective rule + whether the scope is active for this event:
@@ -71,6 +72,7 @@ function effectiveRule(
     rule: {
       ...base,
       basis: ov?.basis ?? base.basis,
+      eligibility: ov?.eligibility ?? base.eligibility,
       per_day_cap: ov?.per_day_cap ?? base.per_day_cap,
       rider_points_heights: eventCfg?.rider_points_heights ?? base.rider_points_heights,
     },
@@ -116,7 +118,7 @@ async function loadClasses(eventIds: string[]): Promise<ClassForStandings[]> {
   const [{ data: ent }, { data: setups }, { data: results }] = await Promise.all([
     supabaseAdmin
       .from("event_entries")
-      .select("id, event_id, rider_id, horse_id, rider_name, horse_name, height, section, days, status, club_id")
+      .select("id, event_id, rider_id, horse_id, rider_name, horse_name, height, section, days, status, club_id, circuit")
       .in("event_id", eventIds),
     supabaseAdmin.from("event_class_setup").select("event_id, height, day, format, params, start_order").in("event_id", eventIds),
     supabaseAdmin
@@ -129,12 +131,6 @@ async function loadClasses(eventIds: string[]): Promise<ClassForStandings[]> {
   const evConfig = new Map((evRows ?? []).map((e) => [e.id, normalizeConfig(e.config)]));
 
   const entries = (ent ?? []).filter((e) => (e.status ?? "active") !== "cancelled");
-
-  const riderIds = [...new Set(entries.map((e) => e.rider_id).filter(Boolean))] as string[];
-  const { data: showRiders } = riderIds.length
-    ? await supabaseAdmin.from("show_riders").select("id, circuit_rider_id").in("id", riderIds)
-    : { data: [] as { id: string; circuit_rider_id: string | null }[] };
-  const isRegistered = new Map((showRiders ?? []).map((r) => [r.id, r.circuit_rider_id != null]));
 
   const clubIds = [...new Set(entries.map((e) => e.club_id).filter(Boolean))] as string[];
   const { data: clubRows } = clubIds.length
@@ -194,7 +190,7 @@ async function loadClasses(eventIds: string[]): Promise<ClassForStandings[]> {
             binomioKey: `${e.rider_id ?? `name:${e.rider_name}`}::${e.horse_id ?? `name:${e.horse_name}`}`,
             riderKey: `${e.rider_id ?? `name:${e.rider_name}`}`,
             startNo: startNoOf.get(e.id),
-            registered: e.rider_id ? isRegistered.get(e.rider_id) ?? false : false,
+            circuit: !!e.circuit,
             rider: e.rider_name,
             horse: e.horse_name,
             club: e.club_id ? clubName.get(e.club_id) || "" : "",

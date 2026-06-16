@@ -2,6 +2,17 @@
 // height->section rules, and which optional fields appear. Read by the
 // public form, the API validation, the organizer view, and the editor.
 
+// Per-event standings override (read by the standings engine bridge). Each
+// scope can inherit the series default (omit it), be turned on (with a method +
+// cap), or off (standalone show). rider_points_heights, when present, overrides
+// which heights score by RIDER in Abierta.
+export type EventStandingsScope = { enabled?: boolean; basis?: "class" | "registered"; per_day_cap?: "first_class" | "none" };
+export type EventStandingsConfig = {
+  mini_series?: EventStandingsScope;
+  season?: EventStandingsScope;
+  rider_points_heights?: string[];
+};
+
 export type EventConfig = {
   heights: string[];
   sections: string[];
@@ -33,6 +44,9 @@ export type EventConfig = {
   };
   // Extra sections only an admin can use for late (extemporáneo) entries.
   extempSections: string[];
+  // Optional per-event standings override (championship points). Omitted scopes
+  // inherit the series defaults.
+  standings?: EventStandingsConfig;
 };
 
 // Sensible starting point used when creating a new event.
@@ -86,7 +100,31 @@ export function normalizeConfig(raw: unknown): EventConfig {
     },
     pricing: normalizePricing(c.pricing),
     extempSections: Array.isArray(c.extempSections) ? c.extempSections.map(String) : ["Training", "FC"],
+    standings: normalizeEventStandings((c as { standings?: unknown }).standings),
   };
+}
+
+// Preserve + sanitize the per-event standings override. Returns undefined when
+// nothing is set (so the event simply inherits its series defaults).
+function normalizeEventStandings(raw: unknown): EventStandingsConfig | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const s = raw as Record<string, unknown>;
+  const scope = (x: unknown): EventStandingsScope | undefined => {
+    if (!x || typeof x !== "object") return undefined;
+    const o = x as Record<string, unknown>;
+    const out: EventStandingsScope = {};
+    if (typeof o.enabled === "boolean") out.enabled = o.enabled;
+    if (o.basis === "class" || o.basis === "registered") out.basis = o.basis;
+    if (o.per_day_cap === "first_class" || o.per_day_cap === "none") out.per_day_cap = o.per_day_cap;
+    return Object.keys(out).length ? out : undefined;
+  };
+  const out: EventStandingsConfig = {};
+  const mini = scope(s.mini_series);
+  if (mini) out.mini_series = mini;
+  const season = scope(s.season);
+  if (season) out.season = season;
+  if (Array.isArray(s.rider_points_heights)) out.rider_points_heights = (s.rider_points_heights as unknown[]).map(String);
+  return Object.keys(out).length ? out : undefined;
 }
 
 function normalizePricing(raw: unknown): EventConfig["pricing"] {

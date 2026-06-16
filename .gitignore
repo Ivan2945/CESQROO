@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# multi-circuit one-off schema dump (do not commit)
+dump-schema.mjs
+schema-dump.json

@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import type { EventConfig } from "@/lib/events/config";
+import type { EventConfig, EventStandingsConfig } from "@/lib/events/config";
 import { saveEventConfigAction } from "./actions";
+
+type ScopeMode = "inherit" | "on" | "off";
 
 const card = "rounded-xl border border-slate-200 bg-white p-6 shadow-sm";
 const input =
@@ -129,6 +131,19 @@ export default function ConfigEditor({
   const [discountValue, setDiscountValue] = useState(String(initialConfig.pricing.discount.value));
   const [discountWaives, setDiscountWaives] = useState(initialConfig.pricing.discount.waivesNomination);
   const [extempSections, setExtempSections] = useState<string[]>(initialConfig.extempSections);
+  // Standings (championship points) — per-event override
+  const initSt = initialConfig.standings;
+  const modeOf = (s?: { enabled?: boolean }): ScopeMode => (s?.enabled === true ? "on" : s?.enabled === false ? "off" : "inherit");
+  const [miniMode, setMiniMode] = useState<ScopeMode>(modeOf(initSt?.mini_series));
+  const [miniBasis, setMiniBasis] = useState<"class" | "registered">(initSt?.mini_series?.basis ?? "class");
+  const [miniCap, setMiniCap] = useState<"first_class" | "none">(initSt?.mini_series?.per_day_cap ?? "none");
+  const [seasonMode, setSeasonMode] = useState<ScopeMode>(modeOf(initSt?.season));
+  const [seasonBasis, setSeasonBasis] = useState<"class" | "registered">(initSt?.season?.basis ?? "registered");
+  const [seasonCap, setSeasonCap] = useState<"first_class" | "none">(initSt?.season?.per_day_cap ?? "first_class");
+  const [riderOverride, setRiderOverride] = useState<boolean>(Array.isArray(initSt?.rider_points_heights));
+  const [riderHeights, setRiderHeights] = useState<string[]>(initSt?.rider_points_heights ?? []);
+  const toggleRiderHeight = (h: string) =>
+    setRiderHeights((prev) => (prev.includes(h) ? prev.filter((x) => x !== h) : [...prev, h]));
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
 
@@ -210,6 +225,14 @@ export default function ConfigEditor({
     reader.readAsDataURL(file);
   }
 
+  function buildStandings(): EventStandingsConfig | undefined {
+    const out: EventStandingsConfig = {};
+    if (miniMode !== "inherit") out.mini_series = miniMode === "on" ? { enabled: true, basis: miniBasis, per_day_cap: miniCap } : { enabled: false };
+    if (seasonMode !== "inherit") out.season = seasonMode === "on" ? { enabled: true, basis: seasonBasis, per_day_cap: seasonCap } : { enabled: false };
+    if (riderOverride) out.rider_points_heights = riderHeights;
+    return Object.keys(out).length ? out : undefined;
+  }
+
   async function save() {
     setStatus(null);
     setSaving(true);
@@ -240,6 +263,7 @@ export default function ConfigEditor({
         discount: { mode: discountMode, value: Number(discountValue) || 0, waivesNomination: discountWaives },
       },
       extempSections,
+      standings: buildStandings(),
     };
     const res = await saveEventConfigAction(eventId, {
       name,
@@ -624,6 +648,92 @@ export default function ConfigEditor({
             items={extempSections}
             onChange={setExtempSections}
           />
+        </div>
+      </section>
+
+      {/* Standings / championship points */}
+      <section className={card}>
+        <h3 className={h2}>Premiación / Puntos</h3>
+        <p className="mb-4 text-xs text-slate-500">
+          Cómo este evento otorga puntos. <b>Heredar</b> usa la configuración de la serie; <b>Desactivar</b> = show
+          independiente sin puntos.
+        </p>
+
+        {/* Mini-serie */}
+        <div className="mb-4">
+          <h4 className="text-sm font-semibold text-slate-700">Mini-serie (premiación del concurso)</h4>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <select value={miniMode} onChange={(e) => setMiniMode(e.target.value as ScopeMode)} className={input}>
+              <option value="inherit">Heredar de la serie</option>
+              <option value="on">Activar</option>
+              <option value="off">Desactivar (sin puntos)</option>
+            </select>
+            {miniMode === "on" && (
+              <>
+                <select value={miniBasis} onChange={(e) => setMiniBasis(e.target.value as "class" | "registered")} className={input}>
+                  <option value="class">Por clase (todos)</option>
+                  <option value="registered">Registrados (re-ranqueo)</option>
+                </select>
+                <select value={miniCap} onChange={(e) => setMiniCap(e.target.value as "first_class" | "none")} className={input}>
+                  <option value="none">Sin tope por día</option>
+                  <option value="first_class">Tope: 1ª prueba del día</option>
+                </select>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Campeonato / temporada */}
+        <div className="mb-4">
+          <h4 className="text-sm font-semibold text-slate-700">Campeonato (temporada)</h4>
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <select value={seasonMode} onChange={(e) => setSeasonMode(e.target.value as ScopeMode)} className={input}>
+              <option value="inherit">Heredar de la serie</option>
+              <option value="on">Activar</option>
+              <option value="off">Desactivar (sin puntos)</option>
+            </select>
+            {seasonMode === "on" && (
+              <>
+                <select value={seasonBasis} onChange={(e) => setSeasonBasis(e.target.value as "class" | "registered")} className={input}>
+                  <option value="class">Por clase (todos)</option>
+                  <option value="registered">Registrados (re-ranqueo)</option>
+                </select>
+                <select value={seasonCap} onChange={(e) => setSeasonCap(e.target.value as "first_class" | "none")} className={input}>
+                  <option value="none">Sin tope por día</option>
+                  <option value="first_class">Tope: 1ª prueba del día</option>
+                </select>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Rider-scored heights */}
+        <div>
+          <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <input type="checkbox" className="accent-blue-600" checked={riderOverride} onChange={(e) => setRiderOverride(e.target.checked)} />
+            Personalizar alturas con puntos por jinete (sección Abierta)
+          </label>
+          {riderOverride ? (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {heights.map((h) => {
+                const on = riderHeights.includes(h);
+                return (
+                  <label
+                    key={h}
+                    className={
+                      "inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1 text-sm " +
+                      (on ? "border-amber-500 bg-amber-50 text-amber-800" : "border-slate-300 bg-white text-slate-600")
+                    }
+                  >
+                    <input type="checkbox" className="accent-amber-600" checked={on} onChange={() => toggleRiderHeight(h)} />
+                    {h}
+                  </label>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="mt-1 text-xs text-slate-500">Si no se personaliza, se heredan las alturas de la serie (CESQROO: 40/60/75).</p>
+          )}
         </div>
       </section>
 

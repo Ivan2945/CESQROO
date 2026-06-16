@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 
 export const dynamic = "force-dynamic";
@@ -78,10 +79,29 @@ function PastCard({ ev }: { ev: EventCard }) {
 }
 
 export default async function InscripcionesLanding() {
-  const { data: events } = await supabaseAdmin
+  // Scope the listing to the circuit (series) this subdomain maps to:
+  // cesqroo.lacompe.digital -> CESQROO events only, coparefugio.* -> Copa Refugio.
+  const h = await headers();
+  const host = (h.get("x-forwarded-host") || h.get("host") || "").toLowerCase();
+  const publicDomain = (process.env.PUBLIC_BASE_DOMAIN || "lacompe.digital").toLowerCase();
+  const sub = host.endsWith("." + publicDomain) ? host.slice(0, -(publicDomain.length + 1)) : "";
+
+  let seriesId: string | null = null;
+  let seriesName: string | null = null;
+  if (sub && sub !== "app") {
+    const { data: s } = await supabaseAdmin.from("series").select("id, name").eq("subdomain", sub).maybeSingle();
+    if (s) {
+      seriesId = s.id as string;
+      seriesName = s.name as string;
+    }
+  }
+
+  let query = supabaseAdmin
     .from("events")
     .select("id, name, slug, saturday_date, sunday_date, is_open")
     .order("created_at", { ascending: false });
+  if (seriesId) query = query.eq("series_id", seriesId);
+  const { data: events } = await query;
 
   const all = (events as EventCard[] | null) ?? [];
   // "Today" in the club's timezone (avoids UTC off-by-one on the server).
@@ -101,7 +121,7 @@ export default async function InscripcionesLanding() {
   return (
     <div className="mx-auto max-w-3xl px-1 py-2">
       <header className="mb-8 text-center">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600 dark:text-blue-400">CESQROO</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-blue-600 dark:text-blue-400">{seriesName ?? "CESQROO"}</p>
         <h1 className="mt-2 text-3xl font-bold text-slate-900 dark:text-white sm:text-4xl">Inscripciones a Concursos</h1>
         <p className="mt-2 text-slate-600 dark:text-slate-300">Seleccione un evento para inscribir a los jinetes de su club.</p>
       </header>

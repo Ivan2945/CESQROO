@@ -9,12 +9,26 @@ export async function proxy(request: NextRequest) {
   // (Vercel forwards the public host as x-forwarded-host.)
   const host = (request.headers.get("x-forwarded-host") || request.headers.get("host") || "").toLowerCase();
   const publicDomain = (process.env.PUBLIC_BASE_DOMAIN || "lacompe.digital").toLowerCase();
+  const sub = host.endsWith("." + publicDomain) ? host.slice(0, -(publicDomain.length + 1)) : "";
+  // app.lacompe.digital = admin portal (NOT a public host).
+  const isAppHost = sub === "app";
   const isPublicHost =
-    host.startsWith("inscripciones.") || host === publicDomain || host.endsWith("." + publicDomain);
-  if (isPublicHost && request.nextUrl.pathname === "/") {
-    const url = request.nextUrl.clone();
-    url.pathname = "/inscripciones";
-    return NextResponse.rewrite(url);
+    !isAppHost && (host.startsWith("inscripciones.") || host === publicDomain || host.endsWith("." + publicDomain));
+
+  if (request.nextUrl.pathname === "/") {
+    // Admin portal: send the root straight to login. The login page forwards an
+    // already-authenticated admin onward to /admin.
+    if (isAppHost) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/login";
+      return NextResponse.redirect(url);
+    }
+    // Public hosts (cesqroo, coparefugio, apex, …): the bare root serves events.
+    if (isPublicHost) {
+      const url = request.nextUrl.clone();
+      url.pathname = "/inscripciones";
+      return NextResponse.rewrite(url);
+    }
   }
 
   const response = NextResponse.next({

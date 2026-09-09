@@ -245,6 +245,34 @@ export async function updateEntryAction(input: EditEntryInput): Promise<ActionRe
   return { ok: true, data: undefined, message: "Participación actualizada." };
 }
 
+// Edit a submission's contact info (club rep / coach / phone / email). Handy
+// for imported sign-ups that came in without an email — adding one lets that
+// club use the self-service editor (which looks up by club + email).
+export type EditSubmissionInput = {
+  submissionId: string;
+  eventId: string;
+  representative: string;
+  coach: string;
+  phone: string;
+  email: string;
+};
+
+export async function updateSubmissionAction(input: EditSubmissionInput): Promise<ActionResult<void>> {
+  if (!(await isAdminUser())) return { ok: false, message: "Solo un administrador puede editar la inscripción." };
+  const { error } = await supabaseAdmin
+    .from("event_submissions")
+    .update({
+      representative: input.representative.trim() || null,
+      coach: input.coach.trim() || null,
+      phone: input.phone.trim() || null,
+      email: input.email.trim().toLowerCase() || null,
+    })
+    .eq("id", input.submissionId);
+  if (error) return { ok: false, message: error.message };
+  revalidatePath(`/admin/events/${input.eventId}`);
+  return { ok: true, data: undefined, message: "Contacto actualizado." };
+}
+
 // Cancel / restore a participation (keeps the row, affects billing).
 export async function setEntryStatusAction(
   entryId: string,

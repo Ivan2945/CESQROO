@@ -6,6 +6,7 @@ import { normalizeConfig } from "@/lib/events/config";
 import { computeStatement, npDaysFromResults } from "@/lib/events/billing";
 import { DeleteSubmissionButton, DeleteEntryButton, CancelEntryButton, MergeDuplicatesButton } from "./DeleteButtons";
 import { EditEntryButton } from "./EditEntryButton";
+import { EditSubmissionButton } from "./EditSubmissionButton";
 import { AddEntryButton } from "./AddEntryButton";
 
 const money = (n: number) => `$${n.toLocaleString("es-MX")}`;
@@ -159,6 +160,7 @@ export default async function AdminEventDetail({
                   </span>
                   {isAdmin && (
                     <span className="ml-auto inline-flex items-center gap-3">
+                      <EditSubmissionButton submission={s} eventId={event.id} />
                       <a
                         href={`/api/events/${event.slug}/billing-pdf?submission=${s.id}`}
                         className="text-sm font-semibold text-emerald-600 hover:text-emerald-700"

@@ -187,8 +187,30 @@ export async function importEntries(
       submissionsCreated++;
 
       const groupRows = parsed.filter((p) => fold(p.club) === key);
-      const entryRows = [];
+
+      // Collapse duplicate rows for the same binomio+class into ONE multi-day
+      // entry: a spreadsheet often lists each day on its own row, but the same
+      // rider + horse + height + section across days is a single multi-day
+      // sign-up. Days are unioned; circuit/discount flags are OR-ed.
+      const mergedByBinomio = new Map<string, Parsed>();
       for (const p of groupRows) {
+        const mk = `${fold(p.fullName)}|${fold(p.horse)}|${fold(p.height)}|${fold(p.section)}`;
+        const existing = mergedByBinomio.get(mk);
+        if (existing) {
+          existing.days = [...new Set([...existing.days, ...p.days])];
+          existing.circuit = existing.circuit || p.circuit;
+          existing.discount = existing.discount || p.discount;
+        } else {
+          mergedByBinomio.set(mk, { ...p, days: [...p.days] });
+        }
+      }
+      const mergedRows = [...mergedByBinomio.values()].map((p) => ({
+        ...p,
+        days: p.days.slice().sort((a, b) => config.days.indexOf(a) - config.days.indexOf(b)),
+      }));
+
+      const entryRows = [];
+      for (const p of mergedRows) {
         const riderId = await resolveRider(p.first, p.last, p.fullName);
         const horseId = await resolveHorse(p.horse);
         entryRows.push({

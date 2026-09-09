@@ -56,7 +56,7 @@ export default async function AdminUsersPage() {
                   <td className="p-3 text-slate-600 dark:text-slate-300">{u.email}</td>
                   <td className="p-3">
                     <span className={"rounded-full px-2.5 py-0.5 text-xs font-bold " + roleBadge(u.role)}>
-                      {ROLE_LABEL[u.role] ?? u.role || "—"}
+                      {ROLE_LABEL[u.role] ?? (u.role || "—")}
                     </span>
                   </td>
                   <td className="p-3 text-slate-600 dark:text-slate-300">{u.club_name ?? (u.club_id ? u.club_id : "—")}</td>

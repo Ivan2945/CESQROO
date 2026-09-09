@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
+import { isShowAdminFor } from "@/lib/auth/eventAccess";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeConfig } from "@/lib/events/config";
 import { computeStatement, npDaysFromResults } from "@/lib/events/billing";
@@ -44,7 +45,7 @@ export default async function AdminEventDetail({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const { isAdmin, clubId } = await requireClubAdmin();
+  const { isAdmin, clubId, user } = await requireClubAdmin();
 
   const { data: event, error: evErr } = await supabaseAdmin
     .from("events")
@@ -54,13 +55,18 @@ export default async function AdminEventDetail({
   if (evErr || !event) throw new Error("Evento no encontrado.");
   const config = normalizeConfig(event.config);
 
-  // Submissions for this event (scoped to club when not admin)
+  // A show admin assigned to THIS event may view the whole roster (read-only);
+  // edit/commit/config controls below stay gated on the global `isAdmin`.
+  const showAdmin = !isAdmin && (await isShowAdminFor(user?.id, id));
+  const canViewAll = isAdmin || showAdmin;
+
+  // Submissions for this event (scoped to own club unless admin / show admin).
   let subQuery = supabaseAdmin
     .from("event_submissions")
     .select("id, club_name, representative, coach, phone, email, created_at, club_id")
     .eq("event_id", id)
     .order("created_at", { ascending: false });
-  if (!isAdmin) subQuery = subQuery.eq("club_id", clubId as string);
+  if (!canViewAll) subQuery = subQuery.eq("club_id", clubId as string);
   const { data: submissions } = await subQuery;
 
   const subIds = (submissions ?? []).map((s) => s.id);

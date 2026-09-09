@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createClient } from "@supabase/supabase-js";
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
+import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { ActionResult } from "@/lib/types/actions";
 
 
@@ -36,6 +37,105 @@ function adminSupabase() {
   return createClient(url, serviceRole, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+}
+
+export type UserListRow = {
+  user_id: string;
+  email: string;
+  name: string;
+  role: string;
+  club_id: string | null;
+  club_name: string | null;
+  created_at: string | null;
+};
+
+// Full user directory (admin only): every profile joined to its auth email and
+// club name. Read-only.
+export async function getUsersList(): Promise<UserListRow[]> {
+  const { profile } = await requireClubAdmin();
+  if (profile.role !== "admin") throw new Error("Access denied.");
+  const admin = adminSupabase();
+
+  const { data: authList } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
+  const emailById = new Map((authList?.users ?? []).map((u) => [u.id, u.email ?? ""]));
+
+  const { data: profiles } = await admin.from("profiles").select("user_id, name, role, club_id, created_at");
+  const clubIds = [...new Set((profiles ?? []).map((p) => p.club_id).filter(Boolean))] as string[];
+  const { data: clubs } = clubIds.length
+    ? await admin.from("clubs").select("id, name").in("id", clubIds)
+    : { data: [] as { id: string; name: string }[] };
+  const clubName = new Map((clubs ?? []).map((c) => [c.id, c.name]));
+
+  return (profiles ?? [])
+    .map((p) => ({
+      user_id: p.user_id as string,
+      email: emailById.get(p.user_id) ?? "—",
+      name: (p.name as string) ?? "",
+      role: (p.role as string) ?? "",
+      club_id: (p.club_id as string | null) ?? null,
+      club_name: p.club_id ? clubName.get(p.club_id) ?? null : null,
+      created_at: (p.created_at as string | null) ?? null,
+    }))
+    .sort((a, b) => a.role.localeCompare(b.role) || a.name.localeCompare(b.name));
+}
+
+// ---- Show-admin grants (event_admins) --------------------------------------
+
+export type EventAdminRow = {
+  event_id: string;
+  user_id: string;
+  event_name: string;
+  user_name: string;
+  user_email: string;
+};
+
+export async function getEventAdmins(): Promise<EventAdminRow[]> {
+  const { profile } = await requireClubAdmin();
+  if (profile.role !== "admin") throw new Error("Access denied.");
+
+  const { data: rows } = await supabaseAdmin
+    .from("event_admins").select("event_id, user_id, created_at").order("created_at", { ascending: false });
+  if (!rows?.length) return [];
+
+  const eventIds = [...new Set(rows.map((r) => r.event_id))] as string[];
+  const userIds = [...new Set(rows.map((r) => r.user_id))] as string[];
+  const [{ data: events }, { data: profiles }, authList] = await Promise.all([
+    supabaseAdmin.from("events").select("id, name").in("id", eventIds),
+    supabaseAdmin.from("profiles").select("user_id, name").in("user_id", userIds),
+    adminSupabase().auth.admin.listUsers({ page: 1, perPage: 1000 }),
+  ]);
+  const evName = new Map((events ?? []).map((e) => [e.id, e.name]));
+  const pName = new Map((profiles ?? []).map((p) => [p.user_id, p.name]));
+  const email = new Map((authList.data?.users ?? []).map((u) => [u.id, u.email ?? ""]));
+
+  return rows.map((r) => ({
+    event_id: r.event_id as string,
+    user_id: r.user_id as string,
+    event_name: (evName.get(r.event_id) as string) ?? "—",
+    user_name: (pName.get(r.user_id) as string) ?? "",
+    user_email: email.get(r.user_id) ?? "",
+  }));
+}
+
+export async function grantShowAdmin(userId: string, eventId: string): Promise<ActionResult<void>> {
+  const { profile } = await requireClubAdmin();
+  if (profile.role !== "admin") return { ok: false, message: "Access denied." };
+  if (!userId || !eventId) return { ok: false, message: "Elija un usuario y un evento." };
+  const { error } = await supabaseAdmin
+    .from("event_admins").upsert({ event_id: eventId, user_id: userId }, { onConflict: "event_id,user_id" });
+  if (error) return { ok: false, message: error.message };
+  revalidatePath("/admin/users");
+  return { ok: true, data: undefined, message: "Acceso al show otorgado." };
+}
+
+export async function revokeShowAdmin(userId: string, eventId: string): Promise<ActionResult<void>> {
+  const { profile } = await requireClubAdmin();
+  if (profile.role !== "admin") return { ok: false, message: "Access denied." };
+  const { error } = await supabaseAdmin
+    .from("event_admins").delete().eq("event_id", eventId).eq("user_id", userId);
+  if (error) return { ok: false, message: error.message };
+  revalidatePath("/admin/users");
+  return { ok: true, data: undefined, message: "Acceso al show removido." };
 }
 
 export async function createUserAction(

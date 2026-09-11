@@ -12,6 +12,7 @@ export type BillingEntry = {
   circuit: boolean;
   discount?: boolean; // "Descuento" flag
   status?: string | null; // 'active' | 'cancelled'
+  is_extemp?: boolean | null;
 };
 
 // Build the NP (no-show) map from event_results rows. A rider is a no-show for
@@ -29,12 +30,12 @@ export function npDaysFromResults(
 
 export type Statement = {
   starts: number;
-  entryFees: number;
+  entryFeesFull: number; // gross entry fees BEFORE the discount
+  entryDiscount: number; // entry-fee discount only (>= 0); nomination waivers are reflected in nominationRiders, not here
   nominationRiders: number;
   nominationFees: number;
   cancellationCharge: number;
-  discountSavings: number; // total pesos discounted (entry fees + waived nominations)
-  total: number;
+  total: number; // entryFeesFull - entryDiscount + nominationFees + cancellationCharge
 };
 
 // A "start" = one entry on one day (each time the rider enters the ring).
@@ -74,21 +75,16 @@ export function computeStatement(
       : full * Math.max(0, 1 - (discount?.value ?? 0) / 100);
 
   let starts = 0;
-  let entryFees = 0;
-  let discountSavings = 0;
+  let entryFeesFull = 0;
+  let entryDiscount = 0;
   for (const e of entries) {
     if (isCancelled(e)) continue;
     const n = billableDayCount(e);
     if (n === 0) continue; // fully cancelled / all days no-show
     starts += n;
     const full = n * entryFeeForHeight(config, e.height);
-    if (e.discount) {
-      const charged = discounted(full, n);
-      entryFees += charged;
-      discountSavings += full - charged;
-    } else {
-      entryFees += full;
-    }
+    entryFeesFull += full;
+    if (e.discount) entryDiscount += full - discounted(full, n);
   }
 
   // Nomination: counted once per rider, or once per rider+horse (binomio),
@@ -123,11 +119,9 @@ export function computeStatement(
     // A mandatory (excepted) entry overrides the class exemption.
     const exemptByClass = !rs.some(entryMandatory) && rs.some(entryExempt);
     const hasDiscount = (discount?.waivesNomination ?? false) && rs.some((e) => e.discount);
-    if (hasDiscount) {
-      if (!exemptByClass) discountSavings += nominationFee; // savings only if it would otherwise be charged
-      continue;
-    }
-    if (exemptByClass) continue;
+    // Discount / class exemption both simply skip the fee — the waiver shows up
+    // as a lower nominationRiders count, NOT as a separate "Descuento" amount.
+    if (hasDiscount || exemptByClass) continue;
     nominationRiders++;
   }
   const nominationFees = nominationRiders * nominationFee;
@@ -153,11 +147,119 @@ export function computeStatement(
 
   return {
     starts,
-    entryFees,
+    entryFeesFull,
+    entryDiscount,
     nominationRiders,
     nominationFees,
     cancellationCharge,
-    discountSavings,
-    total: entryFees + nominationFees + cancellationCharge,
+    total: entryFeesFull - entryDiscount + nominationFees + cancellationCharge,
   };
+}
+
+// Per-rider breakdown for the printed statement: each rider's participations
+// (with the amount owed for each) plus their own nomination and a rider total.
+// Derived from the SAME formulas as computeStatement, so the rider totals always
+// sum to stmt.total.
+export type RiderLine = {
+  horse: string;
+  height: string;
+  section: string;
+  days: string[];
+  discount: boolean;
+  cancelled: boolean;
+  isExtemp: boolean;
+  amount: number; // what this participation costs (net of discount; cancellation charge if cancelled)
+};
+export type RiderBreakdown = { rider: string; lines: RiderLine[]; nomination: number; total: number };
+
+export function computeRiderBreakdown(
+  entries: BillingEntry[],
+  config: EventConfig,
+  npDaysByEntry?: Map<string, Set<string>>
+): { riders: RiderBreakdown[]; stmt: Statement } {
+  const { nominationFee, cancellation, discount } = config.pricing;
+  const exempt = new Set(config.pricing.nominationExempt);
+  const except = config.pricing.nominationExemptExcept ?? {};
+  const isCancelled = (e: BillingEntry) => (e.status ?? "active") === "cancelled";
+  const allDays = (e: BillingEntry) => (Array.isArray(e.days) ? e.days : []);
+  const noShowDays = (e: BillingEntry) => {
+    const s = e.id ? npDaysByEntry?.get(e.id) : undefined;
+    return s ? allDays(e).filter((d) => s.has(d)) : [];
+  };
+  const billable = (e: BillingEntry) => {
+    const np = new Set(noShowDays(e));
+    return allDays(e).filter((d) => !np.has(d)).length;
+  };
+  const discounted = (full: number, n: number) =>
+    discount?.mode === "flat" ? Math.max(0, full - (discount?.value ?? 0) * n) : full * Math.max(0, 1 - (discount?.value ?? 0) / 100);
+  const chargeFor = (e: BillingEntry, n: number) => {
+    if (n <= 0 || cancellation.mode === "credit") return 0;
+    if (cancellation.mode === "no_refund") {
+      const full = n * entryFeeForHeight(config, e.height);
+      return e.discount ? discounted(full, n) : full;
+    }
+    return n * cancellation.fee;
+  };
+  const lineAmount = (e: BillingEntry) => {
+    if (isCancelled(e)) return chargeFor(e, allDays(e).length);
+    const n = billable(e);
+    const full = n * entryFeeForHeight(config, e.height);
+    const net = e.discount ? discounted(full, n) : full;
+    return net + chargeFor(e, noShowDays(e).length);
+  };
+
+  const byPair = config.pricing.nominationBasis === "pair";
+  const riderKey = (e: BillingEntry) => e.rider_id || `name:${e.rider_name.trim().toLowerCase()}`;
+  const unitKey = (e: BillingEntry) =>
+    byPair ? `${riderKey(e)}|${e.horse_id || `h:${(e.horse_name ?? "").trim().toLowerCase()}`}` : riderKey(e);
+  const entryMandatory = (e: BillingEntry) =>
+    !exempt.has(e.height) && exempt.has(e.section) && (except[e.section] ?? []).includes(e.height);
+  const entryExempt = (e: BillingEntry) =>
+    exempt.has(e.height) || (exempt.has(e.section) && !(except[e.section] ?? []).includes(e.height));
+  const unitPays = (rs: BillingEntry[]) => {
+    if (rs.some((e) => e.circuit)) return false;
+    const exemptByClass = !rs.some(entryMandatory) && rs.some(entryExempt);
+    const hasDiscount = (discount?.waivesNomination ?? false) && rs.some((e) => e.discount);
+    return !(hasDiscount || exemptByClass);
+  };
+
+  // Nomination owed, attributed to the rider who owns each paying unit.
+  const units = new Map<string, BillingEntry[]>();
+  for (const e of entries) {
+    if (isCancelled(e) || billable(e) === 0) continue;
+    const k = unitKey(e);
+    (units.get(k) ?? units.set(k, []).get(k)!).push(e);
+  }
+  const nomByRider = new Map<string, number>();
+  for (const rs of units.values()) {
+    if (!unitPays(rs)) continue;
+    const rk = riderKey(rs[0]);
+    nomByRider.set(rk, (nomByRider.get(rk) ?? 0) + nominationFee);
+  }
+
+  // Group every entry (including cancelled) by rider for display, in input order.
+  const order: string[] = [];
+  const grouped = new Map<string, { name: string; lines: RiderLine[] }>();
+  for (const e of entries) {
+    const rk = riderKey(e);
+    if (!grouped.has(rk)) { grouped.set(rk, { name: e.rider_name, lines: [] }); order.push(rk); }
+    grouped.get(rk)!.lines.push({
+      horse: e.horse_name ?? "",
+      height: e.height,
+      section: e.section,
+      days: allDays(e),
+      discount: !!e.discount,
+      cancelled: isCancelled(e),
+      isExtemp: !!e.is_extemp,
+      amount: lineAmount(e),
+    });
+  }
+  const riders: RiderBreakdown[] = order.map((rk) => {
+    const g = grouped.get(rk)!;
+    const nomination = nomByRider.get(rk) ?? 0;
+    const linesTotal = g.lines.reduce((s, l) => s + l.amount, 0);
+    return { rider: g.name, lines: g.lines, nomination, total: linesTotal + nomination };
+  });
+
+  return { riders, stmt: computeStatement(entries, config, npDaysByEntry) };
 }

@@ -1,7 +1,7 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeConfig } from "@/lib/events/config";
-import { computeStatement, npDaysFromResults, type BillingEntry } from "@/lib/events/billing";
+import { computeRiderBreakdown, npDaysFromResults, type BillingEntry } from "@/lib/events/billing";
 import { buildStatementsPdf, type StatementClub } from "@/lib/events/exportPdf";
 
 export const runtime = "nodejs";
@@ -129,21 +129,12 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
     ]
       .filter(Boolean)
       .join(" · ");
+    const { riders, stmt } = computeRiderBreakdown(rows, config, npDaysByEntry);
     return {
       clubName: (s.club_name ?? "").toUpperCase(),
       contact,
-      rows: rows.map((r) => ({
-        rider: (r.rider_name ?? "").toUpperCase(),
-        horse: (r.horse_name ?? "").toUpperCase(),
-        height: r.height,
-        section: r.section,
-        days: r.days,
-        circuit: r.circuit,
-        discount: r.discount,
-        status: r.status,
-        is_extemp: r.is_extemp,
-      })),
-      stmt: computeStatement(rows, config, npDaysByEntry),
+      riders,
+      stmt,
     };
   });
 

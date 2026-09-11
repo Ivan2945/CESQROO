@@ -227,9 +227,9 @@ export default async function AdminEventDetail({
 
                 {/* Estado de cuenta */}
                 <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 border-t border-slate-200 pt-3 text-sm text-slate-700">
-                  <span>Inscripciones: <b>{stmt.starts}</b> × cuota = {money(stmt.entryFees)}</span>
+                  <span>Inscripciones ({stmt.starts} salida{stmt.starts === 1 ? "" : "s"}): {money(stmt.entryFeesFull)}</span>
+                  {stmt.entryDiscount > 0 && <span className="text-emerald-700">Descuento: −{money(stmt.entryDiscount)}</span>}
                   <span>Nominación: <b>{stmt.nominationRiders}</b> = {money(stmt.nominationFees)}</span>
-                  {stmt.discountSavings > 0 && <span className="text-emerald-700">Descuento: −{money(stmt.discountSavings)}</span>}
                   {stmt.cancellationCharge > 0 && <span>Cancelaciones: {money(stmt.cancellationCharge)}</span>}
                   <span className="font-bold text-slate-900">Total: {money(stmt.total)}</span>
                 </div>

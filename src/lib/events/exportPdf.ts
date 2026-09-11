@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage, type Color } from "pdf-lib";
 import { headersFor, rowFor, type ClassBlock, type Variant } from "@/lib/events/exportWorkbook";
-import type { Statement } from "@/lib/events/billing";
+import type { Statement, RiderBreakdown } from "@/lib/events/billing";
 
 const PAGE_W = 612; // US Letter, points
 const PAGE_H = 792;
@@ -202,23 +202,13 @@ export async function buildDayPdf(opts: {
   return Buffer.from(await d.pdf.save());
 }
 
-// Per-club billing statement (Estado de Cuenta): the club's entries plus the
-// charges breakdown. One club per page. Used for both single-club and all-club
-// exports (the caller decides which clubs to pass in).
+// Per-club billing statement (Estado de Cuenta): each rider's participations
+// with the amount owed, a per-rider total, then the club's charges breakdown.
+// Paginates within a club so long lists never clip.
 export type StatementClub = {
   clubName: string;
   contact?: string;
-  rows: Array<{
-    rider: string;
-    horse: string;
-    height: string;
-    section: string;
-    days: string[] | null;
-    circuit: boolean;
-    discount: boolean;
-    status?: string | null;
-    is_extemp?: boolean | null;
-  }>;
+  riders: RiderBreakdown[];
   stmt: Statement;
 };
 
@@ -232,54 +222,59 @@ export async function buildStatementsPdf(opts: {
 }): Promise<Buffer> {
   const d = await createBrandedDoc(opts);
   const money = (n: number) => `$${Number(n || 0).toLocaleString("es-MX")}`;
-  const headers = ["#", "Jinete", "Caballo", "Altura", "Sección", "Días", "Notas"];
-  const { colW, colX } = colsFromWeights([0.6, 2.6, 2.4, 1.3, 1.7, 1.7, 1.4], d.left, d.right);
+  const bottom = PAGE_H - M;
 
   opts.clubs.forEach((club) => {
-    const page = d.pdf.addPage([PAGE_W, PAGE_H]);
+    let page = d.pdf.addPage([PAGE_W, PAGE_H]);
     let yTop = d.drawPageHeader(page);
 
-    // Club name + statement label
-    page.drawText(club.clubName, { x: d.left, y: PAGE_H - yTop - 14, size: 14, font: d.fontB, color: d.black });
-    const lbl = "Estado de Cuenta";
-    const lblW = d.fontB.widthOfTextAtSize(lbl, 11);
-    page.drawText(lbl, { x: d.right - lblW, y: PAGE_H - yTop - 13, size: 11, font: d.fontB, color: d.gray });
-    yTop += 20;
+    const drawClubTitle = (cont: boolean) => {
+      page.drawText(club.clubName + (cont ? " (cont.)" : ""), { x: d.left, y: PAGE_H - yTop - 14, size: 14, font: d.fontB, color: d.black });
+      const lbl = "Estado de Cuenta";
+      const lblW = d.fontB.widthOfTextAtSize(lbl, 11);
+      page.drawText(lbl, { x: d.right - lblW, y: PAGE_H - yTop - 13, size: 11, font: d.fontB, color: d.gray });
+      yTop += 20;
+    };
+
+    drawClubTitle(false);
     if (club.contact) {
       page.drawText(club.contact, { x: d.left, y: PAGE_H - yTop - 11, size: 9, font: d.font, color: d.gray });
       yTop += 16;
     }
-    yTop += 6;
+    yTop += 8;
 
-    // Entries header
-    const drawHead = () => {
-      drawRow(page, headers, yTop, d.fontB, colX, colW, d.black);
-      hline(page, yTop + ROW, "solid", d.left, d.right, d.black);
-      yTop += ROW;
+    const newPage = (cont: boolean) => {
+      page = d.pdf.addPage([PAGE_W, PAGE_H]);
+      yTop = d.drawPageHeader(page);
+      drawClubTitle(cont);
+      yTop += 4;
     };
-    drawHead();
+    const flow = (needed: number) => { if (yTop + needed > bottom) newPage(true); };
 
-    club.rows.forEach((e, i) => {
-      const cancelled = (e.status ?? "active") === "cancelled";
-      const notes = [e.is_extemp ? "EXT" : "", cancelled ? "CANCELADA" : ""].filter(Boolean).join(" · ");
-      const color = cancelled ? d.gray : d.black;
-      drawRow(
-        page,
-        [i + 1, e.rider, e.horse, e.height, e.section, (e.days ?? []).join(" + ") || "—", notes],
-        yTop,
-        d.font,
-        colX,
-        colW,
-        color
-      );
-      hline(page, yTop + ROW, "dotted", d.left, d.right, d.gray);
-      yTop += ROW;
+    // A label on the left and a right-aligned amount, advancing yTop.
+    const pairRow = (leftText: string, rightText: string, size: number, font: typeof d.font, color: Color, indent = 0) => {
+      page.drawText(leftText, { x: d.left + indent, y: PAGE_H - yTop - size, size, font, color });
+      const vw = font.widthOfTextAtSize(rightText, size);
+      page.drawText(rightText, { x: d.right - vw, y: PAGE_H - yTop - size, size, font, color });
+      yTop += size + 4;
+    };
+
+    // Per-rider blocks.
+    club.riders.forEach((r) => {
+      const blockH = 16 + r.lines.length * 13 + (r.nomination > 0 ? 13 : 0) + 6;
+      flow(blockH);
+      pairRow(r.rider.toUpperCase(), money(r.total), 11, d.fontB, d.black);
+      for (const l of r.lines) {
+        const tags = [l.discount ? "desc." : "", l.isExtemp ? "EXT" : "", l.cancelled ? "CANCELADA" : ""].filter(Boolean).join(" · ");
+        const detail = `${l.horse} · ${l.height} ${l.section} · ${(l.days ?? []).join("+") || "—"}${tags ? " · " + tags : ""}`;
+        pairRow(detail, l.cancelled && l.amount === 0 ? "—" : money(l.amount), 9, d.font, d.gray, 14);
+      }
+      if (r.nomination > 0) pairRow("Nominación", money(r.nomination), 9, d.font, d.gray, 14);
+      hline(page, yTop + 2, "dotted", d.left, d.right, d.gray);
+      yTop += 8;
     });
 
-    // Charges breakdown
-    yTop += 16;
-    hline(page, yTop, "solid", d.left, d.right, d.gray);
-    yTop += 8;
+    // Charges breakdown (kept together on one page).
     const lineItem = (labelText: string, value: string, bold = false) => {
       const f = bold ? d.fontB : d.font;
       const size = bold ? 12 : 10;
@@ -289,9 +284,13 @@ export async function buildStatementsPdf(opts: {
       yTop += size + 8;
     };
     const s = club.stmt;
-    lineItem(`Inscripciones (${s.starts} salida${s.starts === 1 ? "" : "s"})`, money(s.entryFees));
+    flow(24 + 4 * 18 + 20);
+    yTop += 12;
+    hline(page, yTop, "solid", d.left, d.right, d.gray);
+    yTop += 8;
+    lineItem(`Inscripciones (${s.starts} salida${s.starts === 1 ? "" : "s"})`, money(s.entryFeesFull));
+    if (s.entryDiscount > 0) lineItem("Descuento", "-" + money(s.entryDiscount));
     lineItem(`Nominación (${s.nominationRiders})`, money(s.nominationFees));
-    if (s.discountSavings > 0) lineItem("Descuento", "-" + money(s.discountSavings));
     if (s.cancellationCharge > 0) lineItem("Cancelaciones", money(s.cancellationCharge));
     yTop += 2;
     hline(page, yTop, "solid", d.left, d.right, d.black);

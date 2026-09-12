@@ -72,9 +72,10 @@ function scoreOne(fmt: ClassFormat, e: ScoreInput): Raw {
       return { jumpPens: jp, timePens: tp, totalPens: jp + tp, tieTime: Math.abs(fmt.optimumSec - t1), tier: 0 };
     }
     case "two_phase_special": {
-      // 274 2.5: one continuous trip, everyone rides both phases, ranked on
-      // phase 2. You must FINISH to place — eliminated/retired anywhere = no
-      // placing (r1 status handled above; r2 status here).
+      // 274 2.5: one continuous trip, everyone rides both phases. Ranked on the
+      // AGGREGATE faults of BOTH phases (jumping + time), tie-broken by the
+      // phase-2 time — i.e. the "Final" score. You must FINISH to place —
+      // eliminated/retired anywhere = no placing (r1 status handled above; r2 here).
       const jp1 = e.r1.faults;
       const tp1 = timeOver(t1, fmt.ta1Sec);
       if (e.r2 && e.r2.timeSec != null) {
@@ -82,7 +83,7 @@ function scoreOne(fmt: ClassFormat, e: ScoreInput): Raw {
         const t2 = roundTime(e.r2)!;
         const jp2 = e.r2.faults;
         const tp2 = timeOver(t2, fmt.ta2Sec);
-        return { jumpPens: jp1 + jp2, timePens: tp1 + tp2, totalPens: jp2 + tp2, tieTime: t2, tier: 0 };
+        return { jumpPens: jp1 + jp2, timePens: tp1 + tp2, totalPens: jp1 + jp2 + tp1 + tp2, tieTime: t2, tier: 0 };
       }
       return { jumpPens: jp1, timePens: tp1, totalPens: jp1 + tp1, tieTime: t1, tier: 0 };
     }

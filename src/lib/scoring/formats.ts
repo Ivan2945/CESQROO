@@ -78,8 +78,11 @@ function scoreOne(fmt: ClassFormat, e: ScoreInput): Raw {
       // eliminated/retired anywhere = no placing (r1 status handled above; r2 here).
       const jp1 = e.r1.faults;
       const tp1 = timeOver(t1, fmt.ta1Sec);
+      // Eliminated / retired / no-show in EITHER phase = no placing. Phase 1 is
+      // caught at the top of scoreOne; phase 2 here — regardless of whether a
+      // phase-2 time was entered.
+      if (e.r2 && !completed(statusOf(e.r2))) return NO_PLACE;
       if (e.r2 && e.r2.timeSec != null) {
-        if (!completed(statusOf(e.r2))) return NO_PLACE; // eliminated in phase 2 -> no place
         const t2 = roundTime(e.r2)!;
         const jp2 = e.r2.faults;
         const tp2 = timeOver(t2, fmt.ta2Sec);

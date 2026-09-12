@@ -484,10 +484,14 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
 
   const last = lastId ? rows.find((r) => r.entryId === lastId) : null;
   const lastScore = last ? byId[last.entryId] : null;
+  // Effective status: for two-phase special a phase-2 elimination (round-1 OK)
+  // is shown/grouped by the phase-2 status.
+  const effStatus = (r: Row) =>
+    r.status1 !== "OK" ? r.status1 : format === "two_phase_special" && r.status2 !== "OK" ? r.status2 : "OK";
   // Within a section: ranked placings first, then unplaced grouped FC, T, RT, EL, NP.
   const grp = (r: Row) => {
     if (byId[r.entryId]?.rankSection != null) return 0;
-    return (({ FC: 1, T: 2, RT: 3, EL: 4, NP: 5 }) as Record<string, number>)[r.status1] ?? 6;
+    return (({ FC: 1, T: 2, RT: 3, EL: 4, NP: 5 }) as Record<string, number>)[effStatus(r)] ?? 6;
   };
   const committed = rows.filter((r) => r.committed).sort((a, b) =>
     (a.section || "").localeCompare(b.section || "") || grp(a) - grp(b) ||
@@ -548,8 +552,8 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
   // Render the result cell(s) for one row, by format (judge sees everything).
   function resultCells(r: Row) {
     // Non-finishers (EL/RT/NP/FC/T, and cancelled=NP) show their status code.
-    if (r.status1 !== "OK") {
-      return <td colSpan={resultCols} className="p-2 text-center font-bold text-rose-600">{r.status1}</td>;
+    if (effStatus(r) !== "OK") {
+      return <td colSpan={resultCols} className="p-2 text-center font-bold text-rose-600">{effStatus(r)}</td>;
     }
     const p = parts(r);
     if (threeColJ) {
@@ -644,7 +648,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
 
       {lastScore && last && (() => {
         const p = parts(last);
-        const resumen = last.status1 !== "OK" ? last.status1 : threeColJ
+        const resumen = effStatus(last) !== "OK" ? effStatus(last) : threeColJ
           ? `R1 ${rCell(p.jf1, p.tp1, p.t1)} · R2 ${p.r2done ? rCell(p.jf2, p.tp2, p.t2) : "—"} · Final ${format === "optimum_two_round" ? (p.r2done ? rDiffCell(p.jf2, p.diff) : p.jf1) : rCell(p.sJump, p.sTimePen, p.r2done ? p.t2 : p.t1)}`
           : twoColJ
             ? `R1 ${rCell(p.jf1, p.tp1, p.t1)} · R2 ${p.r2done ? rCell(p.jf2, p.tp2, p.t2) : "—"}`
@@ -727,7 +731,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
                         <div className="text-xs uppercase text-slate-500">{r.horse}{r.club ? ` · ${r.club}` : ""} · {r.section}</div>
                       </td>
                       {resultCells(r)}
-                      <td className="p-2 text-center">{r.status1}</td>
+                      <td className="p-2 text-center">{effStatus(r)}</td>
                       <td className="p-2 text-center">{r.cancelled ? null : <button onClick={() => patch(r.entryId, { committed: false })} className="rounded bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-800">Editar</button>}</td>
                     </tr>
                   );

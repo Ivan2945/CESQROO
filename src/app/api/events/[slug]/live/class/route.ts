@@ -118,8 +118,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
       const cancelled = isCancelled(id);
       const s = byId.get(id);
       const r = resByEntry.get(id);
-      // Cancelled = no-show (NP); otherwise the judged round-1 status.
-      const status = cancelled ? "NP" : (r?.r1_status || "OK");
+      // Cancelled = no-show (NP); otherwise the judged round-1 status. For
+      // two-phase special, a phase-2 elimination (r1 OK) shows the phase-2 status.
+      const r1s = r?.r1_status || "OK";
+      const r2s = r?.r2_status || "OK";
+      const status = cancelled ? "NP" : r1s !== "OK" ? r1s : format === "two_phase_special" && r2s !== "OK" ? r2s : "OK";
       const placeable = !cancelled && !!s && s.rankSection != null;
       const jf1 = r ? parseFaultShorthand(r.r1_faults) : 0;
       const jf2 = r ? parseFaultShorthand(r.r2_faults) : 0;

@@ -90,6 +90,7 @@ export default function ScoringClient({ slug, eventName }: { slug: string; event
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [offline, setOffline] = useState(false);
   const [pending, setPending] = useState(0);
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [sel, setSel] = useState<{ height: string; day: string } | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [refreshTick, setRefreshTick] = useState(0);
@@ -121,8 +122,9 @@ export default function ScoringClient({ slug, eventName }: { slug: string; event
   // ---- Periodic + event-driven sync ----
   const doSync = useCallback(async () => {
     const r = await flushQueue(slug);
-    setOffline(r == null);
-    setPending(await queueSize(slug));
+    setOffline(r.status === "offline");
+    setSyncError(r.status === "error" ? (r.message || "No se pudo sincronizar.") : null);
+    setPending(r.pending);
   }, [slug]);
 
   // Pull the latest roster/draw from the server (e.g. after late Training/FC
@@ -136,7 +138,8 @@ export default function ScoringClient({ slug, eventName }: { slug: string; event
         setOffline(false);
         setRefreshTick((t) => t + 1); // remount the open class so new binomios appear
       } else {
-        setOffline(true);
+        // Only truly offline flips the badge; a server error shouldn't.
+        setOffline(typeof navigator !== "undefined" && navigator.onLine === false);
       }
       setPending(await queueSize(slug));
     } finally {
@@ -163,6 +166,7 @@ export default function ScoringClient({ slug, eventName }: { slug: string; event
           {offline ? "Sin conexión" : "En línea"}
         </span>
         {pending > 0 && <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-semibold text-blue-800">{pending} por sincronizar</span>}
+        {syncError && !offline && <span title={syncError} className="rounded-full bg-rose-100 px-2.5 py-0.5 text-xs font-semibold text-rose-800">Error al sincronizar</span>}
         <button onClick={doSync} className="rounded-md border border-slate-300 px-2.5 py-1 text-xs font-semibold text-slate-700">Sincronizar</button>
         <button onClick={doRefresh} disabled={refreshing} className="rounded-md border border-blue-300 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 disabled:opacity-50">
           {refreshing ? "Actualizando…" : "Actualizar lista"}

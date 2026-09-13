@@ -124,13 +124,28 @@ export async function putNewEntry(slug: string, item: QueuedEntry): Promise<void
   q[item.entryId] = item;
   await setEntryQueue(slug, q);
 }
+const isOffline = () => typeof navigator !== "undefined" && navigator.onLine === false;
+
+async function serverMessage(res: Response): Promise<string> {
+  try {
+    const j = await res.json();
+    return j?.error || `Error ${res.status}`;
+  } catch {
+    return `Error ${res.status}`;
+  }
+}
+
 // Create queued binomios on the server (must land BEFORE their results, which
-// reference the entry). Returns true when the queue is empty/drained.
-async function flushEntries(slug: string): Promise<boolean> {
+// reference the entry). "offline" = network down/unreachable; "error" = the
+// server rejected an item (kept in the queue, but it does NOT mean we're offline).
+// A rejected item no longer blocks the others behind it.
+async function flushEntries(slug: string): Promise<{ status: "ok" | "offline" | "error"; message?: string }> {
   const q = await getEntryQueue(slug);
   const items = Object.values(q);
-  if (items.length === 0) return true;
-  if (typeof navigator !== "undefined" && navigator.onLine === false) return false;
+  if (items.length === 0) return { status: "ok" };
+  if (isOffline()) return { status: "offline" };
+  let sawError = false;
+  let message: string | undefined;
   for (const it of items) {
     try {
       const res = await fetch(`/api/events/${slug}/scoring/add-binomio`, {
@@ -138,14 +153,18 @@ async function flushEntries(slug: string): Promise<boolean> {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(it),
       });
-      if (!res.ok) return false;
-      delete q[it.entryId];
-      await setEntryQueue(slug, q);
+      if (res.ok) {
+        delete q[it.entryId];
+        await setEntryQueue(slug, q);
+      } else {
+        sawError = true;
+        if (!message) message = await serverMessage(res);
+      }
     } catch {
-      return false;
+      return { status: "offline" }; // a thrown fetch = genuinely can't reach the server
     }
   }
-  return true;
+  return sawError ? { status: "error", message } : { status: "ok" };
 }
 
 // ---- Sync queue (keys pending upload) --------------------------------------
@@ -185,23 +204,41 @@ export async function seedResults(slug: string, rows: BootstrapData["results"]):
   await saveResultsMap(slug, map);
 }
 
-// Flush the queue to the server. Returns counts; clears synced items on success.
-export async function flushQueue(slug: string): Promise<{ written: number; pending: number } | null> {
-  if (typeof navigator !== "undefined" && navigator.onLine === false) return null;
+export type SyncResult = { status: "ok" | "offline" | "error"; pending: number; message?: string };
+
+// Flush the queue to the server. Distinguishes truly offline (network down) from
+// a server rejection (online, but an item was refused) so the UI never shows
+// "offline" just because a queued item is being rejected.
+export async function flushQueue(slug: string): Promise<SyncResult> {
+  if (isOffline()) return { status: "offline", pending: await queueSize(slug) };
+
   // Created binomios must sync before their results (FK dependency).
-  const entriesOk = await flushEntries(slug);
-  if (!entriesOk) return null;
+  const ent = await flushEntries(slug);
+  if (ent.status === "offline") return { status: "offline", pending: await queueSize(slug) };
+
   const q = await getQueue(slug);
   const rows = Object.values(q);
-  if (rows.length === 0) return { written: 0, pending: 0 };
-  const res = await fetch(`/api/events/${slug}/scoring/results`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(rows),
-  });
-  if (!res.ok) return null;
-  await setQueue(slug, {}); // everything accepted (LWW server-side)
-  return { written: rows.length, pending: 0 };
+  let resultsFailed = false;
+  let resultsMsg: string | undefined;
+  if (rows.length > 0) {
+    try {
+      const res = await fetch(`/api/events/${slug}/scoring/results`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(rows),
+      });
+      if (res.ok) await setQueue(slug, {}); // everything accepted (LWW server-side)
+      else {
+        resultsFailed = true;
+        resultsMsg = await serverMessage(res);
+      }
+    } catch {
+      return { status: "offline", pending: await queueSize(slug) };
+    }
+  }
+
+  const errored = ent.status === "error" || resultsFailed;
+  return { status: errored ? "error" : "ok", pending: await queueSize(slug), message: ent.message ?? resultsMsg };
 }
 
 export async function queueSize(slug: string): Promise<number> {

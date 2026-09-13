@@ -301,6 +301,72 @@ export async function buildStatementsPdf(opts: {
   return Buffer.from(await d.pdf.save());
 }
 
+// Public results sheet: per class, the computed ranking (place, club, rider,
+// horse, section, result). Flows across pages; repeats the class header.
+export type ResultsClass = {
+  index: number;
+  height: string;
+  note?: string; // e.g. ideal-time window shown under the class title
+  rows: Array<{ place: number | null; club: string; rider: string; horse: string; section: string; resultado: string }>;
+};
+
+export async function buildResultsPdf(opts: {
+  eventName: string;
+  day: string;
+  classes: ResultsClass[];
+  title?: string;
+  subtitle?: string;
+  datesText?: string;
+  logo?: string | null;
+}): Promise<Buffer> {
+  const d = await createBrandedDoc(opts);
+  const headers = ["Lugar", "Club", "Jinete", "Caballo", "Secc.", "Resultado"];
+  const { colW, colX } = colsFromWeights([0.9, 3, 3, 2.6, 1.4, 2.4], d.left, d.right);
+  const bottom = PAGE_H - M;
+
+  let page!: PDFPage;
+  let yTop = 0;
+  const newPage = () => {
+    page = d.pdf.addPage([PAGE_W, PAGE_H]);
+    yTop = d.drawPageHeader(page);
+    page.drawText(`Resultados · ${opts.day}`, { x: d.left, y: PAGE_H - yTop - 12, size: 11, font: d.fontB, color: d.gray });
+    yTop += 20;
+  };
+  newPage();
+
+  opts.classes.forEach((cb, ci) => {
+    if (ci > 0) yTop += 10;
+    if (yTop + 22 + (cb.note ? 14 : 0) + ROW + ROW > bottom) newPage();
+    page.drawText(`Prueba ${cb.index} · ${cb.height}`, { x: d.left, y: PAGE_H - yTop - 12, size: 11, font: d.fontB, color: d.black });
+    yTop += 18;
+    if (cb.note) {
+      page.drawText(cb.note, { x: d.left, y: PAGE_H - yTop - 10, size: 9, font: d.font, color: d.gray });
+      yTop += 14;
+    }
+    yTop += 2;
+    drawRow(page, headers, yTop, d.fontB, colX, colW, d.black);
+    hline(page, yTop + ROW, "solid", d.left, d.right, d.black);
+    yTop += ROW;
+
+    cb.rows.forEach((r) => {
+      if (yTop + ROW > bottom) {
+        newPage();
+        page.drawText(`Prueba ${cb.index} (cont.) · ${cb.height}`, { x: d.left, y: PAGE_H - yTop - 12, size: 11, font: d.fontB, color: d.black });
+        yTop += 20;
+        drawRow(page, headers, yTop, d.fontB, colX, colW, d.black);
+        hline(page, yTop + ROW, "solid", d.left, d.right, d.black);
+        yTop += ROW;
+      }
+      const color = r.place == null ? d.gray : d.black;
+      drawRow(page, [r.place ?? "—", r.club, r.rider, r.horse, r.section, r.resultado], yTop, d.font, colX, colW, color);
+      hline(page, yTop + ROW, "dotted", d.left, d.right, d.gray);
+      yTop += ROW;
+    });
+  });
+
+  return Buffer.from(await d.pdf.save());
+}
+
 // Flat overview: one continuous table, one row per entry for the whole day in
 // running order. Columns: #, Altura, Sección, Jinete, Caballo, Club.
 export async function buildMasterListPdf(opts: {

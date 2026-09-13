@@ -45,6 +45,8 @@ export default function LiveEventClient({ slug }: { slug: string }) {
   const shown = data.classes.filter((c) => c.day === day);
   const anyLive = data.classes.some((c) => c.status === "in_progress");
   const dayCommitted = (data.committedDays ?? []).includes(day);
+  const dayClasses = data.classes.filter((c) => c.day === day);
+  const dayAllFinalized = dayClasses.length > 0 && dayClasses.every((c) => c.status === "finished");
 
   return (
     <div className="mx-auto max-w-3xl px-1 py-2">
@@ -65,25 +67,35 @@ export default function LiveEventClient({ slug }: { slug: string }) {
       </div>
 
       {day && (
-        <div className="mb-5 flex flex-col items-center gap-1">
-          {dayCommitted ? (
-            <a
-              href={`/api/events/${slug}/public-list?day=${encodeURIComponent(day)}`}
-              className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
-            >
-              ⬇ Descargar orden de salida — {day}
-            </a>
-          ) : (
-            <>
-              <button
-                disabled
-                className="inline-flex cursor-not-allowed items-center gap-2 rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-400 dark:bg-slate-800 dark:text-slate-500"
+        <div className="mb-5 flex flex-col items-center gap-2">
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {dayCommitted ? (
+              <a
+                href={`/api/events/${slug}/public-list?day=${encodeURIComponent(day)}`}
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
               >
-                ⬇ Descargar orden de salida — {day}
+                ⬇ Lista de entrada — {day}
+              </a>
+            ) : (
+              <button disabled className="inline-flex cursor-not-allowed items-center gap-2 rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-400 dark:bg-slate-800 dark:text-slate-500">
+                ⬇ Lista de entrada — {day}
               </button>
-              <span className="text-xs text-slate-400 dark:text-slate-500">Disponible cuando se publique el orden del día.</span>
-            </>
-          )}
+            )}
+            {dayAllFinalized ? (
+              <a
+                href={`/api/events/${slug}/results-pdf?day=${encodeURIComponent(day)}`}
+                className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+              >
+                ⬇ Descargar resultados — {day}
+              </a>
+            ) : (
+              <button disabled className="inline-flex cursor-not-allowed items-center gap-2 rounded-lg bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-400 dark:bg-slate-800 dark:text-slate-500">
+                ⬇ Descargar resultados — {day}
+              </button>
+            )}
+          </div>
+          {!dayCommitted && <span className="text-xs text-slate-400 dark:text-slate-500">La lista de entrada estará disponible cuando se publique el orden del día.</span>}
+          {dayCommitted && !dayAllFinalized && <span className="text-xs text-slate-400 dark:text-slate-500">Los resultados se descargan cuando todas las clases del día estén finalizadas.</span>}
         </div>
       )}
 

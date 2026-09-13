@@ -61,11 +61,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   // number-less roster (no premature start numbers leaking to the public).
   const committedOrder = (setupRow?.start_order as { entry_id: string; no: number | string }[] | null) ?? null;
   const order = committedOrder && committedOrder.length
-    ? committedOrder.map((o) => ({
-        entryId: o.entry_id, no: o.no,
-        rider: entryById.get(o.entry_id)?.rider_name || "", horse: entryById.get(o.entry_id)?.horse_name || "",
-        section: entryById.get(o.entry_id)?.section || "", cancelled: isCancelled(o.entry_id),
-      }))
+    ? committedOrder
+        .filter((o) => entryById.has(o.entry_id)) // drop ghosts (entries deleted from sign-ups)
+        .map((o) => ({
+          entryId: o.entry_id, no: o.no,
+          rider: entryById.get(o.entry_id)?.rider_name || "", horse: entryById.get(o.entry_id)?.horse_name || "",
+          section: entryById.get(o.entry_id)?.section || "", cancelled: isCancelled(o.entry_id),
+        }))
     : allEntries
         .filter((e) => e.height === height && (Array.isArray(e.days) ? e.days : []).includes(day))
         .map((e) => ({ entryId: e.id, no: "" as number | string, rider: e.rider_name, horse: e.horse_name, section: e.section || "", cancelled: (e.status ?? "active") === "cancelled" }));

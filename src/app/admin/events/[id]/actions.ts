@@ -40,6 +40,17 @@ export async function deleteEntryAction(
   const { error } = await supabaseAdmin.from("event_entries").delete().eq("id", entryId);
   if (error) return { ok: false, message: error.message };
 
+  // Also strip it from any committed start order so it doesn't linger as a
+  // ghost row (and so nothing tries to score a non-existent binomio).
+  const { data: setups } = await supabaseAdmin
+    .from("event_class_setup").select("id, start_order").eq("event_id", eventId);
+  for (const s of setups ?? []) {
+    const so = (s.start_order as { entry_id: string; no: number | string }[] | null) ?? [];
+    if (so.some((o) => o.entry_id === entryId)) {
+      await supabaseAdmin.from("event_class_setup").update({ start_order: so.filter((o) => o.entry_id !== entryId) }).eq("id", s.id);
+    }
+  }
+
   revalidatePath(`/admin/events/${eventId}`);
   revalidatePath("/admin/events");
   return { ok: true, data: undefined, message: "Participación eliminada." };

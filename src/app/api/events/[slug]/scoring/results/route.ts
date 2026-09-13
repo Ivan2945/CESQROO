@@ -38,6 +38,18 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   const { data: event } = await supabaseAdmin.from("events").select("id").eq("slug", slug).single();
   if (!event) return Response.json({ error: "Evento no encontrado." }, { status: 404 });
 
+  // Drop results for binomios that no longer exist (e.g. an entry deleted from
+  // sign-ups after it was scored offline). Otherwise the FK would fail the whole
+  // batch and the device's queue would be stuck forever. Silently skipping them
+  // lets the rest sync and clears the orphan from the queue.
+  const postedIds = [...new Set(rows.map((r) => r.entryId))];
+  const { data: liveEntries } = await supabaseAdmin
+    .from("event_entries").select("id").eq("event_id", event.id).in("id", postedIds);
+  const liveSet = new Set((liveEntries ?? []).map((e) => e.id));
+  const orphans = rows.length - rows.filter((r) => liveSet.has(r.entryId)).length;
+  rows = rows.filter((r) => liveSet.has(r.entryId));
+  if (rows.length === 0) return Response.json({ ok: true, written: 0, orphansDropped: orphans });
+
   // Existing timestamps for these binomios -> drop incoming rows that are older.
   const entryIds = [...new Set(rows.map((r) => r.entryId))];
   const { data: existing } = await supabaseAdmin

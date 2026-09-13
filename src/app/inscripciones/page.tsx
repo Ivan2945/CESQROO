@@ -37,21 +37,19 @@ function UpcomingCard({ ev }: { ev: EventCard }) {
       <div>
         <h3 className="text-xl font-semibold text-slate-900 dark:text-white">{ev.name}</h3>
         {dates && <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{dates}</p>}
-        <p className="mt-2 text-sm">
-          <Link href={`/signup/${ev.slug}/editar`} className="font-medium text-blue-600 hover:underline dark:text-blue-400">
-            ¿Ya te inscribiste? Editar →
-          </Link>
-        </p>
       </div>
       <div className="flex shrink-0 flex-col gap-2 sm:items-end">
         <Link href={`/signup/${ev.slug}`} className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-5 py-2.5 font-semibold text-white hover:bg-blue-700">
-          Inscribirse →
+          Inscripciones Nuevas →
+        </Link>
+        <Link href={`/signup/${ev.slug}/editar`} className="inline-flex items-center justify-center rounded-lg border border-blue-300 bg-blue-50 px-5 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-300">
+          Editar Inscripciones (No Extemporáneas) →
         </Link>
         <Link href={`/signup/${ev.slug}/extemporaneo`} className="inline-flex items-center justify-center rounded-lg border border-amber-300 bg-amber-50 px-5 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300">
-          Inscripciones/Cancelaciones (Día en Curso) →
+          Extemporáneos y Cancelaciones →
         </Link>
         <Link href={`/resultados/${ev.slug}`} className="inline-flex items-center justify-center rounded-lg border border-emerald-300 bg-emerald-50 px-5 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
-          Resultados en vivo →
+          Listas de Entrada/Resultados →
         </Link>
       </div>
     </div>

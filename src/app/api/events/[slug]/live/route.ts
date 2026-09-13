@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { normalizeConfig } from "@/lib/events/config";
+import { normalizeConfig, dayHeightOrder } from "@/lib/events/config";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,7 +18,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   if (!event) return Response.json({ error: "Evento no encontrado." }, { status: 404 });
 
   const config = normalizeConfig(event.config ?? {});
-  const dayState = (event.day_state ?? {}) as Record<string, { committed?: boolean }>;
+  const dayState = (event.day_state ?? {}) as Record<string, { committed?: boolean; heightOrder?: string[] }>;
   const committedDays = config.days.filter((d) => dayState[d]?.committed);
 
   const [{ data: ent }, { data: setups }, { data: results }] = await Promise.all([
@@ -34,7 +34,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
 
   const classes: Array<{ height: string; day: string; total: number; scored: number; status: string }> = [];
   for (const day of config.days) {
-    for (const height of config.heights) {
+    for (const height of dayHeightOrder(config, dayState, day)) {
       const total = active.filter((e) => e.height === height && (Array.isArray(e.days) ? e.days : []).includes(day)).length;
       if (total === 0) continue;
       classes.push({ height, day, total, scored: scoredCount(height, day), status: statusOf(height, day) });

@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { normalizeConfig } from "@/lib/events/config";
+import { normalizeConfig, dayHeightOrder } from "@/lib/events/config";
 import { buildClassesOrdered, type ExportEntry } from "@/lib/events/exportWorkbook";
 import { buildDayPdf } from "@/lib/events/exportPdf";
 
@@ -27,7 +27,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   if (!event) return Response.json({ error: "Evento no encontrado." }, { status: 404 });
 
   // Gate: the day must be committed.
-  const dayState = (event.day_state ?? {}) as Record<string, { committed?: boolean }>;
+  const dayState = (event.day_state ?? {}) as Record<string, { committed?: boolean; heightOrder?: string[] }>;
   if (!dayState[day]?.committed) {
     return Response.json({ error: "El orden de salida aún no está publicado para este día." }, { status: 403 });
   }
@@ -91,7 +91,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
 
   const dayIdx = config.days.indexOf(day);
   const startNumber = (dayIdx > 0 ? dayIdx : 0) * config.heights.length + 1;
-  const classes = buildClassesOrdered(entries, config.heights, startNumber, orderByHeight);
+  const classes = buildClassesOrdered(entries, dayHeightOrder(config, dayState, day), startNumber, orderByHeight);
 
   const pdf = await buildDayPdf({
     eventName: event.name,

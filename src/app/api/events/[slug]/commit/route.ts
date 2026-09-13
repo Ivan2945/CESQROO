@@ -1,12 +1,12 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { isAdminApi } from "@/lib/auth/isAdminApi";
-import { normalizeConfig } from "@/lib/events/config";
+import { normalizeConfig, dayHeightOrder } from "@/lib/events/config";
 import { buildStartList, defaultFormatForHeight, type EntryForScoring } from "@/lib/scoring/portal";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type DayState = Record<string, { signupsOpen: boolean; committed: boolean; committedAt: string | null }>;
+type DayState = Record<string, { signupsOpen: boolean; committed: boolean; committedAt: string | null; heightOrder?: string[] }>;
 const dayInfo = (ds: DayState, day: string) => ds[day] ?? { signupsOpen: true, committed: false, committedAt: null };
 
 async function loadEvent(slug: string) {
@@ -40,7 +40,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   const entryById = new Map(entries.map((e) => [e.id, e]));
   const orderByHeight = new Map((setups ?? []).map((s) => [s.height, (s.start_order ?? []) as { entry_id: string; no: number | string }[]]));
 
-  const classes = config.heights
+  const classes = dayHeightOrder(config, ds, day)
     .map((height) => {
       const inClass = entries.filter((e) => e.height === height && (Array.isArray(e.days) ? e.days : []).includes(day));
       if (inClass.length === 0) return null;
@@ -61,7 +61,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
     })
     .filter(Boolean);
 
-  return Response.json({ day, dayState: dayInfo(ds, day), classes });
+  return Response.json({ day, dayState: dayInfo(ds, day), heightOrder: dayHeightOrder(config, ds, day), classes });
 }
 
 // POST /api/events/[slug]/commit  (admin) — action-dispatched.
@@ -134,6 +134,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       await supabaseAdmin.from("event_class_setup").insert({ event_id: event.id, height, day, format: defaultFormatForHeight(height), params: {}, start_order });
     }
     return Response.json({ ok: true });
+  }
+
+  if (action === "saveHeightOrder") {
+    // The order the classes RUN on this day (independent per day; day 1 is the
+    // default for the rest). Committing the day doesn't lock this.
+    const { heightOrder } = body as { heightOrder: string[] };
+    if (!Array.isArray(heightOrder)) return Response.json({ error: "Falta heightOrder." }, { status: 400 });
+    const valid = heightOrder.filter((h) => config.heights.includes(h));
+    await setDay({ heightOrder: valid });
+    return Response.json({ ok: true, heightOrder: dayHeightOrder(config, ds, day) });
   }
 
   if (action === "renumber") {

@@ -10,14 +10,40 @@ export default function CommitClient({ slug, days }: { slug: string; days: strin
   const [day, setDay] = useState(days[0] || "");
   const [classes, setClasses] = useState<ClassRow[]>([]);
   const [state, setState] = useState<DayState | null>(null);
+  const [heightOrder, setHeightOrder] = useState<string[]>([]);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
   const load = useCallback(async (d: string) => {
     const res = await fetch(`/api/events/${slug}/commit?day=${encodeURIComponent(d)}`, { cache: "no-store" });
     const data = await res.json();
-    if (res.ok) { setClasses(data.classes); setState(data.dayState); }
+    if (res.ok) { setClasses(data.classes); setState(data.dayState); setHeightOrder(data.classes.map((c: ClassRow) => c.height)); }
   }, [slug]);
+
+  // Save the class run-order for this day (independent per day).
+  function applyOrder(next: string[]) {
+    setHeightOrder(next);
+    fetch(`/api/events/${slug}/commit`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ day, action: "saveHeightOrder", heightOrder: next }),
+    }).then(() => load(day)).catch(() => {});
+  }
+  function moveHeight(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= heightOrder.length) return;
+    const next = [...heightOrder];
+    [next[i], next[j]] = [next[j], next[i]];
+    applyOrder(next);
+  }
+  function dropHeight(to: number) {
+    if (dragIdx === null || dragIdx === to) return setDragIdx(null);
+    const next = [...heightOrder];
+    const [moved] = next.splice(dragIdx, 1);
+    next.splice(to, 0, moved);
+    setDragIdx(null);
+    applyOrder(next);
+  }
 
   useEffect(() => { if (day) load(day); }, [day, load]);
 
@@ -101,6 +127,33 @@ export default function CommitClient({ slug, days }: { slug: string; days: strin
         </div>
       )}
       {msg && <p className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">{msg}</p>}
+
+      {classes.length > 1 && (
+        <section className="mb-4 rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+          <h2 className="mb-1 text-sm font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">Orden de pruebas — {day}</h2>
+          <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
+            Arrastra (o usa ↑↓) para fijar el orden en que corren las clases este día. El día 1 es el predeterminado para los demás. Se refleja en los resultados públicos y en la lista descargable.
+          </p>
+          <ul className="space-y-1">
+            {heightOrder.map((h, i) => (
+              <li
+                key={h}
+                draggable
+                onDragStart={() => setDragIdx(i)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => { e.preventDefault(); dropHeight(i); }}
+                className={"flex items-center gap-3 rounded-lg border px-3 py-1.5 text-sm " + (dragIdx === i ? "border-blue-400 bg-blue-50 dark:border-blue-600 dark:bg-blue-950/40" : "border-slate-200 dark:border-slate-700")}
+              >
+                <span className="cursor-grab select-none text-slate-400" aria-hidden>⠿</span>
+                <span className="w-5 text-right text-slate-400">{i + 1}</span>
+                <span className="flex-1 font-semibold text-slate-900 dark:text-white">{h}</span>
+                <button onClick={() => moveHeight(i, -1)} disabled={i === 0} className="rounded border border-slate-300 px-1.5 text-xs disabled:opacity-30 dark:border-slate-600 dark:text-slate-300">↑</button>
+                <button onClick={() => moveHeight(i, 1)} disabled={i === heightOrder.length - 1} className="rounded border border-slate-300 px-1.5 text-xs disabled:opacity-30 dark:border-slate-600 dark:text-slate-300">↓</button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {classes.length === 0 ? (
         <p className="text-slate-500 dark:text-slate-400">No hay inscripciones para {day}.</p>

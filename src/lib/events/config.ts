@@ -177,6 +177,24 @@ export function entryFeeForHeight(config: EventConfig, height: string): number {
   return config.pricing.entryFeeByHeight[height] ?? config.pricing.entryFeeDefault;
 }
 
+// The order classes (heights) run on a given day. Priority: this day's saved
+// order, else the first day's saved order (the default), else the configured
+// heights order. Always filtered to valid heights, with any missing heights
+// appended so nothing is ever dropped.
+export function dayHeightOrder(
+  config: EventConfig,
+  dayState: Record<string, { heightOrder?: string[] } | undefined> | null | undefined,
+  day: string
+): string[] {
+  const ds = dayState ?? {};
+  const first = config.days[0];
+  const stored = ds[day]?.heightOrder;
+  const base =
+    stored && stored.length ? stored : ds[first]?.heightOrder?.length ? ds[first]!.heightOrder! : config.heights;
+  const valid = base.filter((h) => config.heights.includes(h));
+  return [...valid, ...config.heights.filter((h) => !valid.includes(h))];
+}
+
 export function sectionsForHeight(config: EventConfig, height: string): string[] {
   const sbh = config.sectionsByHeight[height];
   return Array.isArray(sbh) && sbh.length > 0 ? sbh : config.sections;

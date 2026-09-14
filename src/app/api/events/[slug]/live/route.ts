@@ -4,9 +4,6 @@ import { normalizeConfig, dayHeightOrder } from "@/lib/events/config";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-// GET /api/events/[slug]/live   — PUBLIC, READ-ONLY.
-// Returns the event, its days, and one row per class (height × day) with status
-// and counts. Used by the public results landing page. No auth; no mutations.
 export async function GET(_req: Request, { params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
 
@@ -24,17 +21,19 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const [{ data: ent }, { data: setups }, { data: results }] = await Promise.all([
     supabaseAdmin.from("event_entries").select("id, height, days, status").eq("event_id", event.id),
     supabaseAdmin.from("event_class_setup").select("height, day, status").eq("event_id", event.id),
-    supabaseAdmin.from("event_results").select("entry_id, day, r1_status, r1_time, r2_status, r2_time").eq("event_id", event.id),
+    supabaseAdmin.from("event_results").select("entry_id, height, day, r1_faults, r1_status, r1_time, r2_status, r2_time").eq("event_id", event.id),
   ]);
 
   const active = (ent ?? []).filter((e) => (e.status ?? "active") !== "cancelled");
-  const resByEntryDay = new Map(
-    (results ?? []).map((r) => [`${r.entry_id}|${r.day}`, r])
-  );
-  const isNP = (r: { r1_status: string | null } | undefined) => !!r && r.r1_status === "NP";
-  const isResolved = (r: { r1_status: string | null; r1_time: number | null; r2_status: string | null; r2_time: number | null } | undefined) =>
+
+  type Res = { entry_id: string; height: string; day: string; r1_faults: string | null; r1_status: string | null; r1_time: number | null; r2_status: string | null; r2_time: number | null };
+  const resByKey = new Map((results ?? []).map((r) => [`${r.entry_id}|${r.height}|${r.day}`, r as Res]));
+
+  const isNP = (r: Res | undefined) => !!r && r.r1_status === "NP";
+  const isResolved = (r: Res | undefined) =>
     !!r &&
     (r.r1_time != null ||
+      (!!r.r1_faults && r.r1_faults !== "") ||
       (!!r.r1_status && r.r1_status !== "OK" && r.r1_status !== "NP") ||
       r.r2_time != null ||
       (!!r.r2_status && r.r2_status !== "OK"));
@@ -48,7 +47,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
       let total = 0;
       let scored = 0;
       for (const e of inClass) {
-        const r = resByEntryDay.get(`${e.id}|${day}`);
+        const r = resByKey.get(`${e.id}|${e.height}|${day}`);
         if (isNP(r)) continue;
         total += 1;
         if (isResolved(r)) scored += 1;

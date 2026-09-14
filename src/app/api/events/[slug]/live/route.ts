@@ -22,22 +22,39 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const committedDays = config.days.filter((d) => dayState[d]?.committed);
 
   const [{ data: ent }, { data: setups }, { data: results }] = await Promise.all([
-    supabaseAdmin.from("event_entries").select("height, days, status").eq("event_id", event.id),
+    supabaseAdmin.from("event_entries").select("id, height, days, status").eq("event_id", event.id),
     supabaseAdmin.from("event_class_setup").select("height, day, status").eq("event_id", event.id),
-    supabaseAdmin.from("event_results").select("height, day, r1_status, r1_time").eq("event_id", event.id),
+    supabaseAdmin.from("event_results").select("entry_id, day, r1_status, r1_time, r2_status, r2_time").eq("event_id", event.id),
   ]);
 
   const active = (ent ?? []).filter((e) => (e.status ?? "active") !== "cancelled");
+  const resByEntryDay = new Map(
+    (results ?? []).map((r) => [`${r.entry_id}|${r.day}`, r])
+  );
+  const isNP = (r: { r1_status: string | null } | undefined) => !!r && r.r1_status === "NP";
+  const isResolved = (r: { r1_status: string | null; r1_time: number | null; r2_status: string | null; r2_time: number | null } | undefined) =>
+    !!r &&
+    (r.r1_time != null ||
+      (!!r.r1_status && r.r1_status !== "OK" && r.r1_status !== "NP") ||
+      r.r2_time != null ||
+      (!!r.r2_status && r.r2_status !== "OK"));
+
   const statusOf = (h: string, d: string) => (setups ?? []).find((s) => s.height === h && s.day === d)?.status ?? "pending";
-  const scoredCount = (h: string, d: string) =>
-    (results ?? []).filter((r) => r.height === h && r.day === d && (r.r1_time != null || (r.r1_status && r.r1_status !== "OK"))).length;
 
   const classes: Array<{ height: string; day: string; total: number; scored: number; status: string }> = [];
   for (const day of config.days) {
     for (const height of dayHeightOrder(config, dayState, day)) {
-      const total = active.filter((e) => e.height === height && (Array.isArray(e.days) ? e.days : []).includes(day)).length;
+      const inClass = active.filter((e) => e.height === height && (Array.isArray(e.days) ? e.days : []).includes(day));
+      let total = 0;
+      let scored = 0;
+      for (const e of inClass) {
+        const r = resByEntryDay.get(`${e.id}|${day}`);
+        if (isNP(r)) continue;
+        total += 1;
+        if (isResolved(r)) scored += 1;
+      }
       if (total === 0) continue;
-      classes.push({ height, day, total, scored: scoredCount(height, day), status: statusOf(height, day) });
+      classes.push({ height, day, total, scored, status: statusOf(height, day) });
     }
   }
 

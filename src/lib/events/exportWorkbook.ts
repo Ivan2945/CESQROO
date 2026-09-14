@@ -192,11 +192,30 @@ export function buildClasses(entries: ExportEntry[], orderedHeights: string[], s
 // Like buildClasses, but honors a committed start order per height (entryId list)
 // instead of drawing. Heights without a committed order fall back to a draw, so
 // the same committed event always exports the identical order.
+function parseStartNo(no: number | string | undefined): { base: number; letter: string } {
+  const s = String(no ?? "").trim();
+  const m = s.match(/^(\d+)\s*([A-Za-z]*)$/);
+  if (!m) return { base: Number.POSITIVE_INFINITY, letter: "" };
+  return { base: parseInt(m[1], 10), letter: (m[2] || "").toUpperCase() };
+}
+
+function letterRank(letter: string): number {
+  return letter ? -letter.charCodeAt(0) : 0;
+}
+
+export function compareStartNo(a: number | string | undefined, b: number | string | undefined): number {
+  const pa = parseStartNo(a);
+  const pb = parseStartNo(b);
+  if (pa.base !== pb.base) return pa.base - pb.base;
+  return letterRank(pa.letter) - letterRank(pb.letter);
+}
+
 export function buildClassesOrdered(
   entries: ExportEntry[],
   orderedHeights: string[],
   startNumber: number,
-  orderByHeight: Map<string, { entryId: string; no: number | string }[]>
+  orderByHeight: Map<string, { entryId: string; no: number | string }[]>,
+  sortByNumber = false
 ): ClassBlock[] {
   const byHeight = new Map<string, ExportEntry[]>();
   for (const e of entries) {
@@ -215,9 +234,10 @@ export function buildClassesOrdered(
     if (ord && ord.length) {
       const pos = new Map(ord.map((o, idx) => [o.entryId, idx]));
       const noBy = new Map(ord.map((o) => [o.entryId, o.no]));
-      order = [...list]
-        .sort((a, b) => (pos.get(a.entryId ?? "") ?? 1e9) - (pos.get(b.entryId ?? "") ?? 1e9))
-        .map((e) => ({ ...e, startNo: noBy.get(e.entryId ?? "") }));
+      const withNo = [...list].map((e) => ({ ...e, startNo: noBy.get(e.entryId ?? "") }));
+      order = sortByNumber
+        ? withNo.sort((a, b) => compareStartNo(a.startNo, b.startNo))
+        : withNo.sort((a, b) => (pos.get(a.entryId ?? "") ?? 1e9) - (pos.get(b.entryId ?? "") ?? 1e9));
     } else {
       order = drawOrder(list);
     }

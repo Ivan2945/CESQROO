@@ -121,7 +121,6 @@ export default async function EventStatsPage({ params }: { params: Promise<{ id:
         Solo cuentan jinetes que compitieron. Los NP (no presentó) y las cancelaciones no se contabilizan como participación.
       </p>
 
-      {/* Top-line numbers */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {stats.perDay.map((d) => (
           <Stat key={d.day} label={`Participaciones · ${d.day}`} value={d.entries} />
@@ -133,13 +132,11 @@ export default async function EventStatsPage({ params }: { params: Promise<{ id:
         <Stat label="FC (fuera de concurso)" value={stats.fcs} />
       </div>
 
-      {/* Riders / horses per club */}
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <ClubAccordion title="Jinetes por club" groups={stats.ridersByClub} />
         <ClubAccordion title="Caballos por club" groups={stats.horsesByClub} />
       </div>
 
-      {/* Per class, per day */}
       <div className="mt-6 space-y-5">
         {stats.perDay.map((d) => (
           <section key={d.day} className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
@@ -176,7 +173,7 @@ export default async function EventStatsPage({ params }: { params: Promise<{ id:
                   </tbody>
                 </table>
                 <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">
-                  Rondas limpias = sin faltas de salto ni de tiempo. En clases con desempate/dos rondas se cuenta solo la primera ronda; en clases de dos fases se cuentan ambas fases.
+                  Rondas limpias = sin faltas de salto ni de tiempo. En clases con desempate/dos rondas se cuenta solo la primera ronda; en clases de dos fases cuenta el resultado final (ambas fases limpias).
                 </p>
               </div>
             )}

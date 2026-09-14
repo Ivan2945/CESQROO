@@ -91,7 +91,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
 
   const dayIdx = config.days.indexOf(day);
   const startNumber = (dayIdx > 0 ? dayIdx : 0) * config.heights.length + 1;
-  const classes = buildClassesOrdered(entries, dayHeightOrder(config, dayState, day), startNumber, orderByHeight);
+  const classes = buildClassesOrdered(entries, dayHeightOrder(config, dayState, day), startNumber, orderByHeight, true);
 
   const pdf = await buildDayPdf({
     eventName: event.name,

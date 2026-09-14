@@ -313,6 +313,16 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
   function startClass() { setClassStatus("in_progress"); pushLive({ status: "in_progress" }); }
   function endClass() { setClassStatus("finished"); pushLive({ status: "finished", currentEntryId: null }); currentRef.current = null; }
 
+  // Persist the class format + time allowances to the server (best-effort, no
+  // start order → never clobbers the draw). Without this the PUBLIC view can't
+  // compute time penalties and shows fewer faults than the judging device.
+  useEffect(() => {
+    fetch(`/api/events/${slug}/scoring/setup`, {
+      method: "PUT", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ height, day, format, params }),
+    }).catch(() => {});
+  }, [slug, height, day, format, params]);
+
   // The rider currently being judged = whichever row's field is focused.
   function markCurrent(entryId: string) {
     if (currentRef.current === entryId) return;

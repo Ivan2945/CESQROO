@@ -31,18 +31,21 @@ export async function PUT(req: Request, { params }: { params: Promise<{ slug: st
   const { data: event } = await supabaseAdmin.from("events").select("id").eq("slug", slug).single();
   if (!event) return Response.json({ error: "Evento no encontrado." }, { status: 404 });
 
-  const { error } = await supabaseAdmin.from("event_class_setup").upsert(
-    {
-      event_id: event.id,
-      height: body.height,
-      day: body.day,
-      format: body.format,
-      params: body.params ?? {},
-      start_order: body.startOrder ?? null,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "event_id,height,day" }
-  );
+  // Only touch start_order when it's explicitly provided — a params-only save
+  // (format + time allowances) must NOT wipe the committed draw.
+  const payload: Record<string, unknown> = {
+    event_id: event.id,
+    height: body.height,
+    day: body.day,
+    format: body.format,
+    params: body.params ?? {},
+    updated_at: new Date().toISOString(),
+  };
+  if (body.startOrder !== undefined) payload.start_order = body.startOrder;
+
+  const { error } = await supabaseAdmin
+    .from("event_class_setup")
+    .upsert(payload, { onConflict: "event_id,height,day" });
   if (error) return Response.json({ error: error.message }, { status: 500 });
   return Response.json({ ok: true });
 }

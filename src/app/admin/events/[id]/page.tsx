@@ -151,6 +151,14 @@ export default async function AdminEventDetail({
           {(submissions as Submission[]).map((s) => {
             const rows = bySubmission.get(s.id) ?? [];
             const stmt = computeStatement(rows, config, npDaysByEntry);
+            // Display order: active first (cancelled to the bottom), then by
+            // height (Cruces → 1.30m, i.e. config order), then rider alphabetically.
+            const hIdx = (h: string) => { const i = config.heights.indexOf(h); return i < 0 ? 999 : i; };
+            const sortedRows = [...rows].sort((a, b) => {
+              const ac = (a.status ?? "active") === "cancelled" ? 1 : 0;
+              const bc = (b.status ?? "active") === "cancelled" ? 1 : 0;
+              return ac - bc || hIdx(a.height) - hIdx(b.height) || (a.rider_name || "").localeCompare(b.rider_name || "");
+            });
             return (
               <section key={s.id} className="rounded-xl border border-slate-200 bg-white p-5">
                 <div className="mb-1 flex items-center gap-2">
@@ -191,7 +199,7 @@ export default async function AdminEventDetail({
                       </tr>
                     </thead>
                     <tbody>
-                      {rows.map((e) => {
+                      {sortedRows.map((e) => {
                         const cancelled = (e.status ?? "active") === "cancelled";
                         return (
                           <tr key={e.id} className={"border-b border-slate-100 " + (cancelled ? "text-slate-400 line-through" : "")}>

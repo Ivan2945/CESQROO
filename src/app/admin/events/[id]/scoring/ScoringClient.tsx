@@ -30,6 +30,7 @@ import {
   type BootstrapData,
   type ResultRow,
 } from "@/lib/scoring/store";
+import { activeById, resultsByKey, classCount, type CountEntry, type CountResult, type CountSetup } from "@/lib/events/classCounts";
 
 const STATUSES = ["OK", "NP", "EL", "RT", "FC", "T"];
 const FORMAT_LABELS: Record<string, string> = {
@@ -193,7 +194,15 @@ export default function ScoringClient({ slug, eventName }: { slug: string; event
 // ---- Category / day picker --------------------------------------------------
 function ClassPicker({ boot, onPick }: { boot: BootstrapData; onPick: (h: string, d: string) => void }) {
   const { config, entries } = boot;
-  const countFor = (h: string, d: string) => entries.filter((e) => !e.cancelled && e.height === h && (e.days || []).includes(d)).length;
+  const countEntries: CountEntry[] = entries.map((e) => ({
+    id: e.id, height: e.height, days: e.days ?? null, status: e.cancelled ? "cancelled" : "active",
+  }));
+  const active = activeById(countEntries);
+  const byKey = resultsByKey(boot.results as unknown as CountResult[]);
+  const countFor = (h: string, d: string) => {
+    const setup = boot.setups.find((s) => s.height === h && s.day === d) as CountSetup | undefined;
+    return classCount(d, h, active, countEntries, byKey, setup).total;
+  };
   return (
     <div className="space-y-5">
       {config.days.map((day) => (

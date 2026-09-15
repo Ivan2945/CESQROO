@@ -2,35 +2,20 @@ import type { EventConfig } from "./config";
 import { dayHeightOrder } from "./config";
 import { defaultFormatForHeight } from "@/lib/scoring/portal";
 import { parseFaultShorthand, hasFallMarker } from "@/lib/scoring/faults";
+import { activeById, resultsByKey, resultFor, isNP, classRoster, type CountEntry, type CountResult, type CountSetup } from "./classCounts";
 
-export type StatsEntry = {
-  id: string;
+export type StatsEntry = CountEntry & {
   club_id: string | null;
   rider_id: string | null;
   rider_name: string;
   horse_id: string | null;
   horse_name: string;
-  height: string;
   section: string;
-  days: string[] | null;
-  status: string | null;
 };
 
-export type StatsResult = {
-  entry_id: string;
-  height: string;
-  day: string;
-  r1_faults: string | null;
-  r1_time: number | null;
-  r1_status: string | null;
-  r2_faults: string | null;
-  r2_time: number | null;
-  r2_status: string | null;
-};
+export type StatsResult = CountResult;
 
-export type StatsSetup = {
-  height: string;
-  day: string;
+export type StatsSetup = CountSetup & {
   format: string | null;
   params: Record<string, number> | null;
 };
@@ -57,7 +42,6 @@ export type EventStats = {
 };
 
 const isCancelled = (e: StatsEntry) => (e.status ?? "active") === "cancelled";
-const daysOf = (e: StatsEntry) => (Array.isArray(e.days) ? e.days : []);
 
 function timeOver(timeSec: number, taSec: number | undefined | null): number {
   if (!taSec || taSec <= 0) return 0;
@@ -92,38 +76,32 @@ export function computeEventStats(
   clubNameById: Map<string, string>
 ): EventStats {
   const active = entries.filter((e) => !isCancelled(e));
+  const activeMap = activeById(entries);
+  const byKey = resultsByKey(results);
 
-  const npByEntryDay = new Set<string>();
   let npCount = 0;
-  for (const r of results) {
-    if ((r.r1_status ?? "") === "NP") {
-      npByEntryDay.add(`${r.entry_id}|${r.day}`);
-      npCount += 1;
-    }
-  }
-  const competedThatDay = (e: StatsEntry, day: string) =>
-    daysOf(e).includes(day) && !npByEntryDay.has(`${e.id}|${day}`);
-
-  const resByEntryDay = new Map<string, StatsResult>();
-  for (const r of results) resByEntryDay.set(`${r.entry_id}|${r.day}`, r);
+  for (const r of results) if ((r.r1_status ?? "") === "NP") npCount += 1;
 
   const setupByHeightDay = new Map<string, StatsSetup>();
   for (const s of setups) setupByHeightDay.set(`${s.height}|${s.day}`, s);
 
   const perDay: DayStat[] = config.days.map((day) => {
-    const dayActive = active.filter((e) => competedThatDay(e, day));
     const classes: ClassStat[] = [];
+    let dayEntries = 0;
     for (const height of dayHeightOrder(config, dayState, day)) {
-      const inClass = dayActive.filter((e) => e.height === height);
-      if (inClass.length === 0) continue;
       const setup = setupByHeightDay.get(`${height}|${day}`);
+      const roster = classRoster(day, height, activeMap, entries, setup);
+      if (roster.length === 0) continue;
       const format = setup?.format || defaultFormatForHeight(height);
       const p = (setup?.params ?? {}) as Record<string, number>;
 
+      let starts = 0;
       let clears = 0;
       let eliminations = 0;
-      for (const e of inClass) {
-        const r = resByEntryDay.get(`${e.id}|${day}`);
+      for (const e of roster) {
+        const r = resultFor(byKey, e, day);
+        if (isNP(r)) continue;
+        starts += 1;
         if (!r) continue;
         if (isDnf(r.r1_status) || isDnf(r.r2_status)) eliminations += 1;
 
@@ -156,9 +134,10 @@ export function computeEventStats(
             if (roundClear(r.r1_faults, r.r1_time, r.r1_status, p.taSec)) clears += 1;
         }
       }
-      classes.push({ height, format, starts: inClass.length, clears, eliminations });
+      classes.push({ height, format, starts, clears, eliminations });
+      dayEntries += starts;
     }
-    return { day, entries: dayActive.length, classes };
+    return { day, entries: dayEntries, classes };
   });
 
   const riderKey = (e: StatsEntry) => e.rider_id || `name:${(e.rider_name || "").trim().toUpperCase()}`;

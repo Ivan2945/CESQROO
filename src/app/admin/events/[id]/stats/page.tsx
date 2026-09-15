@@ -94,7 +94,7 @@ export default async function EventStatsPage({ params }: { params: Promise<{ id:
       .from("event_results")
       .select("entry_id, height, day, r1_faults, r1_time, r1_status, r2_faults, r2_time, r2_status")
       .eq("event_id", event.id),
-    supabaseAdmin.from("event_class_setup").select("height, day, format, params").eq("event_id", event.id),
+    supabaseAdmin.from("event_class_setup").select("height, day, format, params, start_order").eq("event_id", event.id),
   ]);
 
   const entries = (ent ?? []) as StatsEntry[];

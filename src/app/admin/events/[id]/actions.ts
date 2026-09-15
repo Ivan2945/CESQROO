@@ -82,8 +82,10 @@ export async function cleanupGhostsAction(eventId: string): Promise<ActionResult
 
   const { data: subs } = await supabaseAdmin.from("event_submissions").select("id").eq("event_id", eventId);
   const validSubs = new Set((subs ?? []).map((s) => s.id));
-  const { data: ents } = await supabaseAdmin.from("event_entries").select("id, submission_id").eq("event_id", eventId);
+  const { data: ents } = await supabaseAdmin
+    .from("event_entries").select("id, submission_id, height, days, rider_name").eq("event_id", eventId);
   const liveIds = new Set((ents ?? []).map((e) => e.id));
+  const liveById = new Map((ents ?? []).map((e) => [e.id, e]));
 
   const orphanIds = (ents ?? []).filter((e) => !e.submission_id || !validSubs.has(e.submission_id)).map((e) => e.id);
   if (orphanIds.length) {
@@ -100,11 +102,21 @@ export async function cleanupGhostsAction(eventId: string): Promise<ActionResult
   const { data: setups } = await supabaseAdmin
     .from("event_class_setup").select("id, height, day, start_order").eq("event_id", eventId);
   const ghosts: string[] = [];
+  const moved: string[] = [];
   for (const s of setups ?? []) {
     const so = (s.start_order as { entry_id: string; no: number | string }[] | null) ?? [];
-    const kept = so.filter((o) => liveIds.has(o.entry_id));
+    const belongs = (entryId: string) => {
+      const e = liveById.get(entryId);
+      return !!e && e.height === s.height && (Array.isArray(e.days) ? e.days : []).includes(s.day);
+    };
+    const kept = so.filter((o) => belongs(o.entry_id));
     if (kept.length !== so.length) {
-      so.filter((o) => !liveIds.has(o.entry_id)).forEach((o) => ghosts.push(`${s.height}/${s.day} #${o.no}`));
+      for (const o of so) {
+        if (belongs(o.entry_id)) continue;
+        const e = liveById.get(o.entry_id);
+        if (!e) ghosts.push(`${s.height}/${s.day} #${o.no}`);
+        else moved.push(`${e.rider_name} (${s.height}/${s.day} #${o.no} → ahora ${e.height}/${(Array.isArray(e.days) ? e.days : []).join(", ") || "sin día"})`);
+      }
       await supabaseAdmin.from("event_class_setup").update({ start_order: kept }).eq("id", s.id);
     }
   }
@@ -115,7 +127,8 @@ export async function cleanupGhostsAction(eventId: string): Promise<ActionResult
   const parts: string[] = [];
   if (orphanIds.length) parts.push(`${orphanIds.length} inscripción(es) huérfana(s) eliminada(s)`);
   if (orphanResultIds.length) parts.push(`${orphanResultIds.length} resultado(s) huérfano(s) eliminado(s)`);
-  if (ghosts.length) parts.push(`${ghosts.length} referencia(s) fantasma en el orden de salida (${ghosts.join(", ")})`);
+  if (ghosts.length) parts.push(`${ghosts.length} referencia(s) fantasma eliminada(s) (${ghosts.join(", ")})`);
+  if (moved.length) parts.push(`${moved.length} en el orden de salida que ya no pertenecen a su clase, retiradas: ${moved.join("; ")}`);
   return {
     ok: true,
     data: undefined,

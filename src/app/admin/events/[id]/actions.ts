@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { dayCommitted, type DayStateMap } from "@/lib/events/locks";
 import type { ActionResult } from "@/lib/types/actions";
 
 async function isAdminUser() {
@@ -351,16 +352,81 @@ export async function updateSubmissionAction(input: EditSubmissionInput): Promis
 }
 
 // Cancel / restore a participation (keeps the row, affects billing).
-export async function setEntryStatusAction(
+export async function setEntryDayCancelledAction(
   entryId: string,
   eventId: string,
-  status: "active" | "cancelled"
+  day: string,
+  cancel: boolean
 ): Promise<ActionResult<void>> {
   if (!(await isAdminUser())) return { ok: false, message: "Solo un administrador puede cambiar el estado." };
 
-  const { error } = await supabaseAdmin.from("event_entries").update({ status }).eq("id", entryId);
-  if (error) return { ok: false, message: error.message };
+  if (!cancel) {
+    const { error } = await supabaseAdmin.from("event_entries").update({ status: "active" }).eq("id", entryId);
+    if (error) return { ok: false, message: error.message };
+    revalidatePath(`/admin/events/${eventId}`);
+    return { ok: true, data: undefined, message: "Restaurada." };
+  }
+
+  const { data: e } = await supabaseAdmin
+    .from("event_entries")
+    .select("id, submission_id, club_id, rider_id, horse_id, rider_name, horse_name, height, section, days, circuit, discount, status, is_extemp")
+    .eq("id", entryId)
+    .single();
+  if (!e) return { ok: false, message: "Participación no encontrada." };
+  if ((e.status ?? "active") === "cancelled") return { ok: true, data: undefined, message: "Ya estaba cancelada." };
+
+  const all = Array.isArray(e.days) ? e.days : [];
+  const remaining = all.filter((d) => d !== day);
+
+  if (remaining.length === 0) {
+    const { error } = await supabaseAdmin.from("event_entries").update({ status: "cancelled" }).eq("id", entryId);
+    if (error) return { ok: false, message: error.message };
+    revalidatePath(`/admin/events/${eventId}`);
+    return { ok: true, data: undefined, message: "Cancelada." };
+  }
+
+  const { error: upErr } = await supabaseAdmin.from("event_entries").update({ days: remaining }).eq("id", entryId);
+  if (upErr) return { ok: false, message: upErr.message };
+
+  const { data: clone, error: insErr } = await supabaseAdmin
+    .from("event_entries")
+    .insert({
+      submission_id: e.submission_id,
+      event_id: eventId,
+      club_id: e.club_id,
+      rider_id: e.rider_id,
+      horse_id: e.horse_id,
+      rider_name: e.rider_name,
+      horse_name: e.horse_name,
+      height: e.height,
+      section: e.section,
+      days: [day],
+      circuit: e.circuit,
+      discount: e.discount,
+      status: "cancelled",
+      is_extemp: e.is_extemp ?? false,
+    })
+    .select("id")
+    .single();
+  if (insErr || !clone) return { ok: false, message: insErr?.message ?? "No se pudo cancelar." };
+
+  const { data: event } = await supabaseAdmin.from("events").select("day_state").eq("id", eventId).single();
+  const dayState = (event?.day_state ?? {}) as DayStateMap;
+  if (dayCommitted(dayState, day)) {
+    const { data: setup } = await supabaseAdmin
+      .from("event_class_setup")
+      .select("id, start_order")
+      .eq("event_id", eventId)
+      .eq("height", e.height)
+      .eq("day", day)
+      .maybeSingle();
+    const so = setup?.start_order as { entry_id: string; no: number | string }[] | null;
+    if (so) {
+      const next = so.map((o) => (o.entry_id === entryId ? { ...o, entry_id: clone.id } : o));
+      await supabaseAdmin.from("event_class_setup").update({ start_order: next }).eq("id", setup!.id);
+    }
+  }
 
   revalidatePath(`/admin/events/${eventId}`);
-  return { ok: true, data: undefined, message: status === "cancelled" ? "Cancelada." : "Restaurada." };
+  return { ok: true, data: undefined, message: "Cancelada." };
 }

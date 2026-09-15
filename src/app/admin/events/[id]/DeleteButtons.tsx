@@ -2,7 +2,7 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { deleteSubmissionAction, deleteEntryAction, setEntryStatusAction, mergeDuplicateSubmissionsAction, cleanupGhostsAction } from "./actions";
+import { deleteSubmissionAction, deleteEntryAction, setEntryDayCancelledAction, mergeDuplicateSubmissionsAction, cleanupGhostsAction } from "./actions";
 
 export function CleanGhostsButton({ eventId }: { eventId: string }) {
   const [pending, start] = useTransition();
@@ -48,7 +48,7 @@ export function MergeDuplicatesButton({ eventId }: { eventId: string }) {
   );
 }
 
-export function CancelEntryButton({ entryId, eventId, cancelled }: { entryId: string; eventId: string; cancelled: boolean }) {
+export function CancelEntryButton({ entryId, eventId, day, cancelled }: { entryId: string; eventId: string; day: string; cancelled: boolean }) {
   const [pending, start] = useTransition();
   const router = useRouter();
   return (
@@ -57,7 +57,7 @@ export function CancelEntryButton({ entryId, eventId, cancelled }: { entryId: st
       disabled={pending}
       onClick={() =>
         start(async () => {
-          const res = await setEntryStatusAction(entryId, eventId, cancelled ? "active" : "cancelled");
+          const res = await setEntryDayCancelledAction(entryId, eventId, day, !cancelled);
           if (res && !res.ok) alert(res.message);
           router.refresh();
         })

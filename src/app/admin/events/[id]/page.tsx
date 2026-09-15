@@ -95,6 +95,7 @@ export default async function AdminEventDetail({
         .eq("r1_status", "NP")
     : { data: [] as { entry_id: string; day: string; r1_status: string | null }[] };
   const npDaysByEntry = npDaysFromResults(npRows);
+  const fullCredit = config.pricing.cancellation.mode === "credit";
 
   const totalEntries = entries.length;
 
@@ -213,8 +214,10 @@ export default async function AdminEventDetail({
                     <tbody>
                       {sortedRows.map(({ e, day }) => {
                         const cancelled = (e.status ?? "active") === "cancelled";
+                        const npCredit = fullCredit && (npDaysByEntry.get(e.id)?.has(day) ?? false);
+                        const crossed = cancelled || npCredit;
                         return (
-                          <tr key={`${e.id}-${day}`} className={"border-b border-slate-100 " + (cancelled ? "text-slate-400 line-through" : "")}>
+                          <tr key={`${e.id}-${day}`} className={"border-b border-slate-100 " + (crossed ? "text-slate-400 line-through" : "")}>
                             <td className="py-2 pr-3 uppercase">
                               {e.rider_name}
                               {e.is_extemp && (
@@ -233,7 +236,7 @@ export default async function AdminEventDetail({
                               <td className="py-2 pr-3 text-right">
                                 <span className="inline-flex gap-3">
                                   <EditEntryButton entry={e} eventId={event.id} slug={event.slug} config={config} />
-                                  <CancelEntryButton entryId={e.id} eventId={event.id} cancelled={cancelled} />
+                                  <CancelEntryButton entryId={e.id} eventId={event.id} day={day} cancelled={cancelled} />
                                   <DeleteEntryButton entryId={e.id} eventId={event.id} />
                                 </span>
                               </td>

@@ -15,12 +15,32 @@ async function isAdminUser() {
   return !!isAdmin;
 }
 
-// Delete a whole club submission (its entries cascade-delete via FK).
 export async function deleteSubmissionAction(
   submissionId: string,
   eventId: string
 ): Promise<ActionResult<void>> {
   if (!(await isAdminUser())) return { ok: false, message: "Solo un administrador puede eliminar inscripciones." };
+
+  const { data: subEntries } = await supabaseAdmin
+    .from("event_entries").select("id").eq("submission_id", submissionId);
+  const entryIds = (subEntries ?? []).map((e) => e.id);
+
+  if (entryIds.length) {
+    await supabaseAdmin.from("event_results").delete().in("entry_id", entryIds);
+
+    const { data: setups } = await supabaseAdmin
+      .from("event_class_setup").select("id, start_order").eq("event_id", eventId);
+    const drop = new Set(entryIds);
+    for (const s of setups ?? []) {
+      const so = (s.start_order as { entry_id: string; no: number | string }[] | null) ?? [];
+      if (so.some((o) => drop.has(o.entry_id))) {
+        await supabaseAdmin.from("event_class_setup").update({ start_order: so.filter((o) => !drop.has(o.entry_id)) }).eq("id", s.id);
+      }
+    }
+
+    const { error: entErr } = await supabaseAdmin.from("event_entries").delete().in("id", entryIds);
+    if (entErr) return { ok: false, message: entErr.message };
+  }
 
   const { error } = await supabaseAdmin.from("event_submissions").delete().eq("id", submissionId);
   if (error) return { ok: false, message: error.message };

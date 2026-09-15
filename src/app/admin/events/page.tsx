@@ -3,6 +3,7 @@ import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { EventRow } from "@/lib/types/events";
 import { createEventAction } from "./actions";
+import { DeleteEventButton } from "./DeleteEventButton";
 
 export const dynamic = "force-dynamic";
 
@@ -67,6 +68,7 @@ export default async function AdminEventsPage() {
                     Configurar
                   </Link>
                 )}
+                {isAdmin && <DeleteEventButton eventId={ev.id} eventName={ev.name} />}
               </div>
             </div>
           ))

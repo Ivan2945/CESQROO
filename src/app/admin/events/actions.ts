@@ -29,3 +29,25 @@ export async function createEventAction(formData: FormData) {
   revalidatePath("/admin/events");
   redirect(`/admin/events/${data.id}/config`);
 }
+
+export async function deleteEventAction(eventId: string): Promise<{ ok: boolean; message?: string }> {
+  const supabase = await supabaseServer();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return { ok: false, message: "No autorizado." };
+  const { data: isAdmin } = await supabase.rpc("is_admin");
+  if (!isAdmin) return { ok: false, message: "Solo un administrador puede eliminar eventos." };
+  if (!eventId) return { ok: false, message: "Falta el evento." };
+
+  await supabaseAdmin.from("event_results").delete().eq("event_id", eventId);
+  await supabaseAdmin.from("event_class_setup").delete().eq("event_id", eventId);
+  await supabaseAdmin.from("event_entries").delete().eq("event_id", eventId);
+  await supabaseAdmin.from("event_submissions").delete().eq("event_id", eventId);
+  await supabaseAdmin.from("event_admins").delete().eq("event_id", eventId);
+  const { error } = await supabaseAdmin.from("events").delete().eq("id", eventId);
+  if (error) return { ok: false, message: error.message };
+
+  revalidatePath("/admin/events");
+  return { ok: true };
+}

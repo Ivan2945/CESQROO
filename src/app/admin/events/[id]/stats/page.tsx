@@ -3,6 +3,7 @@ import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeConfig } from "@/lib/events/config";
 import { computeEventStats, billedWithoutResult, duplicateBinomios, type StatsEntry, type StatsResult, type StatsSetup, type ClubGroup } from "@/lib/events/stats";
+import { ResolveDuplicatesButton } from "../DeleteButtons";
 
 export const dynamic = "force-dynamic";
 
@@ -118,7 +119,7 @@ export default async function EventStatsPage({ params }: { params: Promise<{ id:
 
   const validEntries = entries.filter((e) => e.submission_id != null && validSubs.has(e.submission_id));
   const unscored = billedWithoutResult(validEntries, (results ?? []) as StatsResult[], config, clubNameById);
-  const duplicates = duplicateBinomios(validEntries, config, clubNameById);
+  const duplicates = duplicateBinomios(validEntries, (results ?? []) as StatsResult[], config, clubNameById);
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -138,6 +139,8 @@ export default async function EventStatsPage({ params }: { params: Promise<{ id:
         {duplicates.length === 0 ? (
           <p className="mt-3 text-sm font-medium text-emerald-700 dark:text-emerald-400">Sin duplicados.</p>
         ) : (
+          <>
+          <div className="mt-3"><ResolveDuplicatesButton eventId={event.id} /></div>
           <div className="mt-3 overflow-x-auto">
             <table className="w-full text-sm text-slate-900 dark:text-slate-100">
               <thead>
@@ -166,6 +169,7 @@ export default async function EventStatsPage({ params }: { params: Promise<{ id:
               </tbody>
             </table>
           </div>
+          </>
         )}
       </section>
 

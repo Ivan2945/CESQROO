@@ -77,6 +77,73 @@ export async function deleteEntryAction(
   return { ok: true, data: undefined, message: "Participación eliminada." };
 }
 
+export async function removeUnscoredDuplicatesAction(eventId: string): Promise<ActionResult<void>> {
+  if (!(await isAdminUser())) return { ok: false, message: "Solo un administrador puede resolver duplicados." };
+
+  const { data: ents } = await supabaseAdmin
+    .from("event_entries")
+    .select("id, rider_id, horse_id, rider_name, horse_name, height, days, section, status")
+    .eq("event_id", eventId);
+  const active = (ents ?? []).filter((e) => (e.status ?? "active") !== "cancelled");
+
+  const { data: res } = await supabaseAdmin
+    .from("event_results").select("entry_id, height, day, r1_status").eq("event_id", eventId);
+  const resForDay = new Set((res ?? []).map((r) => `${r.entry_id}|${r.height}|${r.day}`));
+  const npForDay = new Set((res ?? []).filter((r) => r.r1_status === "NP").map((r) => `${r.entry_id}|${r.height}|${r.day}`));
+  const anyResult = new Set((res ?? []).map((r) => r.entry_id));
+
+  const groups = new Map<string, { id: string; height: string; day: string }[]>();
+  for (const e of active) {
+    const rk = e.rider_id || `n:${(e.rider_name || "").trim().toUpperCase()}`;
+    const hk = e.horse_id || `n:${(e.horse_name || "").trim().toUpperCase()}`;
+    const sec = (e.section || "").trim().toUpperCase();
+    for (const day of Array.isArray(e.days) ? e.days : []) {
+      if (npForDay.has(`${e.id}|${e.height}|${day}`)) continue;
+      const key = `${rk}|${hk}|${e.height}|${day}|${sec}`;
+      (groups.get(key) ?? groups.set(key, []).get(key)!).push({ id: e.id, height: e.height, day });
+    }
+  }
+
+  const toDelete = new Set<string>();
+  let review = 0;
+  for (const members of groups.values()) {
+    if (members.length < 2) continue;
+    const scored = members.filter((m) => resForDay.has(`${m.id}|${m.height}|${m.day}`));
+    if (scored.length === 0) { review += 1; continue; }
+    for (const m of members) {
+      const isScored = resForDay.has(`${m.id}|${m.height}|${m.day}`);
+      if (isScored) continue;
+      if (!anyResult.has(m.id)) toDelete.add(m.id);
+      else review += 1;
+    }
+  }
+
+  const ids = [...toDelete];
+  if (ids.length) {
+    const { data: setups } = await supabaseAdmin
+      .from("event_class_setup").select("id, start_order").eq("event_id", eventId);
+    for (const s of setups ?? []) {
+      const so = (s.start_order as { entry_id: string; no: number | string }[] | null) ?? [];
+      const kept = so.filter((o) => !toDelete.has(o.entry_id));
+      if (kept.length !== so.length) await supabaseAdmin.from("event_class_setup").update({ start_order: kept }).eq("id", s.id);
+    }
+    const { error } = await supabaseAdmin.from("event_entries").delete().in("id", ids);
+    if (error) return { ok: false, message: error.message };
+  }
+
+  revalidatePath(`/admin/events/${eventId}`);
+  revalidatePath("/admin/events");
+
+  const parts: string[] = [];
+  if (ids.length) parts.push(`${ids.length} duplicado(s) sin calificar eliminado(s)`);
+  if (review) parts.push(`${review} requieren revisión manual (ninguno o ambos con resultado)`);
+  return {
+    ok: true,
+    data: undefined,
+    message: parts.length ? `Duplicados resueltos: ${parts.join("; ")}.` : "No se encontraron duplicados sin calificar.",
+  };
+}
+
 export async function cleanupGhostsAction(eventId: string): Promise<ActionResult<void>> {
   if (!(await isAdminUser())) return { ok: false, message: "Solo un administrador puede limpiar inscripciones fantasma." };
 

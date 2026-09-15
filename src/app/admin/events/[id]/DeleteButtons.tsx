@@ -2,7 +2,29 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { deleteSubmissionAction, deleteEntryAction, setEntryDayCancelledAction, mergeDuplicateSubmissionsAction, cleanupGhostsAction } from "./actions";
+import { deleteSubmissionAction, deleteEntryAction, setEntryDayCancelledAction, mergeDuplicateSubmissionsAction, cleanupGhostsAction, removeUnscoredDuplicatesAction } from "./actions";
+
+export function ResolveDuplicatesButton({ eventId }: { eventId: string }) {
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={() => {
+        if (!confirm("¿Eliminar las copias duplicadas SIN calificar, conservando la que tiene resultado? Las que no se puedan resolver automáticamente se dejarán para revisión manual.")) return;
+        start(async () => {
+          const res = await removeUnscoredDuplicatesAction(eventId);
+          alert(res && res.message ? res.message : "Listo.");
+          router.refresh();
+        });
+      }}
+      className="rounded-md bg-rose-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-rose-700 disabled:opacity-50"
+    >
+      {pending ? "Resolviendo…" : "Eliminar duplicados sin calificar"}
+    </button>
+  );
+}
 
 export function CleanGhostsButton({ eventId }: { eventId: string }) {
   const [pending, start] = useTransition();

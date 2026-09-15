@@ -35,11 +35,13 @@ export type DupGroup = { day: string; height: string; section: string; club: str
 
 export function duplicateBinomios(
   entries: StatsEntry[],
+  results: StatsResult[],
   config: EventConfig,
   clubNameById: Map<string, string>
 ): DupGroup[] {
   const hIdx = (h: string) => { const i = config.heights.indexOf(h); return i < 0 ? 999 : i; };
   const dIdx = (d: string) => { const i = config.days.indexOf(d); return i < 0 ? 999 : i; };
+  const byKey = resultsByKey(results);
   const groups = new Map<string, { day: string; height: string; section: string; club: string; rider: string; horse: string; ids: Set<string> }>();
   for (const e of entries) {
     if ((e.status ?? "active") === "cancelled") continue;
@@ -49,6 +51,7 @@ export function duplicateBinomios(
     const days = Array.isArray(e.days) ? e.days : [];
     for (const day of days) {
       if (!config.days.includes(day)) continue;
+      if (isNP(resultFor(byKey, e, day))) continue;
       const key = `${rk}|${hk}|${e.height}|${day}|${sec}`;
       const g = groups.get(key) ?? {
         day, height: e.height, section: e.section || "—",

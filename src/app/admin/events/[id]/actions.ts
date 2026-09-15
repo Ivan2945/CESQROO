@@ -76,6 +76,52 @@ export async function deleteEntryAction(
   return { ok: true, data: undefined, message: "Participación eliminada." };
 }
 
+export async function cleanupGhostsAction(eventId: string): Promise<ActionResult<void>> {
+  if (!(await isAdminUser())) return { ok: false, message: "Solo un administrador puede limpiar inscripciones fantasma." };
+
+  const { data: subs } = await supabaseAdmin.from("event_submissions").select("id").eq("event_id", eventId);
+  const validSubs = new Set((subs ?? []).map((s) => s.id));
+  const { data: ents } = await supabaseAdmin.from("event_entries").select("id, submission_id").eq("event_id", eventId);
+  const liveIds = new Set((ents ?? []).map((e) => e.id));
+
+  const orphanIds = (ents ?? []).filter((e) => !e.submission_id || !validSubs.has(e.submission_id)).map((e) => e.id);
+  if (orphanIds.length) {
+    await supabaseAdmin.from("event_results").delete().in("entry_id", orphanIds);
+    const { error } = await supabaseAdmin.from("event_entries").delete().in("id", orphanIds);
+    if (error) return { ok: false, message: error.message };
+    orphanIds.forEach((id) => liveIds.delete(id));
+  }
+
+  const { data: resRows } = await supabaseAdmin.from("event_results").select("id, entry_id").eq("event_id", eventId);
+  const orphanResultIds = (resRows ?? []).filter((r) => !liveIds.has(r.entry_id)).map((r) => r.id);
+  if (orphanResultIds.length) await supabaseAdmin.from("event_results").delete().in("id", orphanResultIds);
+
+  const { data: setups } = await supabaseAdmin
+    .from("event_class_setup").select("id, height, day, start_order").eq("event_id", eventId);
+  const ghosts: string[] = [];
+  for (const s of setups ?? []) {
+    const so = (s.start_order as { entry_id: string; no: number | string }[] | null) ?? [];
+    const kept = so.filter((o) => liveIds.has(o.entry_id));
+    if (kept.length !== so.length) {
+      so.filter((o) => !liveIds.has(o.entry_id)).forEach((o) => ghosts.push(`${s.height}/${s.day} #${o.no}`));
+      await supabaseAdmin.from("event_class_setup").update({ start_order: kept }).eq("id", s.id);
+    }
+  }
+
+  revalidatePath(`/admin/events/${eventId}`);
+  revalidatePath("/admin/events");
+
+  const parts: string[] = [];
+  if (orphanIds.length) parts.push(`${orphanIds.length} inscripción(es) huérfana(s) eliminada(s)`);
+  if (orphanResultIds.length) parts.push(`${orphanResultIds.length} resultado(s) huérfano(s) eliminado(s)`);
+  if (ghosts.length) parts.push(`${ghosts.length} referencia(s) fantasma en el orden de salida (${ghosts.join(", ")})`);
+  return {
+    ok: true,
+    data: undefined,
+    message: parts.length ? `Limpieza completada: ${parts.join("; ")}.` : "No se encontraron inscripciones fantasma.",
+  };
+}
+
 // Admin: manually add a participation (binomio) to any club. Picks an existing
 // rider/horse (by id) or creates one by name; attaches to the club's single
 // submission (creating it if needed); positions in a committed start order.

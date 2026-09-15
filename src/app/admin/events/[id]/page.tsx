@@ -4,7 +4,7 @@ import { isShowAdminFor } from "@/lib/auth/eventAccess";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeConfig } from "@/lib/events/config";
 import { computeStatement, npDaysFromResults } from "@/lib/events/billing";
-import { DeleteSubmissionButton, DeleteEntryButton, CancelEntryButton, MergeDuplicatesButton } from "./DeleteButtons";
+import { DeleteSubmissionButton, DeleteEntryButton, CancelEntryButton, MergeDuplicatesButton, CleanGhostsButton } from "./DeleteButtons";
 import { EditEntryButton } from "./EditEntryButton";
 import { EditSubmissionButton } from "./EditSubmissionButton";
 import { AddEntryButton } from "./AddEntryButton";
@@ -138,6 +138,7 @@ export default async function AdminEventDetail({
               Resultados en vivo ↗
             </a>
             <MergeDuplicatesButton eventId={event.id} />
+            <CleanGhostsButton eventId={event.id} />
             <AddEntryButton eventId={event.id} slug={event.slug} config={config} />
           </>
         )}

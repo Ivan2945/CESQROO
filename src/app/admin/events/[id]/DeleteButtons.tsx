@@ -2,7 +2,29 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { deleteSubmissionAction, deleteEntryAction, setEntryStatusAction, mergeDuplicateSubmissionsAction } from "./actions";
+import { deleteSubmissionAction, deleteEntryAction, setEntryStatusAction, mergeDuplicateSubmissionsAction, cleanupGhostsAction } from "./actions";
+
+export function CleanGhostsButton({ eventId }: { eventId: string }) {
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={() => {
+        if (!confirm("¿Buscar y eliminar inscripciones fantasma? Se quitarán participaciones huérfanas y referencias en el orden de salida que ya no existen.")) return;
+        start(async () => {
+          const res = await cleanupGhostsAction(eventId);
+          alert(res && res.message ? res.message : "Listo.");
+          router.refresh();
+        });
+      }}
+      className="rounded-md border border-purple-300 px-2.5 py-1 text-xs font-semibold text-purple-700 hover:bg-purple-50 disabled:opacity-50 dark:border-purple-800 dark:text-purple-300"
+    >
+      {pending ? "Limpiando…" : "Limpiar fantasmas"}
+    </button>
+  );
+}
 
 export function MergeDuplicatesButton({ eventId }: { eventId: string }) {
   const [pending, start] = useTransition();

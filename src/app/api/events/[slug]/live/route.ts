@@ -19,14 +19,16 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
   const dayState = (event.day_state ?? {}) as Record<string, { committed?: boolean; heightOrder?: string[] }>;
   const committedDays = config.days.filter((d) => dayState[d]?.committed);
 
-  const [{ data: ent }, { data: setups }, { data: results }] = await Promise.all([
-    supabaseAdmin.from("event_entries").select("id, height, days, status").eq("event_id", event.id),
+  const [{ data: ent }, { data: setups }, { data: results }, { data: subs }] = await Promise.all([
+    supabaseAdmin.from("event_entries").select("id, height, days, status, submission_id").eq("event_id", event.id),
     supabaseAdmin.from("event_class_setup").select("height, day, status, start_order").eq("event_id", event.id),
     supabaseAdmin.from("event_results").select("entry_id, height, day, r1_faults, r1_status, r1_time, r2_faults, r2_status, r2_time").eq("event_id", event.id),
+    supabaseAdmin.from("event_submissions").select("id").eq("event_id", event.id),
   ]);
 
+  const validSubs = new Set((subs ?? []).map((s) => s.id));
   const allEntries = (ent ?? []) as CountEntry[];
-  const active = activeById(allEntries);
+  const active = activeById(allEntries, validSubs);
   const byKey = resultsByKey((results ?? []) as CountResult[]);
   const setupOf = (h: string, d: string) => (setups ?? []).find((s) => s.height === h && s.day === d);
 

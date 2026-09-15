@@ -85,18 +85,20 @@ export default async function EventStatsPage({ params }: { params: Promise<{ id:
   const config = normalizeConfig(event.config);
   const dayState = (event.day_state ?? {}) as Record<string, { heightOrder?: string[] }>;
 
-  const [{ data: ent }, { data: results }, { data: setups }] = await Promise.all([
+  const [{ data: ent }, { data: results }, { data: setups }, { data: subs }] = await Promise.all([
     supabaseAdmin
       .from("event_entries")
-      .select("id, club_id, rider_id, rider_name, horse_id, horse_name, height, section, days, status")
+      .select("id, submission_id, club_id, rider_id, rider_name, horse_id, horse_name, height, section, days, status")
       .eq("event_id", event.id),
     supabaseAdmin
       .from("event_results")
       .select("entry_id, height, day, r1_faults, r1_time, r1_status, r2_faults, r2_time, r2_status")
       .eq("event_id", event.id),
     supabaseAdmin.from("event_class_setup").select("height, day, format, params, start_order").eq("event_id", event.id),
+    supabaseAdmin.from("event_submissions").select("id").eq("event_id", event.id),
   ]);
 
+  const validSubs = new Set((subs ?? []).map((s) => s.id));
   const entries = (ent ?? []) as StatsEntry[];
   const clubIds = [...new Set(entries.map((e) => e.club_id).filter(Boolean))] as string[];
   const { data: clubRows } = clubIds.length
@@ -110,7 +112,8 @@ export default async function EventStatsPage({ params }: { params: Promise<{ id:
     (setups ?? []) as StatsSetup[],
     config,
     dayState,
-    clubNameById
+    clubNameById,
+    validSubs
   );
 
   return (

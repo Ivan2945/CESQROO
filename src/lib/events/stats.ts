@@ -73,10 +73,14 @@ export function computeEventStats(
   setups: StatsSetup[],
   config: EventConfig,
   dayState: Record<string, { heightOrder?: string[] } | undefined> | null | undefined,
-  clubNameById: Map<string, string>
+  clubNameById: Map<string, string>,
+  validSubmissionIds?: Set<string>
 ): EventStats {
-  const active = entries.filter((e) => !isCancelled(e));
-  const activeMap = activeById(entries);
+  const valid = validSubmissionIds
+    ? entries.filter((e) => e.submission_id != null && validSubmissionIds.has(e.submission_id))
+    : entries;
+  const active = valid.filter((e) => !isCancelled(e));
+  const activeMap = activeById(valid, validSubmissionIds);
   const byKey = resultsByKey(results);
 
   let npCount = 0;
@@ -90,7 +94,7 @@ export function computeEventStats(
     let dayEntries = 0;
     for (const height of dayHeightOrder(config, dayState, day)) {
       const setup = setupByHeightDay.get(`${height}|${day}`);
-      const roster = classRoster(day, height, activeMap, entries, setup);
+      const roster = classRoster(day, height, activeMap, valid, setup);
       if (roster.length === 0) continue;
       const format = setup?.format || defaultFormatForHeight(height);
       const p = (setup?.params ?? {}) as Record<string, number>;
@@ -166,7 +170,7 @@ export function computeEventStats(
       }))
       .sort((a, b) => a.club.localeCompare(b.club, "es"));
 
-  const cancelled = entries.filter(isCancelled).length;
+  const cancelled = valid.filter(isCancelled).length;
   const trainings = active.filter((e) => (e.section || "").toLowerCase() === "training").length;
   const fcs = active.filter((e) => (e.section || "").toLowerCase() === "fc").length;
 

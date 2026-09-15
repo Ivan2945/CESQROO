@@ -3,6 +3,7 @@ export type CountEntry = {
   height: string;
   days: string[] | null;
   status: string | null;
+  submission_id?: string | null;
 };
 
 export type CountResult = {
@@ -23,8 +24,16 @@ export type CountSetup = {
   start_order: { entry_id: string }[] | null;
 };
 
-export function activeById(entries: CountEntry[]): Map<string, CountEntry> {
-  return new Map(entries.filter((e) => (e.status ?? "active") !== "cancelled").map((e) => [e.id, e]));
+export function activeById(entries: CountEntry[], validSubmissionIds?: Set<string>): Map<string, CountEntry> {
+  return new Map(
+    entries
+      .filter(
+        (e) =>
+          (e.status ?? "active") !== "cancelled" &&
+          (!validSubmissionIds || (e.submission_id != null && validSubmissionIds.has(e.submission_id)))
+      )
+      .map((e) => [e.id, e])
+  );
 }
 
 export function resultsByKey(results: CountResult[]): Map<string, CountResult> {

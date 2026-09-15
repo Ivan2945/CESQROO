@@ -24,6 +24,15 @@ export type CountSetup = {
   start_order: { entry_id: string }[] | null;
 };
 
+export function binomioDayKey(
+  o: { rider_id: string | null; rider_name: string; horse_id: string | null; horse_name: string; height: string; section: string },
+  day: string
+): string {
+  const rk = o.rider_id || `n:${(o.rider_name || "").trim().toUpperCase()}`;
+  const hk = o.horse_id || `n:${(o.horse_name || "").trim().toUpperCase()}`;
+  return `${rk}|${hk}|${o.height}|${(o.section || "").trim().toUpperCase()}|${day}`;
+}
+
 export function activeById(entries: CountEntry[], validSubmissionIds?: Set<string>): Map<string, CountEntry> {
   return new Map(
     entries

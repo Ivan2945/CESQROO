@@ -1,5 +1,6 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeConfig, isAllowedSection, isValidDay } from "@/lib/events/config";
+import { binomioDayKey } from "@/lib/events/classCounts";
 import type { RegisterPayload, EntryInput } from "@/lib/types/events";
 
 export const dynamic = "force-dynamic";
@@ -163,6 +164,41 @@ export async function POST(
     }
 
     resolved.push({ rider_id, rider_name, horse_id, horse_name, entry: e });
+  }
+
+  // ---- Duplicate lock (enforced for everyone, admins included): the same
+  // rider + horse + section may not be signed into a class (height) on the same
+  // day twice. Checked against existing active entries AND within this batch,
+  // before anything is saved — so a rejected submission never loses the form. ----
+  const { data: existingForDup } = await supabaseAdmin
+    .from("event_entries")
+    .select("rider_id, horse_id, rider_name, horse_name, height, section, days, status")
+    .eq("event_id", event.id);
+  const takenKeys = new Set<string>();
+  for (const e of existingForDup ?? []) {
+    if ((e.status ?? "active") === "cancelled") continue;
+    for (const d of Array.isArray(e.days) ? e.days : []) takenKeys.add(binomioDayKey(e, d));
+  }
+  const conflicts: string[] = [];
+  const batchKeys = new Set<string>();
+  for (const r of resolved) {
+    const meta = { rider_id: r.rider_id, rider_name: r.rider_name, horse_id: r.horse_id, horse_name: r.horse_name, height: r.entry.height, section: r.entry.section };
+    for (const d of Array.isArray(r.entry.days) ? r.entry.days : []) {
+      const k = binomioDayKey(meta, d);
+      if (takenKeys.has(k) || batchKeys.has(k)) {
+        conflicts.push(`${r.rider_name} / ${r.horse_name} — ${r.entry.height} ${r.entry.section} (${d})`);
+      }
+      batchKeys.add(k);
+    }
+  }
+  if (conflicts.length) {
+    return Response.json(
+      {
+        error: "No se permiten inscripciones duplicadas: la misma combinación jinete + caballo + sección ya está inscrita en esa prueba y día.",
+        duplicates: [...new Set(conflicts)],
+      },
+      { status: 409 }
+    );
   }
 
   // ---- One submission per club: reuse the club's existing submission for this

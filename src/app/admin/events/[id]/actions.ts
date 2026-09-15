@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { supabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { dayCommitted, type DayStateMap } from "@/lib/events/locks";
+import { binomioDayKey } from "@/lib/events/classCounts";
 import type { ActionResult } from "@/lib/types/actions";
 
 async function isAdminUser() {
@@ -241,6 +242,22 @@ export async function addEntryAction(input: AddEntryInput): Promise<ActionResult
   const { data: club } = await supabaseAdmin.from("show_clubs").select("id, name").eq("id", input.clubId).single();
   if (!club) return { ok: false, message: "Club no encontrado." };
 
+  // Duplicate lock: same rider + horse + section may not be in a class on a day twice.
+  const { data: existingForDup } = await supabaseAdmin
+    .from("event_entries")
+    .select("rider_id, horse_id, rider_name, horse_name, height, section, days, status")
+    .eq("event_id", event.id);
+  const takenKeys = new Set<string>();
+  for (const e of existingForDup ?? []) {
+    if ((e.status ?? "active") === "cancelled") continue;
+    for (const d of Array.isArray(e.days) ? e.days : []) takenKeys.add(binomioDayKey(e, d));
+  }
+  const dupMeta = { rider_id: input.riderId || null, rider_name: rider, horse_id: input.horseId || null, horse_name: horse, height: input.height, section: input.section };
+  const dupDays = input.days.filter((d) => takenKeys.has(binomioDayKey(dupMeta, d)));
+  if (dupDays.length) {
+    return { ok: false, message: `No se permiten duplicados: ${rider} / ${horse} ya está inscrito en ${input.height} ${input.section} (${dupDays.join(", ")}).` };
+  }
+
   // Resolve rider
   let riderId = input.riderId || null;
   if (!riderId) {
@@ -372,6 +389,24 @@ export async function updateEntryAction(input: EditEntryInput): Promise<ActionRe
   // Re-point to a different EXISTING rider/horse when one was picked from the list.
   const riderRepoint = !!input.riderId && input.riderId !== entry.rider_id;
   const horseRepoint = !!input.horseId && input.horseId !== entry.horse_id;
+
+  // Duplicate lock: the edited combination must not collide with ANOTHER active entry.
+  const effRiderId = riderRepoint ? input.riderId! : entry.rider_id;
+  const effHorseId = horseRepoint ? input.horseId! : entry.horse_id;
+  const { data: othersForDup } = await supabaseAdmin
+    .from("event_entries")
+    .select("id, rider_id, horse_id, rider_name, horse_name, height, section, days, status")
+    .eq("event_id", input.eventId);
+  const takenKeys = new Set<string>();
+  for (const e of othersForDup ?? []) {
+    if (e.id === input.entryId || (e.status ?? "active") === "cancelled") continue;
+    for (const d of Array.isArray(e.days) ? e.days : []) takenKeys.add(binomioDayKey(e, d));
+  }
+  const dupMeta = { rider_id: effRiderId, rider_name: rider, horse_id: effHorseId, horse_name: horse, height: input.height, section: input.section };
+  const dupDays = input.days.filter((d) => takenKeys.has(binomioDayKey(dupMeta, d)));
+  if (dupDays.length) {
+    return { ok: false, message: `No se permiten duplicados: ${rider} / ${horse} ya está inscrito en ${input.height} ${input.section} (${dupDays.join(", ")}).` };
+  }
 
   const { error } = await supabaseAdmin
     .from("event_entries")

@@ -234,7 +234,12 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
         }),
       });
       const result = await res.json();
-      if (!res.ok || result.error) throw new Error(result.error || "Error desconocido.");
+      if (!res.ok || result.error) {
+        const list = Array.isArray(result.duplicates) && result.duplicates.length
+          ? " — " + result.duplicates.join("; ")
+          : "";
+        throw new Error((result.error || "Error desconocido.") + list);
+      }
 
       const extra = result.clubCreated ? " Su club se guardó para futuros eventos." : "";
       setStatus({ type: "ok", msg: `¡Inscripción enviada! Se registraron ${result.count} participación(es).${extra}` });

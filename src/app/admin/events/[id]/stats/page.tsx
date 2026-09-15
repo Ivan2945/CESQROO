@@ -144,6 +144,7 @@ export default async function EventStatsPage({ params }: { params: Promise<{ id:
                 <tr className="border-b border-rose-200 text-left text-xs uppercase tracking-wide text-rose-700 dark:border-rose-900 dark:text-rose-400">
                   <th className="py-2 pr-3">Día</th>
                   <th className="py-2 pr-3">Prueba</th>
+                  <th className="py-2 pr-3">Sección</th>
                   <th className="py-2 pr-3">Club</th>
                   <th className="py-2 pr-3">Jinete</th>
                   <th className="py-2 pr-3">Caballo</th>
@@ -155,6 +156,7 @@ export default async function EventStatsPage({ params }: { params: Promise<{ id:
                   <tr key={i} className="border-b border-rose-100 dark:border-rose-900/50">
                     <td className="py-2 pr-3">{r.day}</td>
                     <td className="py-2 pr-3 font-semibold">{r.height}</td>
+                    <td className="py-2 pr-3">{r.section}</td>
                     <td className="py-2 pr-3">{r.club}</td>
                     <td className="py-2 pr-3 uppercase">{r.rider}</td>
                     <td className="py-2 pr-3 uppercase">{r.horse}</td>

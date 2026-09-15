@@ -31,7 +31,7 @@ export type ClassStat = {
 export type DayStat = { day: string; entries: number; classes: ClassStat[] };
 
 export type UnscoredRow = { day: string; height: string; club: string; rider: string; horse: string };
-export type DupGroup = { day: string; height: string; club: string; rider: string; horse: string; count: number };
+export type DupGroup = { day: string; height: string; section: string; club: string; rider: string; horse: string; count: number };
 
 export function duplicateBinomios(
   entries: StatsEntry[],
@@ -40,17 +40,18 @@ export function duplicateBinomios(
 ): DupGroup[] {
   const hIdx = (h: string) => { const i = config.heights.indexOf(h); return i < 0 ? 999 : i; };
   const dIdx = (d: string) => { const i = config.days.indexOf(d); return i < 0 ? 999 : i; };
-  const groups = new Map<string, { day: string; height: string; club: string; rider: string; horse: string; ids: Set<string> }>();
+  const groups = new Map<string, { day: string; height: string; section: string; club: string; rider: string; horse: string; ids: Set<string> }>();
   for (const e of entries) {
     if ((e.status ?? "active") === "cancelled") continue;
     const rk = e.rider_id || `n:${(e.rider_name || "").trim().toUpperCase()}`;
     const hk = e.horse_id || `n:${(e.horse_name || "").trim().toUpperCase()}`;
+    const sec = (e.section || "").trim().toUpperCase();
     const days = Array.isArray(e.days) ? e.days : [];
     for (const day of days) {
       if (!config.days.includes(day)) continue;
-      const key = `${rk}|${hk}|${e.height}|${day}`;
+      const key = `${rk}|${hk}|${e.height}|${day}|${sec}`;
       const g = groups.get(key) ?? {
-        day, height: e.height,
+        day, height: e.height, section: e.section || "—",
         club: clubNameById.get(e.club_id ?? "") || "Sin club",
         rider: (e.rider_name || "").toUpperCase(),
         horse: (e.horse_name || "").toUpperCase(),
@@ -62,7 +63,7 @@ export function duplicateBinomios(
   }
   return [...groups.values()]
     .filter((g) => g.ids.size > 1)
-    .map((g) => ({ day: g.day, height: g.height, club: g.club, rider: g.rider, horse: g.horse, count: g.ids.size }))
+    .map((g) => ({ day: g.day, height: g.height, section: g.section, club: g.club, rider: g.rider, horse: g.horse, count: g.ids.size }))
     .sort(
       (a, b) =>
         dIdx(a.day) - dIdx(b.day) ||

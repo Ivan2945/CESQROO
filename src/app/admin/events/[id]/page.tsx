@@ -97,7 +97,10 @@ export default async function AdminEventDetail({
   const npDaysByEntry = npDaysFromResults(npRows);
   const fullCredit = config.pricing.cancellation.mode === "credit";
 
-  const totalEntries = entries.length;
+  const totalEntries = entries.reduce((n, e) => {
+    const d = Array.isArray(e.days) ? e.days.length : 0;
+    return n + (d || 1);
+  }, 0);
 
   return (
     <div className="mx-auto max-w-5xl">

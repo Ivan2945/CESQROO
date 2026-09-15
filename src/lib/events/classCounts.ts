@@ -70,13 +70,13 @@ export function classRoster(
   allEntries: CountEntry[],
   setup: CountSetup | undefined
 ): CountEntry[] {
+  const belongs = (e: CountEntry | undefined) =>
+    !!e && e.height === height && (Array.isArray(e.days) ? e.days : []).includes(day);
   const committed = setup?.start_order ?? null;
   const ids =
     committed && committed.length
-      ? committed.map((o) => o.entry_id).filter((id) => active.has(id))
-      : allEntries
-          .filter((e) => active.has(e.id) && e.height === height && (Array.isArray(e.days) ? e.days : []).includes(day))
-          .map((e) => e.id);
+      ? committed.map((o) => o.entry_id).filter((id) => belongs(active.get(id)))
+      : allEntries.filter((e) => active.has(e.id) && belongs(e)).map((e) => e.id);
   return [...new Set(ids)].map((id) => active.get(id)!);
 }
 

@@ -95,9 +95,14 @@ export async function cleanupGhostsAction(eventId: string): Promise<ActionResult
     orphanIds.forEach((id) => liveIds.delete(id));
   }
 
-  const { data: resRows } = await supabaseAdmin.from("event_results").select("id, entry_id").eq("event_id", eventId);
-  const orphanResultIds = (resRows ?? []).filter((r) => !liveIds.has(r.entry_id)).map((r) => r.id);
-  if (orphanResultIds.length) await supabaseAdmin.from("event_results").delete().in("id", orphanResultIds);
+  const { data: resRows } = await supabaseAdmin.from("event_results").select("id, entry_id, height").eq("event_id", eventId);
+  const badResultIds = (resRows ?? [])
+    .filter((r) => {
+      const e = liveById.get(r.entry_id);
+      return !e || r.height !== e.height;
+    })
+    .map((r) => r.id);
+  if (badResultIds.length) await supabaseAdmin.from("event_results").delete().in("id", badResultIds);
 
   const { data: setups } = await supabaseAdmin
     .from("event_class_setup").select("id, height, day, start_order").eq("event_id", eventId);
@@ -126,7 +131,7 @@ export async function cleanupGhostsAction(eventId: string): Promise<ActionResult
 
   const parts: string[] = [];
   if (orphanIds.length) parts.push(`${orphanIds.length} inscripción(es) huérfana(s) eliminada(s)`);
-  if (orphanResultIds.length) parts.push(`${orphanResultIds.length} resultado(s) huérfano(s) eliminado(s)`);
+  if (badResultIds.length) parts.push(`${badResultIds.length} resultado(s) huérfano(s)/desubicado(s) eliminado(s)`);
   if (ghosts.length) parts.push(`${ghosts.length} referencia(s) fantasma eliminada(s) (${ghosts.join(", ")})`);
   if (moved.length) parts.push(`${moved.length} en el orden de salida que ya no pertenecen a su clase, retiradas: ${moved.join("; ")}`);
   return {

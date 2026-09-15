@@ -86,14 +86,15 @@ export default async function AdminEventDetail({
     bySubmission.set(e.submission_id, arr);
   });
 
-  // No-shows (NP) bill like a cancellation, per day — pull the result statuses.
-  const { data: npRows } = entries.length
+  const { data: npRowsRaw } = entries.length
     ? await supabaseAdmin
         .from("event_results")
-        .select("entry_id, day, r1_status")
+        .select("entry_id, height, day, r1_status")
         .eq("event_id", id)
         .eq("r1_status", "NP")
-    : { data: [] as { entry_id: string; day: string; r1_status: string | null }[] };
+    : { data: [] as { entry_id: string; height: string; day: string; r1_status: string | null }[] };
+  const entryHeightById = new Map(entries.map((e) => [e.id, e.height]));
+  const npRows = (npRowsRaw ?? []).filter((r) => r.height === entryHeightById.get(r.entry_id));
   const npDaysByEntry = npDaysFromResults(npRows);
   const fullCredit = config.pricing.cancellation.mode === "credit";
   const sinksToBottom = (e: Entry, day: string) =>

@@ -96,8 +96,11 @@ export default async function AdminEventDetail({
     : { data: [] as { entry_id: string; day: string; r1_status: string | null }[] };
   const npDaysByEntry = npDaysFromResults(npRows);
   const fullCredit = config.pricing.cancellation.mode === "credit";
+  const sinksToBottom = (e: Entry, day: string) =>
+    (e.status ?? "active") === "cancelled" || (fullCredit && (npDaysByEntry.get(e.id)?.has(day) ?? false));
 
   const totalEntries = entries.reduce((n, e) => {
+    if ((e.status ?? "active") === "cancelled") return n;
     const d = Array.isArray(e.days) ? e.days.length : 0;
     return n + (d || 1);
   }, 0);
@@ -166,8 +169,8 @@ export default async function AdminEventDetail({
               return ds.map((day) => ({ e, day }));
             });
             const sortedRows = dayRows.sort((a, b) => {
-              const ac = (a.e.status ?? "active") === "cancelled" ? 1 : 0;
-              const bc = (b.e.status ?? "active") === "cancelled" ? 1 : 0;
+              const ac = sinksToBottom(a.e, a.day) ? 1 : 0;
+              const bc = sinksToBottom(b.e, b.day) ? 1 : 0;
               return (
                 ac - bc ||
                 dIdx(a.day) - dIdx(b.day) ||

@@ -20,11 +20,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
 
   const [{ data: ent }, { data: setups }, { data: results }] = await Promise.all([
     supabaseAdmin.from("event_entries").select("id, height, days, status").eq("event_id", event.id),
-    supabaseAdmin.from("event_class_setup").select("height, day, status").eq("event_id", event.id),
+    supabaseAdmin.from("event_class_setup").select("height, day, status, start_order").eq("event_id", event.id),
     supabaseAdmin.from("event_results").select("entry_id, height, day, r1_faults, r1_status, r1_time, r2_status, r2_time").eq("event_id", event.id),
   ]);
 
-  const active = (ent ?? []).filter((e) => (e.status ?? "active") !== "cancelled");
+  const activeById = new Map(
+    (ent ?? []).filter((e) => (e.status ?? "active") !== "cancelled").map((e) => [e.id, e])
+  );
 
   type Res = { entry_id: string; height: string; day: string; r1_faults: string | null; r1_status: string | null; r1_time: number | null; r2_status: string | null; r2_time: number | null };
   const resByKey = new Map((results ?? []).map((r) => [`${r.entry_id}|${r.height}|${r.day}`, r as Res]));
@@ -38,22 +40,32 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
       r.r2_time != null ||
       (!!r.r2_status && r.r2_status !== "OK"));
 
-  const statusOf = (h: string, d: string) => (setups ?? []).find((s) => s.height === h && s.day === d)?.status ?? "pending";
+  const setupOf = (h: string, d: string) =>
+    (setups ?? []).find((s) => s.height === h && s.day === d);
 
   const classes: Array<{ height: string; day: string; total: number; scored: number; status: string }> = [];
   for (const day of config.days) {
     for (const height of dayHeightOrder(config, dayState, day)) {
-      const inClass = active.filter((e) => e.height === height && (Array.isArray(e.days) ? e.days : []).includes(day));
+      const setup = setupOf(height, day);
+      const committed = (setup?.start_order as { entry_id: string }[] | null) ?? null;
+      const rosterIds =
+        committed && committed.length
+          ? committed.map((o) => o.entry_id).filter((id) => activeById.has(id))
+          : (ent ?? [])
+              .filter((e) => activeById.has(e.id) && e.height === height && (Array.isArray(e.days) ? e.days : []).includes(day))
+              .map((e) => e.id);
+
       let total = 0;
       let scored = 0;
-      for (const e of inClass) {
-        const r = resByKey.get(`${e.id}|${e.height}|${day}`);
+      for (const id of [...new Set(rosterIds)]) {
+        const e = activeById.get(id)!;
+        const r = resByKey.get(`${id}|${e.height}|${day}`);
         if (isNP(r)) continue;
         total += 1;
         if (isResolved(r)) scored += 1;
       }
       if (total === 0) continue;
-      classes.push({ height, day, total, scored, status: statusOf(height, day) });
+      classes.push({ height, day, total, scored, status: setup?.status ?? "pending" });
     }
   }
 

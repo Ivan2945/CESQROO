@@ -155,13 +155,21 @@ export default async function AdminEventDetail({
           {(submissions as Submission[]).map((s) => {
             const rows = bySubmission.get(s.id) ?? [];
             const stmt = computeStatement(rows, config, npDaysByEntry);
-            // Display order: active first (cancelled to the bottom), then by
-            // height (Cruces → 1.30m, i.e. config order), then rider alphabetically.
             const hIdx = (h: string) => { const i = config.heights.indexOf(h); return i < 0 ? 999 : i; };
-            const sortedRows = [...rows].sort((a, b) => {
-              const ac = (a.status ?? "active") === "cancelled" ? 1 : 0;
-              const bc = (b.status ?? "active") === "cancelled" ? 1 : 0;
-              return ac - bc || hIdx(a.height) - hIdx(b.height) || (a.rider_name || "").localeCompare(b.rider_name || "");
+            const dIdx = (d: string) => { const i = config.days.indexOf(d); return i < 0 ? 999 : i; };
+            const dayRows = rows.flatMap((e) => {
+              const ds = Array.isArray(e.days) && e.days.length ? e.days : [""];
+              return ds.map((day) => ({ e, day }));
+            });
+            const sortedRows = dayRows.sort((a, b) => {
+              const ac = (a.e.status ?? "active") === "cancelled" ? 1 : 0;
+              const bc = (b.e.status ?? "active") === "cancelled" ? 1 : 0;
+              return (
+                ac - bc ||
+                dIdx(a.day) - dIdx(b.day) ||
+                hIdx(a.e.height) - hIdx(b.e.height) ||
+                (a.e.rider_name || "").localeCompare(b.e.rider_name || "")
+              );
             });
             return (
               <section key={s.id} className="rounded-xl border border-slate-200 bg-white p-5">
@@ -196,17 +204,17 @@ export default async function AdminEventDetail({
                         <th className="py-2 pr-3">Caballo</th>
                         <th className="py-2 pr-3">Altura</th>
                         <th className="py-2 pr-3">Sección</th>
-                        <th className="py-2 pr-3">Días</th>
+                        <th className="py-2 pr-3">Día</th>
                         {config.fields.circuit && <th className="py-2 pr-3">Circuito</th>}
                         {config.fields.discount && <th className="py-2 pr-3">Descuento</th>}
                         {isAdmin && <th className="py-2 pr-3"></th>}
                       </tr>
                     </thead>
                     <tbody>
-                      {sortedRows.map((e) => {
+                      {sortedRows.map(({ e, day }) => {
                         const cancelled = (e.status ?? "active") === "cancelled";
                         return (
-                          <tr key={e.id} className={"border-b border-slate-100 " + (cancelled ? "text-slate-400 line-through" : "")}>
+                          <tr key={`${e.id}-${day}`} className={"border-b border-slate-100 " + (cancelled ? "text-slate-400 line-through" : "")}>
                             <td className="py-2 pr-3 uppercase">
                               {e.rider_name}
                               {e.is_extemp && (
@@ -218,7 +226,7 @@ export default async function AdminEventDetail({
                             <td className="py-2 pr-3 uppercase">{e.horse_name}</td>
                             <td className="py-2 pr-3">{e.height}</td>
                             <td className="py-2 pr-3">{e.section}</td>
-                            <td className="py-2 pr-3">{(e.days ?? []).join(" + ") || "—"}</td>
+                            <td className="py-2 pr-3">{day || "—"}</td>
                             {config.fields.circuit && <td className="py-2 pr-3">{e.circuit ? "Sí" : "No"}</td>}
                             {config.fields.discount && <td className="py-2 pr-3">{e.discount ? "Sí" : "No"}</td>}
                             {isAdmin && (

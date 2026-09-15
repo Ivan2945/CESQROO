@@ -101,8 +101,9 @@ export default async function AdminEventDetail({
 
   const totalEntries = entries.reduce((n, e) => {
     if ((e.status ?? "active") === "cancelled") return n;
-    const d = Array.isArray(e.days) ? e.days.length : 0;
-    return n + (d || 1);
+    const days = Array.isArray(e.days) && e.days.length ? e.days : [""];
+    const np = npDaysByEntry.get(e.id);
+    return n + days.filter((d) => !(np?.has(d) ?? false)).length;
   }, 0);
 
   return (

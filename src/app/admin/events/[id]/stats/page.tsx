@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeConfig } from "@/lib/events/config";
-import { computeEventStats, type StatsEntry, type StatsResult, type StatsSetup, type ClubGroup } from "@/lib/events/stats";
+import { computeEventStats, billedWithoutResult, duplicateBinomios, type StatsEntry, type StatsResult, type StatsSetup, type ClubGroup } from "@/lib/events/stats";
 
 export const dynamic = "force-dynamic";
 
@@ -116,6 +116,10 @@ export default async function EventStatsPage({ params }: { params: Promise<{ id:
     validSubs
   );
 
+  const validEntries = entries.filter((e) => e.submission_id != null && validSubs.has(e.submission_id));
+  const unscored = billedWithoutResult(validEntries, (results ?? []) as StatsResult[], config, clubNameById);
+  const duplicates = duplicateBinomios(validEntries, config, clubNameById);
+
   return (
     <div className="mx-auto max-w-5xl">
       <Link href={`/admin/events/${event.id}`} className="text-sm text-blue-600 dark:text-blue-400">← {event.name}</Link>
@@ -123,6 +127,82 @@ export default async function EventStatsPage({ params }: { params: Promise<{ id:
       <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">
         Solo cuentan jinetes que compitieron. Los NP (no presentó) y las cancelaciones no se contabilizan como participación.
       </p>
+
+      <section className="mb-6 rounded-xl border border-rose-300 bg-rose-50 p-5 dark:border-rose-900 dark:bg-rose-950/30">
+        <h3 className="text-lg font-semibold text-rose-900 dark:text-rose-200">
+          Binomios duplicados{duplicates.length > 0 ? ` (${duplicates.length})` : ""}
+        </h3>
+        <p className="mt-1 text-sm text-rose-800 dark:text-rose-300/90">
+          Mismo jinete + caballo inscritos más de una vez en la misma prueba y día. Cada duplicado infla el conteo de inscripciones frente a las hojas de calificación. Elimine los sobrantes desde la página del evento.
+        </p>
+        {duplicates.length === 0 ? (
+          <p className="mt-3 text-sm font-medium text-emerald-700 dark:text-emerald-400">Sin duplicados.</p>
+        ) : (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-sm text-slate-900 dark:text-slate-100">
+              <thead>
+                <tr className="border-b border-rose-200 text-left text-xs uppercase tracking-wide text-rose-700 dark:border-rose-900 dark:text-rose-400">
+                  <th className="py-2 pr-3">Día</th>
+                  <th className="py-2 pr-3">Prueba</th>
+                  <th className="py-2 pr-3">Club</th>
+                  <th className="py-2 pr-3">Jinete</th>
+                  <th className="py-2 pr-3">Caballo</th>
+                  <th className="py-2 pr-3 text-right">Veces</th>
+                </tr>
+              </thead>
+              <tbody>
+                {duplicates.map((r, i) => (
+                  <tr key={i} className="border-b border-rose-100 dark:border-rose-900/50">
+                    <td className="py-2 pr-3">{r.day}</td>
+                    <td className="py-2 pr-3 font-semibold">{r.height}</td>
+                    <td className="py-2 pr-3">{r.club}</td>
+                    <td className="py-2 pr-3 uppercase">{r.rider}</td>
+                    <td className="py-2 pr-3 uppercase">{r.horse}</td>
+                    <td className="py-2 pr-3 text-right font-bold text-rose-700 dark:text-rose-400">{r.count}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
+      <section className="mb-6 rounded-xl border border-amber-300 bg-amber-50 p-5 dark:border-amber-900 dark:bg-amber-950/30">
+        <h3 className="text-lg font-semibold text-amber-900 dark:text-amber-200">
+          Inscripciones sin resultado{unscored.length > 0 ? ` (${unscored.length})` : ""}
+        </h3>
+        <p className="mt-1 text-sm text-amber-800 dark:text-amber-300/90">
+          Participaciones activas (facturadas) que no tienen ningún resultado y no aparecen en las hojas de calificación. Revíselas: si no son reales, elimínelas o cancélelas desde la página del evento.
+        </p>
+        {unscored.length === 0 ? (
+          <p className="mt-3 text-sm font-medium text-emerald-700 dark:text-emerald-400">Todo cuadra: no hay inscripciones sin resultado.</p>
+        ) : (
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full text-sm text-slate-900 dark:text-slate-100">
+              <thead>
+                <tr className="border-b border-amber-200 text-left text-xs uppercase tracking-wide text-amber-700 dark:border-amber-900 dark:text-amber-400">
+                  <th className="py-2 pr-3">Día</th>
+                  <th className="py-2 pr-3">Prueba</th>
+                  <th className="py-2 pr-3">Club</th>
+                  <th className="py-2 pr-3">Jinete</th>
+                  <th className="py-2 pr-3">Caballo</th>
+                </tr>
+              </thead>
+              <tbody>
+                {unscored.map((r, i) => (
+                  <tr key={i} className="border-b border-amber-100 dark:border-amber-900/50">
+                    <td className="py-2 pr-3">{r.day}</td>
+                    <td className="py-2 pr-3 font-semibold">{r.height}</td>
+                    <td className="py-2 pr-3">{r.club}</td>
+                    <td className="py-2 pr-3 uppercase">{r.rider}</td>
+                    <td className="py-2 pr-3 uppercase">{r.horse}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {stats.perDay.map((d) => (

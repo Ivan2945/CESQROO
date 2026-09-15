@@ -30,6 +30,83 @@ export type ClassStat = {
 };
 export type DayStat = { day: string; entries: number; classes: ClassStat[] };
 
+export type UnscoredRow = { day: string; height: string; club: string; rider: string; horse: string };
+export type DupGroup = { day: string; height: string; club: string; rider: string; horse: string; count: number };
+
+export function duplicateBinomios(
+  entries: StatsEntry[],
+  config: EventConfig,
+  clubNameById: Map<string, string>
+): DupGroup[] {
+  const hIdx = (h: string) => { const i = config.heights.indexOf(h); return i < 0 ? 999 : i; };
+  const dIdx = (d: string) => { const i = config.days.indexOf(d); return i < 0 ? 999 : i; };
+  const groups = new Map<string, { day: string; height: string; club: string; rider: string; horse: string; ids: Set<string> }>();
+  for (const e of entries) {
+    if ((e.status ?? "active") === "cancelled") continue;
+    const rk = e.rider_id || `n:${(e.rider_name || "").trim().toUpperCase()}`;
+    const hk = e.horse_id || `n:${(e.horse_name || "").trim().toUpperCase()}`;
+    const days = Array.isArray(e.days) ? e.days : [];
+    for (const day of days) {
+      if (!config.days.includes(day)) continue;
+      const key = `${rk}|${hk}|${e.height}|${day}`;
+      const g = groups.get(key) ?? {
+        day, height: e.height,
+        club: clubNameById.get(e.club_id ?? "") || "Sin club",
+        rider: (e.rider_name || "").toUpperCase(),
+        horse: (e.horse_name || "").toUpperCase(),
+        ids: new Set<string>(),
+      };
+      g.ids.add(e.id);
+      groups.set(key, g);
+    }
+  }
+  return [...groups.values()]
+    .filter((g) => g.ids.size > 1)
+    .map((g) => ({ day: g.day, height: g.height, club: g.club, rider: g.rider, horse: g.horse, count: g.ids.size }))
+    .sort(
+      (a, b) =>
+        dIdx(a.day) - dIdx(b.day) ||
+        hIdx(a.height) - hIdx(b.height) ||
+        a.club.localeCompare(b.club, "es") ||
+        a.rider.localeCompare(b.rider, "es")
+    );
+}
+
+export function billedWithoutResult(
+  entries: StatsEntry[],
+  results: StatsResult[],
+  config: EventConfig,
+  clubNameById: Map<string, string>
+): UnscoredRow[] {
+  const byKey = resultsByKey(results);
+  const hIdx = (h: string) => { const i = config.heights.indexOf(h); return i < 0 ? 999 : i; };
+  const dIdx = (d: string) => { const i = config.days.indexOf(d); return i < 0 ? 999 : i; };
+  const rows: UnscoredRow[] = [];
+  for (const e of entries) {
+    if ((e.status ?? "active") === "cancelled") continue;
+    const days = Array.isArray(e.days) ? e.days : [];
+    for (const day of days) {
+      if (!config.days.includes(day)) continue;
+      if (!resultFor(byKey, e, day)) {
+        rows.push({
+          day,
+          height: e.height,
+          club: clubNameById.get(e.club_id ?? "") || "Sin club",
+          rider: (e.rider_name || "").toUpperCase(),
+          horse: (e.horse_name || "").toUpperCase(),
+        });
+      }
+    }
+  }
+  return rows.sort(
+    (a, b) =>
+      dIdx(a.day) - dIdx(b.day) ||
+      hIdx(a.height) - hIdx(b.height) ||
+      a.club.localeCompare(b.club, "es") ||
+      a.rider.localeCompare(b.rider, "es")
+  );
+}
+
 export type EventStats = {
   perDay: DayStat[];
   totalRiders: number;

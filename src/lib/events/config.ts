@@ -23,6 +23,9 @@ export type EventConfig = {
   // entry is present and non-empty it replaces sectionsByHeight FOR THAT DAY
   // ONLY; days without an entry fall back to sectionsByHeight.
   sectionsByHeightDay: Record<string, Record<string, string[]>>;
+  // Heights NOT offered on a given day, keyed by day. A height listed here does
+  // not run that day at all: no sections (not even Training/FC), no sign-ups.
+  inactiveByDay: Record<string, string[]>;
   days: string[];
   fields: { circuit: boolean; discount: boolean };
   // Branding shown on the PDF header (logo is stored separately on the event).
@@ -58,11 +61,19 @@ export const TEMPLATE_CONFIG: EventConfig = {
   heights: ["Cruces", "40cm", "60cm", "75cm", "80cm", "90cm", "1m", "1.10m", "1.20m", "1.30m"],
   sections: ["Abierta", "Libre", "Especial", "Exhibición"],
   sectionsByHeight: {
-    Cruces: ["Exhibición", "Abierta", "Libre"],
+    Cruces: ["Exhibición"],
+    "40cm": ["Abierta", "Libre"],
     "60cm": ["Abierta", "Libre", "Especial"],
+    "75cm": ["Abierta", "Libre"],
     "80cm": ["Abierta", "Libre", "Especial"],
+    "90cm": ["Abierta", "Libre"],
+    "1m": ["Abierta", "Libre"],
+    "1.10m": ["Abierta", "Libre"],
+    "1.20m": ["Libre"],
+    "1.30m": ["Libre"],
   },
   sectionsByHeightDay: {},
+  inactiveByDay: {},
   days: ["Sábado", "Domingo"],
   fields: { circuit: true, discount: true },
   header: { title: "", subtitle: "" },
@@ -100,11 +111,20 @@ export function normalizeConfig(raw: unknown): EventConfig {
     }
     if (Object.keys(perHeight).length) sectionsByHeightDay[day] = perHeight;
   }
+  const inactiveRaw = (c.inactiveByDay && typeof c.inactiveByDay === "object" ? c.inactiveByDay : {}) as Record<string, unknown>;
+  const inactiveByDay: Record<string, string[]> = {};
+  for (const day of Object.keys(inactiveRaw)) {
+    if (Array.isArray(inactiveRaw[day])) {
+      const hs = (inactiveRaw[day] as unknown[]).map(String);
+      if (hs.length) inactiveByDay[day] = hs;
+    }
+  }
   return {
     heights: Array.isArray(c.heights) ? c.heights.map(String) : [],
     sections: Array.isArray(c.sections) ? c.sections.map(String) : [],
     sectionsByHeight,
     sectionsByHeightDay,
+    inactiveByDay,
     days: Array.isArray(c.days) ? c.days.map(String) : [],
     fields: {
       circuit: !!c.fields?.circuit,
@@ -212,9 +232,10 @@ export function dayHeightOrder(
   return [...valid, ...config.heights.filter((h) => !valid.includes(h))];
 }
 
+// Sections configured for a height. NONE selected means the prueba is not
+// offered (inactive) — it is NOT treated as "all sections allowed".
 export function sectionsForHeight(config: EventConfig, height: string): string[] {
-  const sbh = config.sectionsByHeight[height];
-  return Array.isArray(sbh) && sbh.length > 0 ? sbh : config.sections;
+  return config.sectionsByHeight[height] ?? [];
 }
 
 // Sections a user may pick for a height, INCLUDING the always-valid extra
@@ -237,12 +258,26 @@ export function isValidDay(config: EventConfig, day: string): boolean {
   return config.days.includes(day);
 }
 
-// Sections allowed for a height on a SPECIFIC day: the per-day override when set
-// (non-empty), otherwise the general per-prueba list.
-export function sectionsForHeightDay(config: EventConfig, height: string, day: string): string[] {
+// The sections a (day, height) would offer ignoring the explicit inactive flag:
+// the per-day override when set (non-empty), otherwise the general per-prueba
+// list (which is empty when nothing is selected).
+function rawSectionsForHeightDay(config: EventConfig, height: string, day: string): string[] {
   const perDay = config.sectionsByHeightDay?.[day]?.[height];
   if (Array.isArray(perDay) && perDay.length > 0) return perDay;
   return sectionsForHeight(config, height);
+}
+
+// Is a prueba (height) offered on a given day? False when explicitly marked
+// inactive, OR when it has no sections for that day (none selected = not run).
+export function isHeightActiveOnDay(config: EventConfig, height: string, day: string): boolean {
+  if (config.inactiveByDay?.[day]?.includes(height) ?? false) return false;
+  return rawSectionsForHeightDay(config, height, day).length > 0;
+}
+
+// Sections allowed for a height on a SPECIFIC day: none when the prueba is not
+// offered that day; otherwise its effective section list.
+export function sectionsForHeightDay(config: EventConfig, height: string, day: string): string[] {
+  return isHeightActiveOnDay(config, height, day) ? rawSectionsForHeightDay(config, height, day) : [];
 }
 
 // Union of sections offered for a height across all event days — used to fill a
@@ -264,15 +299,16 @@ export function selectableSectionsUnion(config: EventConfig, height: string): st
 }
 
 // Which event days offer a given section for a height (extemp sections are valid
-// on every day).
+// on every active day for that prueba).
 export function daysOfferingSection(config: EventConfig, height: string, section: string): string[] {
-  if (config.extempSections.includes(section)) return [...config.days];
+  if (config.extempSections.includes(section)) return config.days.filter((d) => isHeightActiveOnDay(config, height, d));
   return config.days.filter((d) => sectionsForHeightDay(config, height, d).includes(section));
 }
 
 // Day-aware validity: is this section allowed for the height on that day?
 export function isSectionAllowedOnDay(config: EventConfig, height: string, section: string, day: string): boolean {
   if (!config.heights.includes(height)) return false;
+  if (!isHeightActiveOnDay(config, height, day)) return false;
   if (config.extempSections.includes(section)) return true;
   return sectionsForHeightDay(config, height, day).includes(section);
 }

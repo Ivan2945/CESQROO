@@ -117,6 +117,7 @@ export default function ConfigEditor({
   const [days, setDays] = useState<string[]>(initialConfig.days);
   const [sectionsByHeight, setSectionsByHeight] = useState<Record<string, string[]>>(initialConfig.sectionsByHeight);
   const [sectionsByHeightDay, setSectionsByHeightDay] = useState<Record<string, Record<string, string[]>>>(initialConfig.sectionsByHeightDay);
+  const [inactiveByDay, setInactiveByDay] = useState<Record<string, string[]>>(initialConfig.inactiveByDay);
   const [editDay, setEditDay] = useState<string>(initialConfig.days[0] ?? "");
   const [fields, setFields] = useState(initialConfig.fields);
   // Billing
@@ -218,7 +219,7 @@ export default function ConfigEditor({
     setSectionsByHeightDay((prev) => {
       const out = { ...prev };
       const perH = { ...(out[day] ?? {}) };
-      if (on) perH[height] = [...(sectionsByHeight[height]?.length ? sectionsByHeight[height] : sections)];
+      if (on) perH[height] = [...(sectionsByHeight[height] ?? [])];
       else delete perH[height];
       if (Object.keys(perH).length) out[day] = perH;
       else delete out[day];
@@ -235,6 +236,43 @@ export default function ConfigEditor({
       else delete perH[height];
       if (Object.keys(perH).length) out[day] = perH;
       else delete out[day];
+      return out;
+    });
+  }
+  // Column "Todos" for the per-day grid: set/clear a section for every active
+  // prueba on that day, personalizing rows as needed.
+  function setDaySectionForAll(day: string, section: string, check: boolean) {
+    setSectionsByHeightDay((prev) => {
+      const out = { ...prev };
+      const perH = { ...(out[day] ?? {}) };
+      for (const h of heights) {
+        if (inactiveByDay[day]?.includes(h)) continue;
+        const base = perH[h] !== undefined ? perH[h] : [...(sectionsByHeight[h] ?? [])];
+        const next = check ? (base.includes(section) ? base : [...base, section]) : base.filter((s) => s !== section);
+        if (next.length) perH[h] = next;
+        else delete perH[h];
+      }
+      if (Object.keys(perH).length) out[day] = perH;
+      else delete out[day];
+      return out;
+    });
+  }
+  const sectionsForHeightDayLocal = (day: string, height: string) => {
+    const ov = sectionsByHeightDay[day]?.[height];
+    return Array.isArray(ov) && ov.length ? ov : sectionsByHeight[height] ?? [];
+  };
+  const isActiveDay = (day: string, height: string) => !(inactiveByDay[day]?.includes(height) ?? false);
+  function toggleActiveDay(day: string, height: string, active: boolean) {
+    setInactiveByDay((prev) => {
+      const out = { ...prev };
+      const cur = out[day] ?? [];
+      if (active) {
+        const next = cur.filter((h) => h !== height);
+        if (next.length) out[day] = next;
+        else delete out[day];
+      } else if (!cur.includes(height)) {
+        out[day] = [...cur, height];
+      }
       return out;
     });
   }
@@ -315,6 +353,12 @@ export default function ConfigEditor({
           d,
           Object.fromEntries(Object.entries(perH).filter(([h]) => heights.includes(h) && perH[h].length)),
         ]).filter(([, perH]) => Object.keys(perH as Record<string, string[]>).length)
+      ),
+      inactiveByDay: Object.fromEntries(
+        Object.entries(inactiveByDay)
+          .filter(([d]) => days.includes(d))
+          .map(([d, hs]) => [d, hs.filter((h) => heights.includes(h))])
+          .filter(([, hs]) => (hs as string[]).length)
       ),
       days,
       fields,
@@ -514,7 +558,7 @@ export default function ConfigEditor({
       <section className={card}>
         <h3 className={h2}>Secciones por altura</h3>
         <p className="mb-3 text-xs text-slate-500">
-          Marque las secciones válidas para cada altura. Si no marca ninguna, se permiten todas.
+          Marque las secciones válidas para cada altura. Si no marca ninguna, la prueba no se ofrece (no se corre ningún día).
         </p>
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-slate-900">
@@ -591,31 +635,57 @@ export default function ConfigEditor({
               <thead>
                 <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
                   <th className="py-2 pr-3">Altura</th>
+                  <th className="py-2 pr-3">Activa</th>
                   <th className="py-2 pr-3">Personalizar</th>
-                  {sections.map((s) => (
-                    <th key={s} className="py-2 pr-3">{s}</th>
-                  ))}
+                  {sections.map((s) => {
+                    const activeHeights = heights.filter((h) => isActiveDay(editDay, h));
+                    const allChecked = activeHeights.length > 0 && activeHeights.every((h) => sectionsForHeightDayLocal(editDay, h).includes(s));
+                    return (
+                      <th key={s} className="py-2 pr-3 align-bottom">
+                        <div>{s}</div>
+                        <label className="mt-1 inline-flex cursor-pointer items-center gap-1 text-[10px] font-normal normal-case text-slate-500">
+                          <input type="checkbox" className="accent-blue-600" checked={allChecked} onChange={(e) => setDaySectionForAll(editDay, s, e.target.checked)} />
+                          Todos
+                        </label>
+                      </th>
+                    );
+                  })}
                 </tr>
               </thead>
               <tbody>
                 {heights.map((h) => {
+                  const active = isActiveDay(editDay, h);
                   const ov = isDayOverridden(editDay, h);
                   const general = sectionsByHeight[h]?.length ? sectionsByHeight[h] : sections;
                   const cur = sectionsByHeightDay[editDay]?.[h] ?? [];
                   return (
-                    <tr key={h} className="border-b border-slate-100">
+                    <tr key={h} className={"border-b border-slate-100 " + (active ? "" : "bg-slate-50 text-slate-400")}>
                       <td className="py-2 pr-3 font-medium">{h}</td>
                       <td className="py-2 pr-3">
                         <input
                           type="checkbox"
-                          className="accent-blue-600"
-                          checked={ov}
-                          onChange={(e) => toggleDayOverride(editDay, h, e.target.checked)}
+                          className="accent-emerald-600"
+                          checked={active}
+                          onChange={(e) => toggleActiveDay(editDay, h, e.target.checked)}
                         />
+                      </td>
+                      <td className="py-2 pr-3">
+                        {active ? (
+                          <input
+                            type="checkbox"
+                            className="accent-blue-600"
+                            checked={ov}
+                            onChange={(e) => toggleDayOverride(editDay, h, e.target.checked)}
+                          />
+                        ) : (
+                          <span className="text-[11px]">No se corre</span>
+                        )}
                       </td>
                       {sections.map((s) => (
                         <td key={s} className="py-2 pr-3">
-                          {ov ? (
+                          {!active ? (
+                            <span className="text-[11px] text-slate-300">—</span>
+                          ) : ov ? (
                             <input
                               type="checkbox"
                               className="accent-blue-600"

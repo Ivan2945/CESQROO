@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { normalizeConfig, isAllowedSection, isValidDay } from "@/lib/events/config";
+import { normalizeConfig, isAllowedSection, isSectionAllowedOnDay, isValidDay } from "@/lib/events/config";
 import { binomioDayKey } from "@/lib/events/classCounts";
 import type { RegisterPayload, EntryInput } from "@/lib/types/events";
 
@@ -60,6 +60,10 @@ export async function POST(
     }
     if (!e.days.every((d) => isValidDay(config, d))) {
       return bad(`Participación ${n}: día no válido para este evento.`);
+    }
+    const badDay = e.days.find((d) => !isSectionAllowedOnDay(config, e.height, e.section, d));
+    if (badDay) {
+      return bad(`Participación ${n}: la sección ${e.section} no está disponible en ${e.height} el ${badDay}.`);
     }
     if (!extemp) {
       const closedDay = e.days.find((d) => !dayOpen(d));

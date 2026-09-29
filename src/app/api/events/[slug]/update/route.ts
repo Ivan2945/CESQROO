@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { normalizeConfig, isAllowedSection, isValidDay } from "@/lib/events/config";
+import { normalizeConfig, isAllowedSection, isSectionAllowedOnDay, isValidDay } from "@/lib/events/config";
 import { buildClassStatusMap, lockedDays, type DayStateMap } from "@/lib/events/locks";
 import type { UpdatePayload, EntryInput } from "@/lib/types/events";
 
@@ -82,6 +82,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     if (!isAllowedSection(config, e.height, e.section)) return `Participación ${n}: altura/sección no válida.`;
     if (!Array.isArray(e.days) || e.days.length === 0) return `Participación ${n}: elija al menos un día.`;
     if (!e.days.every((d) => isValidDay(config, d))) return `Participación ${n}: día no válido.`;
+    const badDay = e.days.find((d) => !isSectionAllowedOnDay(config, e.height, e.section, d));
+    if (badDay) return `Participación ${n}: la sección ${e.section} no está disponible en ${e.height} el ${badDay}.`;
     return null;
   }
 

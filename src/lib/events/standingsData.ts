@@ -11,7 +11,7 @@
 //              season:{basis:"registered",per_day_cap:"first_class"} } }
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { normalizeConfig } from "@/lib/events/config";
+import { normalizeConfig, scopeDays } from "@/lib/events/config";
 import { classFormatFromSetup, defaultFormatForHeight, formatHasSecondRound } from "@/lib/scoring/portal";
 import { parseFaultShorthand, hasFallMarker } from "@/lib/scoring/faults";
 import {
@@ -55,7 +55,7 @@ function resolveRule(cfg: SeriesStandingsConfig | null | undefined, scope: Scope
 
 // Per-EVENT override (stored on event.config.standings). Lets an admin pick the
 // method per scope, or turn a scope off. A standalone show = both scopes off.
-export type EventScopeOverride = { enabled?: boolean; basis?: StandingsRule["basis"]; eligibility?: StandingsRule["eligibility"]; per_day_cap?: StandingsRule["per_day_cap"] };
+export type EventScopeOverride = { enabled?: boolean; basis?: StandingsRule["basis"]; eligibility?: StandingsRule["eligibility"]; per_day_cap?: StandingsRule["per_day_cap"]; days?: string[] };
 export type EventStandingsCfg = { mini_series?: EventScopeOverride; season?: EventScopeOverride; rider_points_heights?: string[] };
 
 // Effective rule + whether the scope is active for this event:
@@ -212,7 +212,8 @@ export async function getEventStandings(eventId: string, scope: Scope = "mini_se
   const { name: seriesName, cfg } = await resolveSeries((event as { series_id?: string }).series_id);
   const eventCfg = ((event.config ?? {}) as { standings?: EventStandingsCfg }).standings;
   const { rule, enabled } = effectiveRule(cfg, eventCfg, scope);
-  const classes = enabled ? await loadClasses([eventId]) : [];
+  const allowed = new Set(scopeDays(normalizeConfig(event.config), eventCfg?.[scope]));
+  const classes = enabled ? (await loadClasses([eventId])).filter((c) => allowed.has(c.day)) : [];
   return { title: event.name as string, seriesName, scope, rule, enabled, championships: enabled ? computeStandings(classes, rule) : [] };
 }
 
@@ -223,9 +224,18 @@ export async function getSeriesStandings(seriesId: string, scope: Scope = "seaso
   const rule = resolveRule(cfg, scope);
   const enabled = cfg?.scopes?.[scope] != null;
   const { data: evs } = await supabaseAdmin.from("events").select("id, config").eq("series_id", seriesId);
-  const includeIds = (evs ?? [])
-    .filter((e) => (((e.config ?? {}) as { standings?: EventStandingsCfg }).standings?.[scope]?.enabled ?? true) !== false)
-    .map((e) => e.id);
-  const classes = enabled ? await loadClasses(includeIds) : [];
+  const included = (evs ?? []).filter(
+    (e) => (((e.config ?? {}) as { standings?: EventStandingsCfg }).standings?.[scope]?.enabled ?? true) !== false
+  );
+  const includeIds = included.map((e) => e.id);
+  const allowedByEvent = new Map(
+    included.map((e) => {
+      const ecfg = ((e.config ?? {}) as { standings?: EventStandingsCfg }).standings;
+      return [e.id, new Set(scopeDays(normalizeConfig(e.config), ecfg?.[scope]))];
+    })
+  );
+  const classes = enabled
+    ? (await loadClasses(includeIds)).filter((c) => allowedByEvent.get(c.eventId)?.has(c.day) ?? true)
+    : [];
   return { title: seriesName ?? "Serie", seriesName, scope, rule, enabled, championships: enabled ? computeStandings(classes, rule) : [] };
 }

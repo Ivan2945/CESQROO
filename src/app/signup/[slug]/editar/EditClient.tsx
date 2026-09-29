@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { normalizeConfig, selectableSections } from "@/lib/events/config";
+import { normalizeConfig, selectableSectionsUnion, daysOfferingSection } from "@/lib/events/config";
 import type { ClubOption, EventRow, RosterRider, RosterHorse, ExistingEntry, EntryInput } from "@/lib/types/events";
 import { Combobox, card, fieldInput, fieldLabel } from "../Combobox";
 
@@ -134,7 +134,11 @@ export default function EditClient({ slug }: { slug: string }) {
       rs.map((r, idx) => {
         if (idx !== i) return r;
         const next = { ...r, ...patch };
-        if ("height" in patch && !selectableSections(config, next.height).includes(next.section)) next.section = "";
+        if ("height" in patch && !selectableSectionsUnion(config, next.height).includes(next.section)) next.section = "";
+        if (("height" in patch || "section" in patch) && next.section) {
+          const ok = new Set(daysOfferingSection(config, next.height, next.section));
+          next.days = next.days.filter((d) => ok.has(d));
+        }
         return next;
       })
     );
@@ -301,7 +305,7 @@ export default function EditClient({ slug }: { slug: string }) {
             <h2 className="mb-3 text-lg font-semibold text-slate-900">Participaciones ({rows.length})</h2>
             <div className="space-y-4">
               {rows.map((r, i) => {
-                const allowed = r.height ? selectableSections(config, r.height) : [];
+                const allowed = r.height ? selectableSectionsUnion(config, r.height) : [];
                 // An existing entry that competes on a closed/committed day is
                 // locked for non-admins: its rider/horse/class/section can't
                 // change and the committed day can't be toggled. Still-open days
@@ -428,18 +432,20 @@ export default function EditClient({ slug }: { slug: string }) {
                       {config.days.map((d) => {
                         const on = r.days.includes(d);
                         const dayLocked = committedDays.includes(d); // committed day: can't add or remove
+                        const notOffered = !!r.section && !daysOfferingSection(config, r.height, r.section).includes(d);
+                        const disabled = dayLocked || notOffered;
                         return (
                           <label
                             key={d}
-                            title={dayLocked ? "Día cerrado" : undefined}
+                            title={dayLocked ? "Día cerrado" : notOffered ? `La sección ${r.section} no está disponible este día` : undefined}
                             className={
                               "inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-semibold " +
-                              (dayLocked ? "cursor-not-allowed opacity-50 " : "cursor-pointer ") +
+                              (disabled ? "cursor-not-allowed opacity-50 " : "cursor-pointer ") +
                               (on ? "border-blue-600 bg-blue-50 text-blue-800" : "border-slate-300 bg-white text-slate-700")
                             }
                           >
-                            <input type="checkbox" className="accent-blue-600" checked={on} disabled={dayLocked} onChange={() => toggleDay(i, d)} />
-                            {d}{dayLocked ? " 🔒" : ""}
+                            <input type="checkbox" className="accent-blue-600" checked={on} disabled={disabled} onChange={() => toggleDay(i, d)} />
+                            {d}{dayLocked ? " 🔒" : notOffered ? " (no disp.)" : ""}
                           </label>
                         );
                       })}

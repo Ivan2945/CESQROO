@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { normalizeConfig, selectableSections } from "@/lib/events/config";
+import { normalizeConfig, selectableSectionsUnion, daysOfferingSection } from "@/lib/events/config";
 import type { ClubOption, EventRow, RosterRider, RosterHorse, EntryInput } from "@/lib/types/events";
 import { Combobox } from "./Combobox";
 
@@ -82,7 +82,8 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
   const isOther = clubId === OTHER;
   const config = normalizeConfig(event?.config);
   // Training/FC are always selectable for any height (on both forms).
-  const sectionsFor = (h: string) => selectableSections(config, h);
+  const sectionsFor = (h: string) => selectableSectionsUnion(config, h);
+  const daysForSection = (h: string, s: string) => (s ? daysOfferingSection(config, h, s) : config.days);
   // A day is closed for normal sign-ups once it's closed/committed. The extemp
   // form bypasses this — late additions are its whole purpose.
   const dayClosed = (d: string) => {
@@ -148,6 +149,11 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
         const next = { ...e, ...patch };
         if ("height" in patch && !sectionsFor(next.height).includes(next.section)) {
           next.section = "";
+        }
+        // Keep only days that actually offer the chosen section for this height.
+        if (("height" in patch || "section" in patch) && next.section) {
+          const ok = new Set(daysForSection(next.height, next.section));
+          next.days = next.days.filter((d) => ok.has(d));
         }
         return next;
       })
@@ -525,13 +531,20 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
                     {config.days.map((d) => {
                       const on = e.days.includes(d);
                       const closed = dayClosed(d);
+                      const notOffered = !!e.section && !daysForSection(e.height, e.section).includes(d);
+                      const disabled = closed || notOffered;
+                      const title = closed
+                        ? "Inscripciones cerradas para este día"
+                        : notOffered
+                          ? `La sección ${e.section} no está disponible este día`
+                          : undefined;
                       return (
                         <label
                           key={d}
-                          title={closed ? "Inscripciones cerradas para este día" : undefined}
+                          title={title}
                           className={
                             "inline-flex items-center gap-2 rounded-full border px-3.5 py-1.5 text-sm font-semibold " +
-                            (closed
+                            (disabled
                               ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 line-through"
                               : "cursor-pointer " + (on
                                 ? "border-blue-600 bg-blue-50 text-blue-800"
@@ -542,10 +555,10 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
                             type="checkbox"
                             className="accent-blue-600"
                             checked={on}
-                            disabled={closed}
+                            disabled={disabled}
                             onChange={() => toggleDay(i, d)}
                           />
-                          {d}{closed ? " (cerrado)" : ""}
+                          {d}{closed ? " (cerrado)" : notOffered ? " (no disp.)" : ""}
                         </label>
                       );
                     })}

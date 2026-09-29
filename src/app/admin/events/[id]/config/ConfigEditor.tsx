@@ -116,6 +116,8 @@ export default function ConfigEditor({
   const [sections, setSections] = useState<string[]>(initialConfig.sections);
   const [days, setDays] = useState<string[]>(initialConfig.days);
   const [sectionsByHeight, setSectionsByHeight] = useState<Record<string, string[]>>(initialConfig.sectionsByHeight);
+  const [sectionsByHeightDay, setSectionsByHeightDay] = useState<Record<string, Record<string, string[]>>>(initialConfig.sectionsByHeightDay);
+  const [editDay, setEditDay] = useState<string>(initialConfig.days[0] ?? "");
   const [fields, setFields] = useState(initialConfig.fields);
   // Billing
   const [nominationFee, setNominationFee] = useState(String(initialConfig.pricing.nominationFee));
@@ -157,6 +159,8 @@ export default function ConfigEditor({
   const [seasonBasis, setSeasonBasis] = useState<"class" | "registered">(initSt?.season?.basis ?? "registered");
   const [seasonElig, setSeasonElig] = useState<"all" | "circuit">(initSt?.season?.eligibility ?? "all");
   const [seasonCap, setSeasonCap] = useState<"first_class" | "none">(initSt?.season?.per_day_cap ?? "first_class");
+  const [miniDays, setMiniDays] = useState<string[]>(initSt?.mini_series?.days ?? []);
+  const [seasonDays, setSeasonDays] = useState<string[]>(initSt?.season?.days ?? []);
   const [riderOverride, setRiderOverride] = useState<boolean>(Array.isArray(initSt?.rider_points_heights));
   const [riderHeights, setRiderHeights] = useState<string[]>(initSt?.rider_points_heights ?? []);
   const toggleRiderHeight = (h: string) =>
@@ -196,7 +200,48 @@ export default function ConfigEditor({
       }
       return out;
     });
+    setSectionsByHeightDay((prev) => {
+      const out: Record<string, Record<string, string[]>> = {};
+      for (const d of Object.keys(prev)) {
+        const perH: Record<string, string[]> = {};
+        for (const h of Object.keys(prev[d])) {
+          const kept = prev[d][h].filter((s) => next.includes(s));
+          if (kept.length) perH[h] = kept;
+        }
+        if (Object.keys(perH).length) out[d] = perH;
+      }
+      return out;
+    });
   }
+  const isDayOverridden = (day: string, height: string) => Array.isArray(sectionsByHeightDay[day]?.[height]);
+  function toggleDayOverride(day: string, height: string, on: boolean) {
+    setSectionsByHeightDay((prev) => {
+      const out = { ...prev };
+      const perH = { ...(out[day] ?? {}) };
+      if (on) perH[height] = [...(sectionsByHeight[height]?.length ? sectionsByHeight[height] : sections)];
+      else delete perH[height];
+      if (Object.keys(perH).length) out[day] = perH;
+      else delete out[day];
+      return out;
+    });
+  }
+  function toggleDaySection(day: string, height: string, section: string) {
+    setSectionsByHeightDay((prev) => {
+      const out = { ...prev };
+      const perH = { ...(out[day] ?? {}) };
+      const cur = perH[height] ?? [];
+      const next = cur.includes(section) ? cur.filter((s) => s !== section) : [...cur, section];
+      if (next.length) perH[height] = next;
+      else delete perH[height];
+      if (Object.keys(perH).length) out[day] = perH;
+      else delete out[day];
+      return out;
+    });
+  }
+  const toggleSeriesDay = (scope: "mini" | "season", day: string) => {
+    const setter = scope === "mini" ? setMiniDays : setSeasonDays;
+    setter((prev) => (prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day]));
+  };
   function toggleHeightSection(height: string, section: string) {
     setSectionsByHeight((prev) => {
       const current = prev[height] ?? [];
@@ -244,8 +289,10 @@ export default function ConfigEditor({
 
   function buildStandings(): EventStandingsConfig | undefined {
     const out: EventStandingsConfig = {};
-    if (miniMode !== "inherit") out.mini_series = miniMode === "on" ? { enabled: true, basis: miniBasis, eligibility: miniElig, per_day_cap: miniCap } : { enabled: false };
-    if (seasonMode !== "inherit") out.season = seasonMode === "on" ? { enabled: true, basis: seasonBasis, eligibility: seasonElig, per_day_cap: seasonCap } : { enabled: false };
+    const validMiniDays = miniDays.filter((d) => days.includes(d));
+    const validSeasonDays = seasonDays.filter((d) => days.includes(d));
+    if (miniMode !== "inherit") out.mini_series = miniMode === "on" ? { enabled: true, basis: miniBasis, eligibility: miniElig, per_day_cap: miniCap, ...(validMiniDays.length ? { days: validMiniDays } : {}) } : { enabled: false };
+    if (seasonMode !== "inherit") out.season = seasonMode === "on" ? { enabled: true, basis: seasonBasis, eligibility: seasonElig, per_day_cap: seasonCap, ...(validSeasonDays.length ? { days: validSeasonDays } : {}) } : { enabled: false };
     if (riderOverride) out.rider_points_heights = riderHeights;
     return Object.keys(out).length ? out : undefined;
   }
@@ -263,6 +310,12 @@ export default function ConfigEditor({
       heights,
       sections,
       sectionsByHeight,
+      sectionsByHeightDay: Object.fromEntries(
+        Object.entries(sectionsByHeightDay).filter(([d]) => days.includes(d)).map(([d, perH]) => [
+          d,
+          Object.fromEntries(Object.entries(perH).filter(([h]) => heights.includes(h) && perH[h].length)),
+        ]).filter(([, perH]) => Object.keys(perH as Record<string, string[]>).length)
+      ),
       days,
       fields,
       header: { title: headerTitle, subtitle: headerSubtitle },
@@ -514,6 +567,75 @@ export default function ConfigEditor({
         </div>
       </section>
 
+      {/* Per-day section override */}
+      {days.length > 1 && (
+        <section className={card}>
+          <h3 className={h2}>Secciones por día (opcional)</h3>
+          <p className="mb-3 text-xs text-slate-500">
+            Personalice las secciones de una altura para un día específico. Si no marca &quot;Personalizar&quot;, ese día usa las &quot;Secciones por altura&quot; de arriba.
+          </p>
+          <div className="mb-3 flex flex-wrap gap-2">
+            {days.map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setEditDay(d)}
+                className={"rounded-full px-3 py-1 text-sm font-semibold " + (d === editDay ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-700")}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-slate-900">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th className="py-2 pr-3">Altura</th>
+                  <th className="py-2 pr-3">Personalizar</th>
+                  {sections.map((s) => (
+                    <th key={s} className="py-2 pr-3">{s}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {heights.map((h) => {
+                  const ov = isDayOverridden(editDay, h);
+                  const general = sectionsByHeight[h]?.length ? sectionsByHeight[h] : sections;
+                  const cur = sectionsByHeightDay[editDay]?.[h] ?? [];
+                  return (
+                    <tr key={h} className="border-b border-slate-100">
+                      <td className="py-2 pr-3 font-medium">{h}</td>
+                      <td className="py-2 pr-3">
+                        <input
+                          type="checkbox"
+                          className="accent-blue-600"
+                          checked={ov}
+                          onChange={(e) => toggleDayOverride(editDay, h, e.target.checked)}
+                        />
+                      </td>
+                      {sections.map((s) => (
+                        <td key={s} className="py-2 pr-3">
+                          {ov ? (
+                            <input
+                              type="checkbox"
+                              className="accent-blue-600"
+                              checked={cur.includes(s)}
+                              onChange={() => toggleDaySection(editDay, h, s)}
+                            />
+                          ) : (
+                            <span className="text-[11px] text-slate-400">{general.includes(s) ? "✓" : "·"}</span>
+                          )}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
       {/* Optional fields */}
       <section className={card}>
         <h3 className={h2}>Campos opcionales</h3>
@@ -739,6 +861,21 @@ export default function ConfigEditor({
                   <option value="none">Sin tope por día</option>
                   <option value="first_class">Tope: 1ª prueba del día</option>
                 </select>
+                <div className="flex w-full flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-500">Días que cuentan:</span>
+                  {days.map((d) => {
+                    const on = miniDays.includes(d);
+                    return (
+                      <label key={d} className={"inline-flex cursor-pointer items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold " + (on ? "border-indigo-600 bg-indigo-50 text-indigo-800" : "border-slate-300 text-slate-600")}>
+                        <input type="checkbox" className="accent-indigo-600" checked={on} onChange={() => toggleSeriesDay("mini", d)} />
+                        {d}
+                      </label>
+                    );
+                  })}
+                  {miniDays.filter((d) => days.includes(d)).length === 0 && (
+                    <span className="text-[11px] text-slate-400">(ninguno marcado = cuentan todos los días)</span>
+                  )}
+                </div>
               </>
             )}
           </div>
@@ -767,6 +904,21 @@ export default function ConfigEditor({
                   <option value="none">Sin tope por día</option>
                   <option value="first_class">Tope: 1ª prueba del día</option>
                 </select>
+                <div className="flex w-full flex-wrap items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-500">Días que cuentan:</span>
+                  {days.map((d) => {
+                    const on = seasonDays.includes(d);
+                    return (
+                      <label key={d} className={"inline-flex cursor-pointer items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold " + (on ? "border-indigo-600 bg-indigo-50 text-indigo-800" : "border-slate-300 text-slate-600")}>
+                        <input type="checkbox" className="accent-indigo-600" checked={on} onChange={() => toggleSeriesDay("season", d)} />
+                        {d}
+                      </label>
+                    );
+                  })}
+                  {seasonDays.filter((d) => days.includes(d)).length === 0 && (
+                    <span className="text-[11px] text-slate-400">(ninguno marcado = cuentan todos los días)</span>
+                  )}
+                </div>
               </>
             )}
           </div>

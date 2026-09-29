@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { normalizeConfig, selectableSections, type EventConfig } from "@/lib/events/config";
+import { normalizeConfig, selectableSectionsUnion, daysOfferingSection, type EventConfig } from "@/lib/events/config";
 import { Combobox } from "@/app/signup/[slug]/Combobox";
 import { addEntryAction } from "./actions";
 
@@ -38,7 +38,7 @@ export function AddEntryButton({ eventId, slug, config: rawConfig }: { eventId: 
 
   const riderItems = useMemo(() => riders.map((r) => ({ id: r.id, label: `${r.last_name}, ${r.first_name}` })), [riders]);
   const horseItems = useMemo(() => horses.map((h) => ({ id: h.id, label: h.name })), [horses]);
-  const sectionOpts = selectableSections(config, height);
+  const sectionOpts = selectableSectionsUnion(config, height);
 
   function reset() {
     setClubId(""); setRider(""); setRiderId(null); setHorse(""); setHorseId(null);
@@ -98,7 +98,7 @@ export function AddEntryButton({ eventId, slug, config: rawConfig }: { eventId: 
                 </div>
                 <div>
                   <label className={lbl}>Sección</label>
-                  <select className={field} value={section} onChange={(e) => setSection(e.target.value)}>
+                  <select className={field} value={section} onChange={(e) => { const s = e.target.value; setSection(s); setDays((ds) => ds.filter((d) => !s || daysOfferingSection(config, height, s).includes(d))); }}>
                     <option value="" disabled>Seleccione…</option>
                     {sectionOpts.map((s) => <option key={s} value={s}>{s}</option>)}
                   </select>
@@ -109,10 +109,11 @@ export function AddEntryButton({ eventId, slug, config: rawConfig }: { eventId: 
                 <div className="flex flex-wrap gap-2">
                   {config.days.map((d) => {
                     const on = days.includes(d);
+                    const notOffered = !!section && !daysOfferingSection(config, height, section).includes(d);
                     return (
-                      <label key={d} className={"inline-flex cursor-pointer items-center gap-2 rounded-full border px-3 py-1 text-sm font-semibold " + (on ? "border-blue-600 bg-blue-50 text-blue-800" : "border-slate-300 text-slate-700")}>
-                        <input type="checkbox" className="accent-blue-600" checked={on} onChange={() => setDays((ds) => on ? ds.filter((x) => x !== d) : [...ds, d])} />
-                        {d}
+                      <label key={d} title={notOffered ? `La sección ${section} no está disponible este día` : undefined} className={"inline-flex items-center gap-2 rounded-full border px-3 py-1 text-sm font-semibold " + (notOffered ? "cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400 line-through" : "cursor-pointer " + (on ? "border-blue-600 bg-blue-50 text-blue-800" : "border-slate-300 text-slate-700"))}>
+                        <input type="checkbox" className="accent-blue-600" checked={on} disabled={notOffered} onChange={() => setDays((ds) => on ? ds.filter((x) => x !== d) : [...ds, d])} />
+                        {d}{notOffered ? " (no disp.)" : ""}
                       </label>
                     );
                   })}

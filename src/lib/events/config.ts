@@ -6,7 +6,7 @@
 // scope can inherit the series default (omit it), be turned on (with a method +
 // cap), or off (standalone show). rider_points_heights, when present, overrides
 // which heights score by RIDER in Abierta.
-export type EventStandingsScope = { enabled?: boolean; basis?: "class" | "registered"; eligibility?: "all" | "circuit"; per_day_cap?: "first_class" | "none" };
+export type EventStandingsScope = { enabled?: boolean; basis?: "class" | "registered"; eligibility?: "all" | "circuit"; per_day_cap?: "first_class" | "none"; days?: string[] };
 export type EventStandingsConfig = {
   mini_series?: EventStandingsScope;
   season?: EventStandingsScope;
@@ -19,6 +19,10 @@ export type EventConfig = {
   // Optional override of allowed sections per height. If a height is absent
   // (or maps to an empty list), ALL sections are allowed for it.
   sectionsByHeight: Record<string, string[]>;
+  // Optional per-DAY override, keyed by day then height. When a (day, height)
+  // entry is present and non-empty it replaces sectionsByHeight FOR THAT DAY
+  // ONLY; days without an entry fall back to sectionsByHeight.
+  sectionsByHeightDay: Record<string, Record<string, string[]>>;
   days: string[];
   fields: { circuit: boolean; discount: boolean };
   // Branding shown on the PDF header (logo is stored separately on the event).
@@ -58,6 +62,7 @@ export const TEMPLATE_CONFIG: EventConfig = {
     "60cm": ["Abierta", "Libre", "Especial"],
     "80cm": ["Abierta", "Libre", "Especial"],
   },
+  sectionsByHeightDay: {},
   days: ["Sábado", "Domingo"],
   fields: { circuit: true, discount: true },
   header: { title: "", subtitle: "" },
@@ -85,10 +90,21 @@ export function normalizeConfig(raw: unknown): EventConfig {
   for (const k of Object.keys(sbhRaw)) {
     if (Array.isArray(sbhRaw[k])) sectionsByHeight[k] = (sbhRaw[k] as unknown[]).map(String);
   }
+  const sbhdRaw = (c.sectionsByHeightDay && typeof c.sectionsByHeightDay === "object" ? c.sectionsByHeightDay : {}) as Record<string, unknown>;
+  const sectionsByHeightDay: Record<string, Record<string, string[]>> = {};
+  for (const day of Object.keys(sbhdRaw)) {
+    const perHeightRaw = (sbhdRaw[day] && typeof sbhdRaw[day] === "object" ? sbhdRaw[day] : {}) as Record<string, unknown>;
+    const perHeight: Record<string, string[]> = {};
+    for (const h of Object.keys(perHeightRaw)) {
+      if (Array.isArray(perHeightRaw[h])) perHeight[h] = (perHeightRaw[h] as unknown[]).map(String);
+    }
+    if (Object.keys(perHeight).length) sectionsByHeightDay[day] = perHeight;
+  }
   return {
     heights: Array.isArray(c.heights) ? c.heights.map(String) : [],
     sections: Array.isArray(c.sections) ? c.sections.map(String) : [],
     sectionsByHeight,
+    sectionsByHeightDay,
     days: Array.isArray(c.days) ? c.days.map(String) : [],
     fields: {
       circuit: !!c.fields?.circuit,
@@ -117,6 +133,7 @@ function normalizeEventStandings(raw: unknown): EventStandingsConfig | undefined
     if (o.basis === "class" || o.basis === "registered") out.basis = o.basis;
     if (o.eligibility === "all" || o.eligibility === "circuit") out.eligibility = o.eligibility;
     if (o.per_day_cap === "first_class" || o.per_day_cap === "none") out.per_day_cap = o.per_day_cap;
+    if (Array.isArray(o.days)) out.days = (o.days as unknown[]).map(String);
     return Object.keys(out).length ? out : undefined;
   };
   const out: EventStandingsConfig = {};
@@ -218,4 +235,51 @@ export function isAllowedSection(config: EventConfig, height: string, section: s
 
 export function isValidDay(config: EventConfig, day: string): boolean {
   return config.days.includes(day);
+}
+
+// Sections allowed for a height on a SPECIFIC day: the per-day override when set
+// (non-empty), otherwise the general per-prueba list.
+export function sectionsForHeightDay(config: EventConfig, height: string, day: string): string[] {
+  const perDay = config.sectionsByHeightDay?.[day]?.[height];
+  if (Array.isArray(perDay) && perDay.length > 0) return perDay;
+  return sectionsForHeight(config, height);
+}
+
+// Union of sections offered for a height across all event days — used to fill a
+// section picker before a specific day is chosen. Ordered by config.sections.
+export function sectionsUnionForHeight(config: EventConfig, height: string): string[] {
+  const set = new Set<string>();
+  const days = config.days.length ? config.days : [""];
+  for (const d of days) for (const s of sectionsForHeightDay(config, height, d)) set.add(s);
+  const order = config.sections;
+  return [...set].sort((a, b) => {
+    const ia = order.indexOf(a), ib = order.indexOf(b);
+    return (ia < 0 ? 999 : ia) - (ib < 0 ? 999 : ib);
+  });
+}
+
+// Selectable sections for a height across all days INCLUDING extemp sections.
+export function selectableSectionsUnion(config: EventConfig, height: string): string[] {
+  return [...new Set([...sectionsUnionForHeight(config, height), ...config.extempSections])];
+}
+
+// Which event days offer a given section for a height (extemp sections are valid
+// on every day).
+export function daysOfferingSection(config: EventConfig, height: string, section: string): string[] {
+  if (config.extempSections.includes(section)) return [...config.days];
+  return config.days.filter((d) => sectionsForHeightDay(config, height, d).includes(section));
+}
+
+// Day-aware validity: is this section allowed for the height on that day?
+export function isSectionAllowedOnDay(config: EventConfig, height: string, section: string, day: string): boolean {
+  if (!config.heights.includes(height)) return false;
+  if (config.extempSections.includes(section)) return true;
+  return sectionsForHeightDay(config, height, day).includes(section);
+}
+
+// The days that count for a given standings scope. When the scope lists no days
+// (or none valid), ALL event days count.
+export function scopeDays(config: EventConfig, scope: { days?: string[] } | undefined): string[] {
+  const listed = (scope?.days ?? []).filter((d) => config.days.includes(d));
+  return listed.length ? listed : [...config.days];
 }

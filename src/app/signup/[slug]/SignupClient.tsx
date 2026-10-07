@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { normalizeConfig, selectableSectionsUnion, daysOfferingSection } from "@/lib/events/config";
 import type { ClubOption, EventRow, RosterRider, RosterHorse, EntryInput } from "@/lib/types/events";
 import { Combobox } from "./Combobox";
@@ -67,7 +68,28 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [errorToast, setErrorToast] = useState<string[] | null>(null);
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    if (!errorToast) return;
+    const t = setTimeout(() => setErrorToast(null), 5000);
+    return () => clearTimeout(t);
+  }, [errorToast]);
+  // Scroll to the first field with an error (club/newClub, then each entry's
+  // rider → horse → height → section → days) and surface the floating message.
+  function flagErrors(errs: Record<string, string>) {
+    setFieldErrors(errs);
+    setErrorToast(Object.values(errs));
+    const order = ["club", "newClub", ...entries.flatMap((_, i) => [`${i}:rider`, `${i}:horse`, `${i}:height`, `${i}:section`, `${i}:days`])];
+    const firstKey = order.find((k) => k in errs) ?? Object.keys(errs)[0];
+    if (typeof document !== "undefined" && firstKey) {
+      const el = document.getElementById(`err-${firstKey}`);
+      if (el) setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "center" }), 0);
+    }
+  }
   const errInput = (key: string) => input + (fieldErrors[key] ? " border-red-400 ring-2 ring-red-100 focus:border-red-500 focus:ring-red-100" : "");
+  const errLabel = (key: string) => label + (fieldErrors[key] ? " text-red-700" : "");
   const clearErr = (...keys: string[]) =>
     setFieldErrors((prev) => {
       if (!keys.some((k) => k in prev)) return prev;
@@ -212,10 +234,11 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
     }
 
     if (Object.keys(errs).length) {
-      setFieldErrors(errs);
+      flagErrors(errs);
       return;
     }
     setFieldErrors({});
+    setErrorToast(null);
 
     // Build a display summary (resolving names) to show after a successful save
     const summaryRows: SubmittedRow[] = entries.map((e) => {
@@ -278,7 +301,9 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
       setRiders([]);
       setHorses([]);
     } catch (e) {
-      setFieldErrors({ _general: "Error al guardar: " + (e as Error).message });
+      const msg = "Error al guardar: " + (e as Error).message;
+      setFieldErrors({ _general: msg });
+      setErrorToast([msg]);
     } finally {
       setSaving(false);
     }
@@ -330,20 +355,24 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
         </div>
       )}
 
-      {Object.keys(fieldErrors).length > 0 && (
-        <div className="fixed left-1/2 top-20 z-50 w-[92%] max-w-md -translate-x-1/2">
-          <div className="rounded-xl border border-red-300 bg-white p-4 shadow-2xl">
+      {mounted && errorToast && errorToast.length > 0 && createPortal(
+        <div className="pointer-events-none fixed inset-0 z-[9999] flex items-center justify-center p-4">
+          <div className="pointer-events-auto w-full max-w-md rounded-2xl border-2 border-red-400 bg-white p-5 shadow-2xl">
             <div className="flex items-start justify-between gap-3">
-              <h3 className="text-sm font-bold text-red-700">Revise los campos marcados</h3>
-              <button type="button" onClick={() => setFieldErrors({})} className="text-slate-400 hover:text-slate-700" aria-label="Cerrar">✕</button>
+              <h3 className="flex items-center gap-2 text-base font-bold text-red-700">
+                <span aria-hidden className="text-xl">⚠️</span> Falta corregir
+              </h3>
+              <button type="button" onClick={() => setErrorToast(null)} className="rounded-md px-2 text-lg font-bold text-slate-400 hover:text-slate-700" aria-label="Cerrar">✕</button>
             </div>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
-              {Object.entries(fieldErrors).map(([k, m]) => (
-                <li key={k}>{m}</li>
+            <ul className="mt-2 list-disc space-y-1 pl-6 text-sm text-slate-800">
+              {errorToast.map((m, idx) => (
+                <li key={idx}>{m}</li>
               ))}
             </ul>
+            <p className="mt-3 text-xs text-slate-400">Los campos con problema están marcados en rojo.</p>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       <form onSubmit={onSubmit} className="space-y-5">
@@ -354,8 +383,8 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
             Seleccione su club para autocompletar el contacto. Puede editarlo si es necesario.
           </p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div>
-              <label className={label}>Club {req}</label>
+            <div id="err-club">
+              <label className={errLabel("club")}>Club {req}</label>
               <select className={errInput("club")} title={fieldErrors["club"]} value={clubId} onChange={(e) => onClubChange(e.target.value)} required>
                 <option value="" disabled>
                   Seleccione su club…
@@ -369,8 +398,8 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
               </select>
             </div>
             {isOther && (
-              <div>
-                <label className={label}>Nombre de su club {req}</label>
+              <div id="err-newClub">
+                <label className={errLabel("newClub")}>Nombre de su club {req}</label>
                 <input
                   className={errInput("newClub")}
                   title={fieldErrors["newClub"]}
@@ -454,8 +483,8 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
 
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     {/* Rider */}
-                    <div>
-                      <label className={label}>Jinete {req}</label>
+                    <div id={`err-${i}:rider`}>
+                      <label className={errLabel(`${i}:rider`)}>Jinete {req}</label>
                       <Combobox
                         disabled={!clubId}
                         invalid={!!fieldErrors[`${i}:rider`]}
@@ -504,8 +533,8 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
                     </div>
 
                     {/* Horse */}
-                    <div>
-                      <label className={label}>Caballo {req}</label>
+                    <div id={`err-${i}:horse`}>
+                      <label className={errLabel(`${i}:horse`)}>Caballo {req}</label>
                       <Combobox
                         disabled={!clubId}
                         invalid={!!fieldErrors[`${i}:horse`]}
@@ -528,8 +557,8 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
                     </div>
 
                     {/* Height */}
-                    <div>
-                      <label className={label}>Altura {req}</label>
+                    <div id={`err-${i}:height`}>
+                      <label className={errLabel(`${i}:height`)}>Altura {req}</label>
                       <select
                         className={errInput(`${i}:height`)}
                         title={fieldErrors[`${i}:height`]}
@@ -548,8 +577,8 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
                     </div>
 
                     {/* Section */}
-                    <div>
-                      <label className={label}>Sección {req}</label>
+                    <div id={`err-${i}:section`}>
+                      <label className={errLabel(`${i}:section`)}>Sección {req}</label>
                       <select
                         className={errInput(`${i}:section`)}
                         title={fieldErrors[`${i}:section`]}
@@ -571,6 +600,7 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
 
                   {/* Days (from event config) */}
                   <div
+                    id={`err-${i}:days`}
                     title={fieldErrors[`${i}:days`]}
                     className={"mt-3 flex flex-wrap items-center gap-3 rounded-lg " + (fieldErrors[`${i}:days`] ? "border border-red-400 bg-red-50/60 p-2 ring-2 ring-red-100" : "")}
                   >

@@ -66,6 +66,16 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
   const [entries, setEntries] = useState<EntryState[]>([emptyEntry()]);
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<{ type: "ok" | "err"; msg: string } | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const errInput = (key: string) => input + (fieldErrors[key] ? " border-red-400 ring-2 ring-red-100 focus:border-red-500 focus:ring-red-100" : "");
+  const clearErr = (...keys: string[]) =>
+    setFieldErrors((prev) => {
+      if (!keys.some((k) => k in prev)) return prev;
+      const out = { ...prev };
+      for (const k of keys) delete out[k];
+      return out;
+    });
+  const clearEntryErrors = (i: number) => clearErr(`${i}:rider`, `${i}:horse`, `${i}:height`, `${i}:section`, `${i}:days`);
 
   type SubmittedRow = {
     rider: string;
@@ -112,6 +122,8 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
 
   // ---- Club selection ----
   function onClubChange(value: string) {
+    clearErr("club");
+    setFieldErrors({});
     setClubId(value);
     setEntries([emptyEntry()]); // reset entries when club changes
     setLastSubmission(null); // hide any previous confirmation
@@ -143,6 +155,7 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
 
   // ---- Entry helpers ----
   function updateEntry(i: number, patch: Partial<EntryState>) {
+    clearEntryErrors(i);
     setEntries((es) =>
       es.map((e, idx) => {
         if (idx !== i) return e;
@@ -169,6 +182,7 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
   const removeEntry = (i: number) =>
     setEntries((es) => (es.length === 1 ? es : es.filter((_, idx) => idx !== i)));
   function toggleDay(i: number, day: string) {
+    clearErr(`${i}:days`);
     setEntries((es) =>
       es.map((e, idx) =>
         idx === i ? { ...e, days: e.days.includes(day) ? e.days.filter((d) => d !== day) : [...e.days, day] } : e
@@ -181,20 +195,27 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
     ev.preventDefault();
     setStatus(null);
 
-    if (!clubId) return setStatus({ type: "err", msg: "Seleccione un club." });
-    if (isOther && !newClubName.trim()) return setStatus({ type: "err", msg: "Escriba el nombre de su club." });
+    const errs: Record<string, string> = {};
+    if (!clubId) errs["club"] = "Seleccione un club.";
+    if (isOther && !newClubName.trim()) errs["newClub"] = "Escriba el nombre de su club.";
 
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i];
       const n = i + 1;
       const hasRider = e.riderNew ? e.newRiderFirst.trim() && e.newRiderLast.trim() : !!e.riderId;
       const hasHorse = e.horseNew ? !!e.newHorseName.trim() : !!e.horseId;
-      if (!hasRider) return setStatus({ type: "err", msg: `Participación ${n}: seleccione o cree un jinete.` });
-      if (!hasHorse) return setStatus({ type: "err", msg: `Participación ${n}: seleccione o cree un caballo.` });
-      if (!e.height || !e.section) return setStatus({ type: "err", msg: `Participación ${n}: elija altura y sección.` });
-      if (e.days.length === 0)
-        return setStatus({ type: "err", msg: `Participación ${n}: elija al menos un día.` });
+      if (!hasRider) errs[`${i}:rider`] = `Participación ${n}: seleccione o cree un jinete.`;
+      if (!hasHorse) errs[`${i}:horse`] = `Participación ${n}: seleccione o cree un caballo.`;
+      if (!e.height) errs[`${i}:height`] = `Participación ${n}: elija la altura.`;
+      if (e.height && !e.section) errs[`${i}:section`] = `Participación ${n}: elija la sección.`;
+      if (e.days.length === 0) errs[`${i}:days`] = `Participación ${n}: elija al menos un día.`;
     }
+
+    if (Object.keys(errs).length) {
+      setFieldErrors(errs);
+      return;
+    }
+    setFieldErrors({});
 
     // Build a display summary (resolving names) to show after a successful save
     const summaryRows: SubmittedRow[] = entries.map((e) => {
@@ -257,7 +278,7 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
       setRiders([]);
       setHorses([]);
     } catch (e) {
-      setStatus({ type: "err", msg: "Error al guardar: " + (e as Error).message });
+      setFieldErrors({ _general: "Error al guardar: " + (e as Error).message });
     } finally {
       setSaving(false);
     }
@@ -309,6 +330,22 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
         </div>
       )}
 
+      {Object.keys(fieldErrors).length > 0 && (
+        <div className="fixed left-1/2 top-20 z-50 w-[92%] max-w-md -translate-x-1/2">
+          <div className="rounded-xl border border-red-300 bg-white p-4 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="text-sm font-bold text-red-700">Revise los campos marcados</h3>
+              <button type="button" onClick={() => setFieldErrors({})} className="text-slate-400 hover:text-slate-700" aria-label="Cerrar">✕</button>
+            </div>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+              {Object.entries(fieldErrors).map(([k, m]) => (
+                <li key={k}>{m}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
+
       <form onSubmit={onSubmit} className="space-y-5">
         {/* CLUB */}
         <section className={card}>
@@ -319,7 +356,7 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
               <label className={label}>Club {req}</label>
-              <select className={input} value={clubId} onChange={(e) => onClubChange(e.target.value)} required>
+              <select className={errInput("club")} title={fieldErrors["club"]} value={clubId} onChange={(e) => onClubChange(e.target.value)} required>
                 <option value="" disabled>
                   Seleccione su club…
                 </option>
@@ -335,9 +372,10 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
               <div>
                 <label className={label}>Nombre de su club {req}</label>
                 <input
-                  className={input}
+                  className={errInput("newClub")}
+                  title={fieldErrors["newClub"]}
                   value={newClubName}
-                  onChange={(e) => setNewClubName(e.target.value)}
+                  onChange={(e) => { clearErr("newClub"); setNewClubName(e.target.value); }}
                   placeholder="Escriba el nombre del club"
                   required
                 />
@@ -420,6 +458,8 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
                       <label className={label}>Jinete {req}</label>
                       <Combobox
                         disabled={!clubId}
+                        invalid={!!fieldErrors[`${i}:rider`]}
+                        title={fieldErrors[`${i}:rider`]}
                         placeholder="Escriba para buscar…"
                         query={e.riderQuery}
                         items={riderItems}
@@ -468,6 +508,8 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
                       <label className={label}>Caballo {req}</label>
                       <Combobox
                         disabled={!clubId}
+                        invalid={!!fieldErrors[`${i}:horse`]}
+                        title={fieldErrors[`${i}:horse`]}
                         placeholder="Escriba para buscar…"
                         query={e.horseQuery}
                         items={horseItems}
@@ -489,7 +531,8 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
                     <div>
                       <label className={label}>Altura {req}</label>
                       <select
-                        className={input}
+                        className={errInput(`${i}:height`)}
+                        title={fieldErrors[`${i}:height`]}
                         value={e.height}
                         onChange={(ev) => updateEntry(i, { height: ev.target.value })}
                       >
@@ -508,7 +551,8 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
                     <div>
                       <label className={label}>Sección {req}</label>
                       <select
-                        className={input}
+                        className={errInput(`${i}:section`)}
+                        title={fieldErrors[`${i}:section`]}
                         value={e.section}
                         disabled={!e.height}
                         onChange={(ev) => updateEntry(i, { section: ev.target.value })}
@@ -526,7 +570,10 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
                   </div>
 
                   {/* Days (from event config) */}
-                  <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <div
+                    title={fieldErrors[`${i}:days`]}
+                    className={"mt-3 flex flex-wrap items-center gap-3 rounded-lg " + (fieldErrors[`${i}:days`] ? "border border-red-400 bg-red-50/60 p-2 ring-2 ring-red-100" : "")}
+                  >
                     <span className="text-sm font-semibold text-slate-700">Días {req}</span>
                     {config.days.map((d) => {
                       const on = e.days.includes(d);

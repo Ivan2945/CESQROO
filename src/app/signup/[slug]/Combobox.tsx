@@ -19,6 +19,8 @@ export function Combobox({
   placeholder,
   disabled,
   createLabel,
+  invalid,
+  title,
 }: {
   items: { id: string; label: string }[];
   query: string;
@@ -28,20 +30,37 @@ export function Combobox({
   placeholder?: string;
   disabled?: boolean;
   createLabel: (text: string) => string;
+  invalid?: boolean;
+  title?: string;
 }) {
   const [open, setOpen] = useState(false);
   const q = query.trim().toLowerCase();
-  const filtered = (q ? items.filter((it) => it.label.toLowerCase().includes(q)) : items).slice(0, 8);
+  // Rank matches so exact / prefix hits surface first — otherwise a very short
+  // name (e.g. a horse called "H") gets buried below the 8-item cap.
+  const rank = (label: string) => {
+    const l = label.toLowerCase();
+    if (l === q) return 0;
+    if (l.startsWith(q)) return 1;
+    if (new RegExp(`\\b${q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`).test(l)) return 2;
+    return 3;
+  };
+  const filtered = (q ? items.filter((it) => it.label.toLowerCase().includes(q)) : items)
+    .slice()
+    .sort((a, b) => rank(a.label) - rank(b.label) || a.label.length - b.label.length || a.label.localeCompare(b.label, "es"))
+    .slice(0, 8);
   const exact = items.some((it) => it.label.toLowerCase() === q);
   const showCreate = q.length > 0 && !exact;
+
+  const inputCls = fieldInput + (invalid ? " border-red-400 ring-2 ring-red-100 focus:border-red-500 focus:ring-red-100" : "");
 
   return (
     <div className="relative">
       <input
-        className={fieldInput}
+        className={inputCls}
         value={query}
         placeholder={placeholder}
         disabled={disabled}
+        title={title}
         autoComplete="off"
         onChange={(e) => {
           onQueryChange(e.target.value);

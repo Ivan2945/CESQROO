@@ -41,21 +41,8 @@ export default function ExportClient({
     return ordered;
   }, [countsForDay, heightOrder]);
 
-  // Editable running order (re-seeds whenever the day changes).
-  const [order, setOrder] = useState<string[]>(initialOrder);
-  const [seededDay, setSeededDay] = useState(day);
-  if (seededDay !== day) {
-    setSeededDay(day);
-    setOrder(initialOrder);
-  }
-
-  function move(i: number, dir: -1 | 1) {
-    const j = i + dir;
-    if (j < 0 || j >= order.length) return;
-    const next = order.slice();
-    [next[i], next[j]] = [next[j], next[i]];
-    setOrder(next);
-  }
+  // Order is fixed by the event config — shown read-only here.
+  const order = initialOrder;
 
   async function download(url: string, payload: object, filename: string) {
     setError(null);
@@ -87,12 +74,12 @@ export default function ExportClient({
   }
 
   const generate = () =>
-    download(`/api/events/${eventSlug}/export`, { day, heightOrder: order }, `${eventName} - ${day}.xlsx`);
+    download(`/api/events/${eventSlug}/export`, { day }, `${eventName} - ${day}.xlsx`);
 
   const downloadPdf = (list: string, label: string) =>
     download(
       `/api/events/${eventSlug}/export-pdf`,
-      { day, heightOrder: order, list },
+      { day, list },
       `${eventName} - ${day} - ${label}.pdf`
     );
 
@@ -128,27 +115,9 @@ export default function ExportClient({
           ))}
         </select>
 
-        <h3 className="mt-6 text-sm font-semibold text-slate-700">Orden de las pruebas</h3>
-        <p className="mb-3 text-xs text-slate-500">
-          Acomode las pruebas en el orden en que correrán. Se generan listas para todas las pruebas, incluso sin inscritos.{" "}
-          {totalForDay} participación(es) este día.
+        <p className="mt-6 text-xs text-slate-500">
+          El orden de las pruebas se define en la configuración del evento. {totalForDay} participación(es) este día.
         </p>
-
-        {order.length === 0 ? (
-          <p className="text-sm text-slate-400">No hay participaciones para {day}.</p>
-        ) : (
-          <ol className="space-y-1.5">
-            {order.map((h, i) => (
-              <li key={h} className="flex items-center gap-2 rounded-md bg-slate-50 px-3 py-2 text-sm text-slate-800">
-                <span className="w-6 font-bold text-blue-700">{i + 1}</span>
-                <span className="flex-1 font-medium">{h}</span>
-                <span className="text-xs text-slate-500">{countsForDay.get(h) ?? 0}</span>
-                <button onClick={() => move(i, -1)} className="rounded border border-slate-200 px-2 py-0.5 text-xs hover:bg-white">↑</button>
-                <button onClick={() => move(i, 1)} className="rounded border border-slate-200 px-2 py-0.5 text-xs hover:bg-white">↓</button>
-              </li>
-            ))}
-          </ol>
-        )}
 
         <div className="mt-6">
           <button

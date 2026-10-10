@@ -1,6 +1,6 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { normalizeConfig, isHeightActiveOnDay, startNumberForDay } from "@/lib/events/config";
+import { normalizeConfig, activeHeightsForDay, startNumberForDay } from "@/lib/events/config";
 import { buildDayWorkbook, type ExportEntry } from "@/lib/events/exportWorkbook";
 
 export const runtime = "nodejs";
@@ -27,14 +27,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   }
   const { slug } = await params;
 
-  let body: { day?: string; heightOrder?: string[] };
+  let body: { day?: string };
   try {
     body = await req.json();
   } catch {
     return Response.json({ error: "Solicitud inválida." }, { status: 400 });
   }
   const day = (body.day || "").trim();
-  const heightOrder = Array.isArray(body.heightOrder) ? body.heightOrder : [];
   if (!day) return Response.json({ error: "Seleccione un día." }, { status: 400 });
 
   const { data: event } = await supabaseAdmin.from("events").select("id, name, config").eq("slug", slug).single();
@@ -76,12 +75,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       .map((s) => [s.height, (s.start_order as { entry_id: string; no: number | string }[]).map((o) => ({ entryId: o.entry_id, no: o.no }))])
   );
 
-  // Only the pruebas active that day are listed (empty active classes still get
-  // a list); organizer's order first, then any remaining active heights.
-  const activeThisDay = config.heights.filter((h) => isHeightActiveOnDay(config, h, day));
-  const activeSet = new Set(activeThisDay);
-  const requested = heightOrder.filter((h) => activeSet.has(h));
-  const finalOrder = [...new Set([...requested, ...activeThisDay])];
+  // Class order comes only from the event config; the only pruebas listed are
+  // those active that day (empty active classes still get a list).
+  const finalOrder = activeHeightsForDay(config, null, day);
+  const activeSet = new Set(finalOrder);
   const dayEntries = entries.filter((e) => activeSet.has(e.height));
 
   // Continuous Prueba numbering across days, counting only active classes.

@@ -236,17 +236,12 @@ export function dayHeightOrder(
   dayState: Record<string, { heightOrder?: string[] } | undefined> | null | undefined,
   day: string
 ): string[] {
-  const ds = dayState ?? {};
+  void dayState; // class order now lives only in the event config
   const first = config.days[0];
   const co = config.classOrderByDay ?? {};
-  // Priority: this day's committed order → config default for the day → first
-  // day's committed order → config default for the first day → heights list.
-  const base =
-    (ds[day]?.heightOrder?.length ? ds[day]!.heightOrder! :
-      co[day]?.length ? co[day] :
-        ds[first]?.heightOrder?.length ? ds[first]!.heightOrder! :
-          co[first]?.length ? co[first] :
-            config.heights);
+  // Config is the single source of truth: this day's order → the first day's
+  // order (default for the rest) → the heights list.
+  const base = co[day]?.length ? co[day] : co[first]?.length ? co[first] : config.heights;
   const valid = base.filter((h) => config.heights.includes(h));
   return [...valid, ...config.heights.filter((h) => !valid.includes(h))];
 }

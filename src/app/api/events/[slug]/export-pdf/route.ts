@@ -1,6 +1,6 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { normalizeConfig, isHeightActiveOnDay, startNumberForDay } from "@/lib/events/config";
+import { normalizeConfig, activeHeightsForDay, startNumberForDay } from "@/lib/events/config";
 import { buildClassesOrdered, type ExportEntry, type Variant } from "@/lib/events/exportWorkbook";
 import { buildDayPdf, buildMasterListPdf } from "@/lib/events/exportPdf";
 
@@ -37,7 +37,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   }
   const { slug } = await params;
 
-  let body: { day?: string; heightOrder?: string[]; list?: string };
+  let body: { day?: string; list?: string };
   try {
     body = await req.json();
   } catch {
@@ -45,7 +45,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   }
   const day = (body.day || "").trim();
   const list = (body.list || "results").trim();
-  const heightOrder = Array.isArray(body.heightOrder) ? body.heightOrder : [];
   if (!day) return Response.json({ error: "Seleccione un día." }, { status: 400 });
 
   const variant: Variant = list === "results" ? "results" : list === "steward" ? "steward" : "impresion";
@@ -118,11 +117,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       .map((s) => [s.height, (s.start_order as { entry_id: string; no: number | string }[]).map((o) => ({ entryId: o.entry_id, no: o.no }))])
   );
 
-  // Only the pruebas active that day are printed/numbered.
-  const activeThisDay = config.heights.filter((h) => isHeightActiveOnDay(config, h, day));
-  const activeSet = new Set(activeThisDay);
-  const requested = heightOrder.filter((h) => activeSet.has(h));
-  const finalOrder = [...new Set([...requested, ...activeThisDay])];
+  // Class order comes only from the event config (single source of truth); the
+  // only pruebas printed/numbered are those active that day.
+  const finalOrder = activeHeightsForDay(config, null, day);
+  const activeSet = new Set(finalOrder);
   const dayEntries = entries.filter((e) => activeSet.has(e.height));
   const startNumber = startNumberForDay(config, null, day);
 

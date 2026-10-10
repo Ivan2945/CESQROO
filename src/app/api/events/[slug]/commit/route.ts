@@ -136,16 +136,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     return Response.json({ ok: true });
   }
 
-  if (action === "saveHeightOrder") {
-    // The order the classes RUN on this day (independent per day; day 1 is the
-    // default for the rest). Committing the day doesn't lock this.
-    const { heightOrder } = body as { heightOrder: string[] };
-    if (!Array.isArray(heightOrder)) return Response.json({ error: "Falta heightOrder." }, { status: 400 });
-    const valid = heightOrder.filter((h) => config.heights.includes(h));
-    await setDay({ heightOrder: valid });
-    return Response.json({ ok: true, heightOrder: dayHeightOrder(config, ds, day) });
-  }
-
   if (action === "renumber") {
     // Clean 1..n by current position (wipes any manual labels for this class).
     const { height } = body as { height: string };

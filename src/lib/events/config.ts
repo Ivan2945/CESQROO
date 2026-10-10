@@ -26,6 +26,9 @@ export type EventConfig = {
   // Heights NOT offered on a given day, keyed by day. A height listed here does
   // not run that day at all: no sections (not even Training/FC), no sign-ups.
   inactiveByDay: Record<string, string[]>;
+  // Default running order of the pruebas (heights) per day, keyed by day. Used
+  // for printing/exports; a commit-time reorder (day_state) overrides it.
+  classOrderByDay: Record<string, string[]>;
   days: string[];
   fields: { circuit: boolean; discount: boolean };
   // Branding shown on the PDF header (logo is stored separately on the event).
@@ -74,6 +77,7 @@ export const TEMPLATE_CONFIG: EventConfig = {
   },
   sectionsByHeightDay: {},
   inactiveByDay: {},
+  classOrderByDay: {},
   days: ["Sábado", "Domingo"],
   fields: { circuit: true, discount: true },
   header: { title: "", subtitle: "" },
@@ -119,12 +123,21 @@ export function normalizeConfig(raw: unknown): EventConfig {
       if (hs.length) inactiveByDay[day] = hs;
     }
   }
+  const orderRaw = (c.classOrderByDay && typeof c.classOrderByDay === "object" ? c.classOrderByDay : {}) as Record<string, unknown>;
+  const classOrderByDay: Record<string, string[]> = {};
+  for (const day of Object.keys(orderRaw)) {
+    if (Array.isArray(orderRaw[day])) {
+      const hs = (orderRaw[day] as unknown[]).map(String);
+      if (hs.length) classOrderByDay[day] = hs;
+    }
+  }
   return {
     heights: Array.isArray(c.heights) ? c.heights.map(String) : [],
     sections: Array.isArray(c.sections) ? c.sections.map(String) : [],
     sectionsByHeight,
     sectionsByHeightDay,
     inactiveByDay,
+    classOrderByDay,
     days: Array.isArray(c.days) ? c.days.map(String) : [],
     fields: {
       circuit: !!c.fields?.circuit,
@@ -225,9 +238,15 @@ export function dayHeightOrder(
 ): string[] {
   const ds = dayState ?? {};
   const first = config.days[0];
-  const stored = ds[day]?.heightOrder;
+  const co = config.classOrderByDay ?? {};
+  // Priority: this day's committed order → config default for the day → first
+  // day's committed order → config default for the first day → heights list.
   const base =
-    stored && stored.length ? stored : ds[first]?.heightOrder?.length ? ds[first]!.heightOrder! : config.heights;
+    (ds[day]?.heightOrder?.length ? ds[day]!.heightOrder! :
+      co[day]?.length ? co[day] :
+        ds[first]?.heightOrder?.length ? ds[first]!.heightOrder! :
+          co[first]?.length ? co[first] :
+            config.heights);
   const valid = base.filter((h) => config.heights.includes(h));
   return [...valid, ...config.heights.filter((h) => !valid.includes(h))];
 }
@@ -318,4 +337,31 @@ export function isSectionAllowedOnDay(config: EventConfig, height: string, secti
 export function scopeDays(config: EventConfig, scope: { days?: string[] } | undefined): string[] {
   const listed = (scope?.days ?? []).filter((d) => config.days.includes(d));
   return listed.length ? listed : [...config.days];
+}
+
+// The pruebas that actually run on a day, in running order: the day's height
+// order filtered to heights active that day. These are the only classes that
+// count toward the day's numbering and that get printed/exported.
+export function activeHeightsForDay(
+  config: EventConfig,
+  dayState: Record<string, { heightOrder?: string[] } | undefined> | null | undefined,
+  day: string
+): string[] {
+  return dayHeightOrder(config, dayState, day).filter((h) => isHeightActiveOnDay(config, h, day));
+}
+
+// The first Prueba number for a day: continuous across the event, counting only
+// the active classes of the preceding days (so a day with no earlier classes
+// starts at 1, and each day picks up where the previous left off).
+export function startNumberForDay(
+  config: EventConfig,
+  dayState: Record<string, { heightOrder?: string[] } | undefined> | null | undefined,
+  day: string
+): number {
+  const idx = config.days.indexOf(day);
+  let n = 1;
+  for (let i = 0; i < (idx < 0 ? 0 : idx); i++) {
+    n += activeHeightsForDay(config, dayState, config.days[i]).length;
+  }
+  return n;
 }

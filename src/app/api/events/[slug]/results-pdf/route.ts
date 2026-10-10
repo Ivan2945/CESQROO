@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { normalizeConfig, dayHeightOrder } from "@/lib/events/config";
+import { normalizeConfig, activeHeightsForDay, startNumberForDay } from "@/lib/events/config";
 import { scoreClass } from "@/lib/scoring/formats";
 import { classFormatFromSetup, defaultFormatForHeight } from "@/lib/scoring/portal";
 import type { ScoreInput } from "@/lib/scoring/types";
@@ -60,11 +60,14 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   }
 
   const classes: ResultsClass[] = [];
-  let idx = 0;
-  for (const height of dayHeightOrder(config, dayState, day)) {
+  const orderedHeights = activeHeightsForDay(config, dayState, day);
+  const startNo = startNumberForDay(config, dayState, day);
+  let pos = -1;
+  for (const height of orderedHeights) {
+    pos += 1;
+    const idx = startNo + pos;
     const inClass = active.filter((e) => e.height === height && (Array.isArray(e.days) ? e.days : []).includes(day));
     if (inClass.length === 0) continue;
-    idx += 1;
     const setup = setupByHeight.get(height);
     const format = setup?.format || defaultFormatForHeight(height);
     const params = (setup?.params ?? {}) as Record<string, number>;

@@ -1,5 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { normalizeConfig, dayHeightOrder } from "@/lib/events/config";
+import { normalizeConfig, activeHeightsForDay, startNumberForDay } from "@/lib/events/config";
 import { buildClassesOrdered, type ExportEntry } from "@/lib/events/exportWorkbook";
 import { buildDayPdf } from "@/lib/events/exportPdf";
 
@@ -89,9 +89,13 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
       .map((s) => [s.height, (s.start_order as { entry_id: string; no: number | string }[]).map((o) => ({ entryId: o.entry_id, no: o.no }))])
   );
 
-  const dayIdx = config.days.indexOf(day);
-  const startNumber = (dayIdx > 0 ? dayIdx : 0) * config.heights.length + 1;
-  const classes = buildClassesOrdered(entries, dayHeightOrder(config, dayState, day), startNumber, orderByHeight, true);
+  // Only the pruebas actually running this day count and get printed; numbering
+  // continues from the active classes of the preceding days.
+  const activeHeights = activeHeightsForDay(config, dayState, day);
+  const activeSet = new Set(activeHeights);
+  const dayEntries = entries.filter((e) => activeSet.has(e.height));
+  const startNumber = startNumberForDay(config, dayState, day);
+  const classes = buildClassesOrdered(dayEntries, activeHeights, startNumber, orderByHeight, true);
 
   const pdf = await buildDayPdf({
     eventName: event.name,

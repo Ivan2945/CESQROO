@@ -1,6 +1,6 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { normalizeConfig } from "@/lib/events/config";
+import { normalizeConfig, isHeightActiveOnDay, startNumberForDay } from "@/lib/events/config";
 import { buildDayWorkbook, type ExportEntry } from "@/lib/events/exportWorkbook";
 
 export const runtime = "nodejs";
@@ -76,21 +76,22 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       .map((s) => [s.height, (s.start_order as { entry_id: string; no: number | string }[]).map((o) => ({ entryId: o.entry_id, no: o.no }))])
   );
 
-  // Class running order: organizer's order first, then any remaining configured
-  // heights, so every class gets a list even with zero entries.
-  const requested = heightOrder.filter((h) => config.heights.includes(h));
-  const finalOrder = [...new Set([...requested, ...config.heights])];
+  // Only the pruebas active that day are listed (empty active classes still get
+  // a list); organizer's order first, then any remaining active heights.
+  const activeThisDay = config.heights.filter((h) => isHeightActiveOnDay(config, h, day));
+  const activeSet = new Set(activeThisDay);
+  const requested = heightOrder.filter((h) => activeSet.has(h));
+  const finalOrder = [...new Set([...requested, ...activeThisDay])];
+  const dayEntries = entries.filter((e) => activeSet.has(e.height));
 
-  // Continuous Prueba numbering across days: each day lists all configured
-  // classes, so day N starts after the previous days' classes.
-  const dayIdx = config.days.indexOf(day);
-  const startNumber = (dayIdx > 0 ? dayIdx : 0) * config.heights.length + 1;
+  // Continuous Prueba numbering across days, counting only active classes.
+  const startNumber = startNumberForDay(config, null, day);
 
   const buffer = await buildDayWorkbook({
     eventName: event.name,
     day,
     orderedHeights: finalOrder,
-    entries,
+    entries: dayEntries,
     startNumber,
     orderByHeight,
   });

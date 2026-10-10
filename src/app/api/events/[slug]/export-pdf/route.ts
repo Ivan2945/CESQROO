@@ -1,6 +1,6 @@
 import { supabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { normalizeConfig } from "@/lib/events/config";
+import { normalizeConfig, isHeightActiveOnDay, startNumberForDay } from "@/lib/events/config";
 import { buildClassesOrdered, type ExportEntry, type Variant } from "@/lib/events/exportWorkbook";
 import { buildDayPdf, buildMasterListPdf } from "@/lib/events/exportPdf";
 
@@ -118,12 +118,15 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       .map((s) => [s.height, (s.start_order as { entry_id: string; no: number | string }[]).map((o) => ({ entryId: o.entry_id, no: o.no }))])
   );
 
-  const requested = heightOrder.filter((h) => config.heights.includes(h));
-  const finalOrder = [...new Set([...requested, ...config.heights])];
-  const dayIdx = config.days.indexOf(day);
-  const startNumber = (dayIdx > 0 ? dayIdx : 0) * config.heights.length + 1;
+  // Only the pruebas active that day are printed/numbered.
+  const activeThisDay = config.heights.filter((h) => isHeightActiveOnDay(config, h, day));
+  const activeSet = new Set(activeThisDay);
+  const requested = heightOrder.filter((h) => activeSet.has(h));
+  const finalOrder = [...new Set([...requested, ...activeThisDay])];
+  const dayEntries = entries.filter((e) => activeSet.has(e.height));
+  const startNumber = startNumberForDay(config, null, day);
 
-  const classes = buildClassesOrdered(entries, finalOrder, startNumber, orderByHeight);
+  const classes = buildClassesOrdered(dayEntries, finalOrder, startNumber, orderByHeight);
   const label = LIST_LABEL[list] ?? "Lista";
   const header = {
     title: config.header.title || event.name,

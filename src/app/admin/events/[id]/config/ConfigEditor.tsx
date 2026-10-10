@@ -118,6 +118,9 @@ export default function ConfigEditor({
   const [sectionsByHeight, setSectionsByHeight] = useState<Record<string, string[]>>(initialConfig.sectionsByHeight);
   const [sectionsByHeightDay, setSectionsByHeightDay] = useState<Record<string, Record<string, string[]>>>(initialConfig.sectionsByHeightDay);
   const [inactiveByDay, setInactiveByDay] = useState<Record<string, string[]>>(initialConfig.inactiveByDay);
+  const [classOrderByDay, setClassOrderByDay] = useState<Record<string, string[]>>(initialConfig.classOrderByDay);
+  const [orderDay, setOrderDay] = useState<string>(initialConfig.days[0] ?? "");
+  const [orderDragIdx, setOrderDragIdx] = useState<number | null>(null);
   const [editDay, setEditDay] = useState<string>(initialConfig.days[0] ?? "");
   const [fields, setFields] = useState(initialConfig.fields);
   // Billing
@@ -261,6 +264,29 @@ export default function ConfigEditor({
     const ov = sectionsByHeightDay[day]?.[height];
     return Array.isArray(ov) && ov.length ? ov : sectionsByHeight[height] ?? [];
   };
+  const orderForDay = (day: string) => {
+    const base = classOrderByDay[day]?.length ? classOrderByDay[day] : heights;
+    const valid = base.filter((h) => heights.includes(h));
+    return [...valid, ...heights.filter((h) => !valid.includes(h))];
+  };
+  const setOrderForDay = (day: string, next: string[]) => setClassOrderByDay((prev) => ({ ...prev, [day]: next }));
+  const moveOrder = (day: string, i: number, dir: -1 | 1) => {
+    const arr = orderForDay(day);
+    const j = i + dir;
+    if (j < 0 || j >= arr.length) return;
+    const next = [...arr];
+    [next[i], next[j]] = [next[j], next[i]];
+    setOrderForDay(day, next);
+  };
+  const dropOrder = (day: string, to: number) => {
+    if (orderDragIdx === null || orderDragIdx === to) return setOrderDragIdx(null);
+    const arr = orderForDay(day);
+    const next = [...arr];
+    const [moved] = next.splice(orderDragIdx, 1);
+    next.splice(to, 0, moved);
+    setOrderDragIdx(null);
+    setOrderForDay(day, next);
+  };
   const isActiveDay = (day: string, height: string) => !(inactiveByDay[day]?.includes(height) ?? false);
   function toggleActiveDay(day: string, height: string, active: boolean) {
     setInactiveByDay((prev) => {
@@ -356,6 +382,12 @@ export default function ConfigEditor({
       ),
       inactiveByDay: Object.fromEntries(
         Object.entries(inactiveByDay)
+          .filter(([d]) => days.includes(d))
+          .map(([d, hs]) => [d, hs.filter((h) => heights.includes(h))])
+          .filter(([, hs]) => (hs as string[]).length)
+      ),
+      classOrderByDay: Object.fromEntries(
+        Object.entries(classOrderByDay)
           .filter(([d]) => days.includes(d))
           .map(([d, hs]) => [d, hs.filter((h) => heights.includes(h))])
           .filter(([, hs]) => (hs as string[]).length)
@@ -705,6 +737,52 @@ export default function ConfigEditor({
           </div>
         </section>
       )}
+
+      {/* Per-day class order */}
+      <section className={card}>
+        <h3 className={h2}>Orden de pruebas por día</h3>
+        <p className="mb-3 text-xs text-slate-500">
+          Arrastre (o use ↑↓) para fijar el orden en que corren las pruebas cada día. Es el orden predeterminado para impresión y resultados (puede ajustarse al cerrar el día).
+        </p>
+        {days.length > 1 && (
+          <div className="mb-3 flex flex-wrap gap-2">
+            {days.map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => setOrderDay(d)}
+                className={"rounded-full px-3 py-1 text-sm font-semibold " + (d === orderDay ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-700")}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+        )}
+        <ul className="space-y-1">
+          {orderForDay(orderDay).map((h, i) => {
+            const inactive = !isActiveDay(orderDay, h);
+            return (
+              <li
+                key={h}
+                draggable
+                onDragStart={() => setOrderDragIdx(i)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={(e) => { e.preventDefault(); dropOrder(orderDay, i); }}
+                className={"flex items-center gap-3 rounded-lg border px-3 py-1.5 text-sm " + (orderDragIdx === i ? "border-blue-400 bg-blue-50" : "border-slate-200") + (inactive ? " opacity-50" : "")}
+              >
+                <span className="cursor-grab select-none text-slate-400" aria-hidden>⠿</span>
+                <span className="w-5 text-right text-slate-400">{i + 1}</span>
+                <span className="flex-1 font-semibold text-slate-900">
+                  {h}
+                  {inactive && <span className="ml-2 text-[11px] font-normal text-slate-400">(no se corre este día)</span>}
+                </span>
+                <button type="button" onClick={() => moveOrder(orderDay, i, -1)} disabled={i === 0} className="rounded border border-slate-300 px-1.5 text-xs disabled:opacity-30">↑</button>
+                <button type="button" onClick={() => moveOrder(orderDay, i, 1)} disabled={i === orderForDay(orderDay).length - 1} className="rounded border border-slate-300 px-1.5 text-xs disabled:opacity-30">↓</button>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
 
       {/* Optional fields */}
       <section className={card}>

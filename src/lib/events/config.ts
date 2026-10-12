@@ -30,7 +30,7 @@ export type EventConfig = {
   // for printing/exports; a commit-time reorder (day_state) overrides it.
   classOrderByDay: Record<string, string[]>;
   days: string[];
-  fields: { circuit: boolean; discount: boolean };
+  fields: { circuit: boolean; discount: boolean; nomination: boolean };
   // Branding shown on the PDF header (logo is stored separately on the event).
   header: { title: string; subtitle: string };
   // Billing. entryFeeByHeight overrides the default for specific classes.
@@ -79,7 +79,7 @@ export const TEMPLATE_CONFIG: EventConfig = {
   inactiveByDay: {},
   classOrderByDay: {},
   days: ["Sábado", "Domingo"],
-  fields: { circuit: true, discount: true },
+  fields: { circuit: true, discount: true, nomination: true },
   header: { title: "", subtitle: "" },
   pricing: {
     nominationFee: 350,
@@ -142,6 +142,9 @@ export function normalizeConfig(raw: unknown): EventConfig {
     fields: {
       circuit: !!c.fields?.circuit,
       discount: !!c.fields?.discount,
+      // Default ON for events created before this field existed, so the new
+      // Nominación checkbox is available without re-configuring.
+      nomination: c.fields?.nomination !== false,
     },
     header: {
       title: typeof c.header?.title === "string" ? c.header.title : "",

@@ -205,6 +205,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
         days: e.days,
         circuit: config.fields.circuit ? !!e.circuit : false,
         discount: config.fields.discount ? !!e.discount : false,
+        nomination: config.fields.nomination ? !!e.nomination : false,
       })
       .eq("id", e.id)
       .in("submission_id", allowedSubIds);
@@ -244,6 +245,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
         days: e.days,
         circuit: config.fields.circuit ? !!e.circuit : false,
         discount: config.fields.discount ? !!e.discount : false,
+        nomination: config.fields.nomination ? !!e.nomination : false,
       });
     }
     const { error } = await supabaseAdmin.from("event_entries").insert(rows);

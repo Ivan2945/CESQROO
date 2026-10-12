@@ -99,7 +99,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   const subIds = submissions.map((s) => s.id);
   const { data: ent } = await supabaseAdmin
     .from("event_entries")
-    .select("id, submission_id, rider_id, rider_name, horse_id, horse_name, height, section, days, circuit, discount, status, is_extemp")
+    .select("id, submission_id, rider_id, rider_name, horse_id, horse_name, height, section, days, circuit, discount, nomination, status, is_extemp")
     .in("submission_id", subIds)
     .order("created_at", { ascending: true });
   const entries = (ent as EntryRow[]) ?? [];

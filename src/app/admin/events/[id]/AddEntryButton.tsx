@@ -29,6 +29,7 @@ export function AddEntryButton({ eventId, slug, config: rawConfig }: { eventId: 
   const [section, setSection] = useState("");
   const [days, setDays] = useState<string[]>([]);
   const [isExtemp, setIsExtemp] = useState(false);
+  const [nomination, setNomination] = useState(false);
 
   useEffect(() => {
     if (!open || clubs.length) return;
@@ -42,13 +43,13 @@ export function AddEntryButton({ eventId, slug, config: rawConfig }: { eventId: 
 
   function reset() {
     setClubId(""); setRider(""); setRiderId(null); setHorse(""); setHorseId(null);
-    setHeight(config.heights[0] ?? ""); setSection(""); setDays([]); setIsExtemp(false); setErr("");
+    setHeight(config.heights[0] ?? ""); setSection(""); setDays([]); setIsExtemp(false); setNomination(false); setErr("");
   }
 
   function save() {
     setErr("");
     start(async () => {
-      const res = await addEntryAction({ eventId, clubId, riderId, riderName: rider, horseId, horseName: horse, height, section, days, isExtemp });
+      const res = await addEntryAction({ eventId, clubId, riderId, riderName: rider, horseId, horseName: horse, height, section, days, isExtemp, nomination });
       if (res && !res.ok) { setErr(res.message); return; }
       setOpen(false);
       router.refresh();
@@ -123,6 +124,12 @@ export function AddEntryButton({ eventId, slug, config: rawConfig }: { eventId: 
                 <input type="checkbox" className="accent-amber-600" checked={isExtemp} onChange={(e) => setIsExtemp(e.target.checked)} />
                 Marcar como extemporáneo
               </label>
+              {config.fields.nomination && (
+                <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+                  <input type="checkbox" className="accent-emerald-600" checked={nomination} onChange={(e) => setNomination(e.target.checked)} />
+                  Nominación
+                </label>
+              )}
             </div>
 
             {err && <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{err}</p>}

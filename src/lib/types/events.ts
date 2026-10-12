@@ -54,6 +54,7 @@ export type EntryInput = {
   days: string[];
   circuit: boolean;
   discount: boolean;
+  nomination: boolean;
 };
 
 export type RegisterPayload = {
@@ -84,6 +85,7 @@ export type ExistingEntry = {
   days: string[] | null;
   circuit: boolean;
   discount: boolean;
+  nomination: boolean;
   status?: string | null;
 };
 

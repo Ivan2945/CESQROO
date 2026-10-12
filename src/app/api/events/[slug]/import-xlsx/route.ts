@@ -42,6 +42,7 @@ function fieldFromHeader(h: string): string | null {
   if (f.includes("seccion") || f.includes("categoria")) return "seccion";
   if (f.includes("circuito")) return "circuito";
   if (f.startsWith("descuento")) return "descuento";
+  if (f.includes("nominaci")) return "nominacion";
   return null;
 }
 
@@ -131,6 +132,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
         seccion: colMap.seccion ? cellText(row.getCell(colMap.seccion)).trim() : "",
         circuito: colMap.circuito ? cellText(row.getCell(colMap.circuito)).trim() : "",
         descuento: colMap.descuento ? cellText(row.getCell(colMap.descuento)).trim() : "",
+        nominacion: colMap.nominacion ? cellText(row.getCell(colMap.nominacion)).trim() : "",
         dias: day, // day comes from the sheet name
       });
     }

@@ -44,6 +44,7 @@ export async function importEntries(
     days: string[];
     circuit: boolean;
     discount: boolean;
+    nomination: boolean;
   };
   const errors: { row: string; message: string }[] = [];
   const parsed: Parsed[] = [];
@@ -105,6 +106,7 @@ export async function importEntries(
       days,
       circuit: config.fields.circuit && boolOf(r.circuito),
       discount: config.fields.discount && boolOf(r.descuento),
+      nomination: config.fields.nomination && (boolOf(r.nominacion) || boolOf(r["nominación"])),
     });
   });
 
@@ -200,6 +202,7 @@ export async function importEntries(
           existing.days = [...new Set([...existing.days, ...p.days])];
           existing.circuit = existing.circuit || p.circuit;
           existing.discount = existing.discount || p.discount;
+          existing.nomination = existing.nomination || p.nomination;
         } else {
           mergedByBinomio.set(mk, { ...p, days: [...p.days] });
         }
@@ -228,6 +231,7 @@ export async function importEntries(
             days: [d],
             circuit: p.circuit,
             discount: p.discount,
+            nomination: p.nomination,
           });
         }
       }

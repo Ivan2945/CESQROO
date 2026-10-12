@@ -25,6 +25,7 @@ type EntryState = {
   days: string[];
   circuit: boolean;
   discount: boolean;
+  nomination: boolean;
 };
 
 const emptyEntry = (): EntryState => ({
@@ -42,6 +43,7 @@ const emptyEntry = (): EntryState => ({
   days: [],
   circuit: false,
   discount: false,
+  nomination: false,
 });
 
 const card = "rounded-xl border border-slate-200 bg-white p-6 shadow-sm";
@@ -107,6 +109,7 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
     days: string[];
     circuit: boolean;
     discount: boolean;
+    nomination: boolean;
   };
   const [lastSubmission, setLastSubmission] = useState<{ clubName: string; rows: SubmittedRow[] } | null>(null);
   const confirmRef = useRef<HTMLDivElement | null>(null);
@@ -252,6 +255,7 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
         days: e.days,
         circuit: e.circuit,
         discount: e.discount,
+        nomination: e.nomination,
       };
     });
     const summaryClubName = isOther ? newClubName.trim() : clubs.find((c) => c.id === clubId)?.name ?? "";
@@ -267,6 +271,7 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
       days: e.days,
       circuit: e.circuit,
       discount: e.discount,
+      nomination: e.nomination,
     }));
 
     setSaving(true);
@@ -642,7 +647,7 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
                   </div>
 
                   {/* Optional toggles (shown only if the event uses them) */}
-                  {(config.fields.circuit || config.fields.discount) && (
+                  {(config.fields.circuit || config.fields.discount || config.fields.nomination) && (
                     <div className="mt-3 flex flex-wrap gap-5">
                       {config.fields.circuit && (
                         <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
@@ -653,6 +658,17 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
                             onChange={(ev) => updateEntry(i, { circuit: ev.target.checked })}
                           />
                           Inscrito en el circuito
+                        </label>
+                      )}
+                      {config.fields.nomination && (
+                        <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
+                          <input
+                            type="checkbox"
+                            className="accent-emerald-600"
+                            checked={e.nomination}
+                            onChange={(ev) => updateEntry(i, { nomination: ev.target.checked })}
+                          />
+                          Nominación
                         </label>
                       )}
                       {config.fields.discount && (
@@ -714,6 +730,7 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
                     <th className="py-2 pr-3">Sección</th>
                     <th className="py-2 pr-3">Días</th>
                     {config.fields.circuit && <th className="py-2 pr-3">Circuito</th>}
+                    {config.fields.nomination && <th className="py-2 pr-3">Nominación</th>}
                     {config.fields.discount && <th className="py-2 pr-3">Descuento</th>}
                   </tr>
                 </thead>
@@ -726,6 +743,7 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
                       <td className="py-2 pr-3">{r.section}</td>
                       <td className="py-2 pr-3">{r.days.join(" + ") || "—"}</td>
                       {config.fields.circuit && <td className="py-2 pr-3">{r.circuit ? "Sí" : "No"}</td>}
+                      {config.fields.nomination && <td className="py-2 pr-3">{r.nomination ? "Sí" : "No"}</td>}
                       {config.fields.discount && <td className="py-2 pr-3">{r.discount ? "Sí" : "No"}</td>}
                     </tr>
                   ))}

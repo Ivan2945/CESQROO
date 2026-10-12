@@ -15,6 +15,7 @@ type Entry = {
   days: string[] | null;
   circuit: boolean;
   discount: boolean;
+  nomination: boolean;
   is_extemp?: boolean | null;
 };
 
@@ -38,6 +39,7 @@ export function EditEntryButton({ entry, eventId, slug, config: rawConfig, curre
   const [days, setDays] = useState<string[]>(entry.days ?? []);
   const [circuit, setCircuit] = useState(entry.circuit);
   const [discount, setDiscount] = useState(entry.discount);
+  const [nomination, setNomination] = useState(entry.nomination);
   const [renameRecord, setRenameRecord] = useState(true);
 
   // Load the directory of riders/horses/clubs for the typeahead (once, when opened).
@@ -57,13 +59,13 @@ export function EditEntryButton({ entry, eventId, slug, config: rawConfig, curre
   function reset() {
     setRider(entry.rider_name); setHorse(entry.horse_name); setRiderId(null); setHorseId(null); setHeight(entry.height);
     setSection(entry.section); setDays(entry.days ?? []); setCircuit(entry.circuit);
-    setDiscount(entry.discount); setRenameRecord(true); setClubId(currentClubId ?? ""); setErr("");
+    setDiscount(entry.discount); setNomination(entry.nomination); setRenameRecord(true); setClubId(currentClubId ?? ""); setErr("");
   }
 
   function save() {
     setErr("");
     start(async () => {
-      const res = await updateEntryAction({ entryId: entry.id, eventId, riderName: rider, horseName: horse, riderId, horseId, clubId: clubId || null, height, section, days, circuit, discount, renameRecord });
+      const res = await updateEntryAction({ entryId: entry.id, eventId, riderName: rider, horseName: horse, riderId, horseId, clubId: clubId || null, height, section, days, circuit, discount, nomination, renameRecord });
       if (res && !res.ok) { setErr(res.message); return; }
       setOpen(false);
       router.refresh();
@@ -145,11 +147,16 @@ export function EditEntryButton({ entry, eventId, slug, config: rawConfig, curre
               </div>
             </div>
 
-            {(config.fields.circuit || config.fields.discount) && (
+            {(config.fields.circuit || config.fields.discount || config.fields.nomination) && (
               <div className="mt-3 flex flex-wrap gap-5">
                 {config.fields.circuit && (
                   <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
                     <input type="checkbox" className="accent-emerald-600" checked={circuit} onChange={(e) => setCircuit(e.target.checked)} /> Circuito
+                  </label>
+                )}
+                {config.fields.nomination && (
+                  <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+                    <input type="checkbox" className="accent-emerald-600" checked={nomination} onChange={(e) => setNomination(e.target.checked)} /> Nominación
                   </label>
                 )}
                 {config.fields.discount && (

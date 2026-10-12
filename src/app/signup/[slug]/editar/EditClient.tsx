@@ -21,6 +21,7 @@ type EditRow = {
   days: string[];
   circuit: boolean;
   discount: boolean;
+  nomination: boolean;
 };
 
 const newRow = (): EditRow => ({
@@ -39,6 +40,7 @@ const newRow = (): EditRow => ({
   days: [],
   circuit: false,
   discount: false,
+  nomination: false,
 });
 
 function fromExisting(e: ExistingEntry): EditRow {
@@ -58,6 +60,7 @@ function fromExisting(e: ExistingEntry): EditRow {
     days: e.days ?? [],
     circuit: e.circuit,
     discount: e.discount,
+    nomination: e.nomination,
   };
 }
 
@@ -171,6 +174,7 @@ export default function EditClient({ slug }: { slug: string }) {
       days: r.days,
       circuit: r.circuit,
       discount: r.discount,
+      nomination: r.nomination,
     };
   }
 
@@ -451,12 +455,18 @@ export default function EditClient({ slug }: { slug: string }) {
                       })}
                     </div>
 
-                    {(config.fields.circuit || config.fields.discount) && (
+                    {(config.fields.circuit || config.fields.discount || config.fields.nomination) && (
                       <div className="mt-3 flex flex-wrap gap-5">
                         {config.fields.circuit && (
                           <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
                             <input type="checkbox" className="accent-emerald-600" checked={r.circuit} onChange={(ev) => updateRow(i, { circuit: ev.target.checked })} />
                             Inscrito en el circuito
+                          </label>
+                        )}
+                        {config.fields.nomination && (
+                          <label className="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
+                            <input type="checkbox" className="accent-emerald-600" checked={r.nomination} onChange={(ev) => updateRow(i, { nomination: ev.target.checked })} />
+                            Nominación
                           </label>
                         )}
                         {config.fields.discount && (

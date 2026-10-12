@@ -259,6 +259,7 @@ export async function POST(
       // Only honor optional fields if the event enables them
       circuit: config.fields.circuit ? !!r.entry.circuit : false,
       discount: config.fields.discount ? !!r.entry.discount : false,
+      nomination: config.fields.nomination ? !!r.entry.nomination : false,
       is_extemp: extemp,
     }))
   );

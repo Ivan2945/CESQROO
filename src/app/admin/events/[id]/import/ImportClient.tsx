@@ -31,6 +31,8 @@ const HEADER_MAP: Record<string, string> = {
   "inscrito circuito": "circuito",
   "inscrito en circuito": "circuito",
   descuento: "descuento",
+  nominacion: "nominacion",
+  "nominación": "nominacion",
 };
 
 const stripAccents = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();

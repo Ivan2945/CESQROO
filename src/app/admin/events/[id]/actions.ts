@@ -218,7 +218,7 @@ export async function splitMultiDayEntriesAction(eventId: string): Promise<Actio
 
   const { data: ents } = await supabaseAdmin
     .from("event_entries")
-    .select("id, submission_id, club_id, rider_id, horse_id, rider_name, horse_name, height, section, days, circuit, discount, status, is_extemp")
+    .select("id, submission_id, club_id, rider_id, horse_id, rider_name, horse_name, height, section, days, circuit, discount, nomination, status, is_extemp")
     .eq("event_id", eventId);
   const multi = (ents ?? []).filter((e) => Array.isArray(e.days) && e.days.length > 1);
   if (!multi.length) return { ok: true, data: undefined, message: "No hay inscripciones multi-día para dividir." };
@@ -245,6 +245,7 @@ export async function splitMultiDayEntriesAction(eventId: string): Promise<Actio
           days: [d],
           circuit: e.circuit,
           discount: e.discount,
+          nomination: e.nomination ?? false,
           status: e.status ?? "active",
           is_extemp: e.is_extemp ?? false,
         })
@@ -300,6 +301,7 @@ export type AddEntryInput = {
   section: string;
   days: string[];
   isExtemp: boolean;
+  nomination?: boolean;
 };
 
 export async function addEntryAction(input: AddEntryInput): Promise<ActionResult<void>> {
@@ -361,7 +363,7 @@ export async function addEntryAction(input: AddEntryInput): Promise<ActionResult
 
   const { data: entry, error: entErr } = await supabaseAdmin
     .from("event_entries")
-    .insert({ event_id: event.id, submission_id: submissionId, club_id: club.id, rider_id: riderId, horse_id: horseId, rider_name: rider, horse_name: horse, height: input.height, section: input.section, days: input.days, is_extemp: input.isExtemp, status: "active" })
+    .insert({ event_id: event.id, submission_id: submissionId, club_id: club.id, rider_id: riderId, horse_id: horseId, rider_name: rider, horse_name: horse, height: input.height, section: input.section, days: input.days, is_extemp: input.isExtemp, nomination: !!input.nomination, status: "active" })
     .select("id").single();
   if (entErr || !entry) return { ok: false, message: "No se pudo agregar: " + (entErr?.message ?? "") };
 
@@ -444,6 +446,7 @@ export type EditEntryInput = {
   days: string[];
   circuit: boolean;
   discount: boolean;
+  nomination: boolean;
   renameRecord: boolean;
   clubId?: string | null; // move the entry to this club (reuses/creates its submission)
 };
@@ -515,6 +518,7 @@ export async function updateEntryAction(input: EditEntryInput): Promise<ActionRe
       days: input.days,
       circuit: input.circuit,
       discount: input.discount,
+      nomination: input.nomination,
       ...(riderRepoint ? { rider_id: input.riderId } : {}),
       ...(horseRepoint ? { horse_id: input.horseId } : {}),
       ...(clubPatch ?? {}),
@@ -596,7 +600,7 @@ export async function setEntryDayCancelledAction(
 
   const { data: e } = await supabaseAdmin
     .from("event_entries")
-    .select("id, submission_id, club_id, rider_id, horse_id, rider_name, horse_name, height, section, days, circuit, discount, status, is_extemp")
+    .select("id, submission_id, club_id, rider_id, horse_id, rider_name, horse_name, height, section, days, circuit, discount, nomination, status, is_extemp")
     .eq("id", entryId)
     .single();
   if (!e) return { ok: false, message: "Participación no encontrada." };
@@ -630,6 +634,7 @@ export async function setEntryDayCancelledAction(
       days: [day],
       circuit: e.circuit,
       discount: e.discount,
+      nomination: e.nomination ?? false,
       status: "cancelled",
       is_extemp: e.is_extemp ?? false,
     })

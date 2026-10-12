@@ -11,6 +11,7 @@ export type BillingEntry = {
   days: string[] | null;
   circuit: boolean;
   discount?: boolean; // "Descuento" flag
+  nomination?: boolean; // "Nominación" flag — the trigger for the nomination fee
   status?: string | null; // 'active' | 'cancelled'
   is_extemp?: boolean | null;
 };
@@ -98,10 +99,8 @@ export function computeStatement(
   const riderKey = (e: BillingEntry) => e.rider_id || `name:${e.rider_name.trim().toLowerCase()}`;
   const unitKey = (e: BillingEntry) =>
     byPair ? `${riderKey(e)}|${e.horse_id || `h:${(e.horse_name ?? "").trim().toLowerCase()}`}` : riderKey(e);
-  // This entry's section is exempt but its height is an exception -> must pay.
-  const entryMandatory = (e: BillingEntry) =>
-    !exempt.has(e.height) && exempt.has(e.section) && (except[e.section] ?? []).includes(e.height);
-  // This entry is exempt: an exempt height, or an exempt section not excepted here.
+  // This entry is exempt: an exempt height, or an exempt section not excepted
+  // here (a section exemption overridden at this height is NOT exempt → pays).
   const entryExempt = (e: BillingEntry) =>
     exempt.has(e.height) || (exempt.has(e.section) && !(except[e.section] ?? []).includes(e.height));
 
@@ -114,14 +113,13 @@ export function computeStatement(
   }
   let nominationRiders = 0;
   for (const rs of groups.values()) {
-    const isCircuit = rs.some((e) => e.circuit);
-    if (isCircuit) continue; // circuit members never pay nomination
-    // A mandatory (excepted) entry overrides the class exemption.
-    const exemptByClass = !rs.some(entryMandatory) && rs.some(entryExempt);
-    const hasDiscount = (discount?.waivesNomination ?? false) && rs.some((e) => e.discount);
-    // Discount / class exemption both simply skip the fee — the waiver shows up
-    // as a lower nominationRiders count, NOT as a separate "Descuento" amount.
-    if (hasDiscount || exemptByClass) continue;
+    // Nomination is opt-in, judged on the entries that have the checkbox set.
+    const paying = rs.filter((e) => e.nomination);
+    if (paying.length === 0) continue;
+    const hasDiscount = (discount?.waivesNomination ?? false) && paying.some((e) => e.discount);
+    if (hasDiscount) continue;
+    // Pay once if any nominated entry is in a class that isn't exempt.
+    if (!paying.some((e) => !entryExempt(e))) continue;
     nominationRiders++;
   }
   const nominationFees = nominationRiders * nominationFee;
@@ -212,15 +210,14 @@ export function computeRiderBreakdown(
   const riderKey = (e: BillingEntry) => e.rider_id || `name:${e.rider_name.trim().toLowerCase()}`;
   const unitKey = (e: BillingEntry) =>
     byPair ? `${riderKey(e)}|${e.horse_id || `h:${(e.horse_name ?? "").trim().toLowerCase()}`}` : riderKey(e);
-  const entryMandatory = (e: BillingEntry) =>
-    !exempt.has(e.height) && exempt.has(e.section) && (except[e.section] ?? []).includes(e.height);
   const entryExempt = (e: BillingEntry) =>
     exempt.has(e.height) || (exempt.has(e.section) && !(except[e.section] ?? []).includes(e.height));
   const unitPays = (rs: BillingEntry[]) => {
-    if (rs.some((e) => e.circuit)) return false;
-    const exemptByClass = !rs.some(entryMandatory) && rs.some(entryExempt);
-    const hasDiscount = (discount?.waivesNomination ?? false) && rs.some((e) => e.discount);
-    return !(hasDiscount || exemptByClass);
+    const paying = rs.filter((e) => e.nomination); // nomination is opt-in via the checkbox
+    if (paying.length === 0) return false;
+    const hasDiscount = (discount?.waivesNomination ?? false) && paying.some((e) => e.discount);
+    if (hasDiscount) return false;
+    return paying.some((e) => !entryExempt(e));
   };
 
   // Nomination owed, attributed to the rider who owns each paying unit.

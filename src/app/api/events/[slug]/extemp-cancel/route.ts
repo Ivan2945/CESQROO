@@ -49,11 +49,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     id: string; submission_id: string; club_id: string | null;
     rider_id: string | null; horse_id: string | null; rider_name: string; horse_name: string;
     height: string; section: string; days: string[] | null;
-    circuit: boolean; discount: boolean; status: string | null;
+    circuit: boolean; discount: boolean; nomination: boolean; status: string | null;
   };
   const { data: owned } = await supabaseAdmin
     .from("event_entries")
-    .select("id, submission_id, club_id, rider_id, horse_id, rider_name, horse_name, height, section, days, circuit, discount, status")
+    .select("id, submission_id, club_id, rider_id, horse_id, rider_name, horse_name, height, section, days, circuit, discount, nomination, status")
     .in("submission_id", ownedSubIds)
     .in("id", entryIds);
   const rows = ((owned ?? []) as Row[]).filter((e) => (e.status ?? "active") !== "cancelled");
@@ -95,7 +95,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       submission_id: e.submission_id, event_id: event.id, club_id: e.club_id,
       rider_id: e.rider_id, horse_id: e.horse_id, rider_name: e.rider_name, horse_name: e.horse_name,
       height: e.height, section: e.section, days: cancelDays,
-      circuit: e.circuit, discount: e.discount, status: "cancelled", is_extemp: true,
+      circuit: e.circuit, discount: e.discount, nomination: e.nomination, status: "cancelled", is_extemp: true,
     }).select("id").single();
     if (insErr || !clone) return Response.json({ error: "No se pudo cancelar: " + (insErr?.message ?? "") }, { status: 500 });
     // For committed (but not started) cancelled days, point the start order at

@@ -801,6 +801,15 @@ export default function ConfigEditor({
             <input
               type="checkbox"
               className="accent-emerald-600"
+              checked={fields.nomination}
+              onChange={(e) => setFields({ ...fields, nomination: e.target.checked })}
+            />
+            Nominación
+          </label>
+          <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <input
+              type="checkbox"
+              className="accent-emerald-600"
               checked={fields.discount}
               onChange={(e) => setFields({ ...fields, discount: e.target.checked })}
             />

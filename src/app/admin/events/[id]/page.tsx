@@ -36,6 +36,7 @@ type Entry = {
   days: string[] | null;
   circuit: boolean;
   discount: boolean;
+  nomination: boolean;
   status: string | null;
   is_extemp: boolean | null;
 };
@@ -75,7 +76,7 @@ export default async function AdminEventDetail({
   if (subIds.length) {
     const { data: ent } = await supabaseAdmin
       .from("event_entries")
-      .select("id, submission_id, rider_id, rider_name, horse_id, horse_name, height, section, days, circuit, discount, status, is_extemp")
+      .select("id, submission_id, rider_id, rider_name, horse_id, horse_name, height, section, days, circuit, discount, nomination, status, is_extemp")
       .in("submission_id", subIds);
     entries = (ent as Entry[]) ?? [];
   }
@@ -216,6 +217,7 @@ export default async function AdminEventDetail({
                         <th className="py-2 pr-3">Sección</th>
                         <th className="py-2 pr-3">Día</th>
                         {config.fields.circuit && <th className="py-2 pr-3">Circuito</th>}
+                        {config.fields.nomination && <th className="py-2 pr-3">Nominación</th>}
                         {config.fields.discount && <th className="py-2 pr-3">Descuento</th>}
                         {isAdmin && <th className="py-2 pr-3"></th>}
                       </tr>
@@ -240,6 +242,7 @@ export default async function AdminEventDetail({
                             <td className="py-2 pr-3">{e.section}</td>
                             <td className="py-2 pr-3">{day || "—"}</td>
                             {config.fields.circuit && <td className="py-2 pr-3">{e.circuit ? "Sí" : "No"}</td>}
+                            {config.fields.nomination && <td className="py-2 pr-3">{e.nomination ? "Sí" : "No"}</td>}
                             {config.fields.discount && <td className="py-2 pr-3">{e.discount ? "Sí" : "No"}</td>}
                             {isAdmin && (
                               <td className="py-2 pr-3 text-right">

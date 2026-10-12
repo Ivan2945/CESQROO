@@ -82,7 +82,10 @@ export function billedWithoutResult(
   config: EventConfig,
   clubNameById: Map<string, string>
 ): UnscoredRow[] {
-  const byKey = resultsByKey(results);
+  // "Has a result" is judged by entry + day (any height): a result row belongs to
+  // the entry regardless of the class it was recorded under, so an entry scored
+  // and then moved to another class still counts as having a result.
+  const scoredByEntryDay = new Set(results.map((r) => `${r.entry_id}|${r.day}`));
   const hIdx = (h: string) => { const i = config.heights.indexOf(h); return i < 0 ? 999 : i; };
   const dIdx = (d: string) => { const i = config.days.indexOf(d); return i < 0 ? 999 : i; };
   const rows: UnscoredRow[] = [];
@@ -91,7 +94,7 @@ export function billedWithoutResult(
     const days = Array.isArray(e.days) ? e.days : [];
     for (const day of days) {
       if (!config.days.includes(day)) continue;
-      if (!resultFor(byKey, e, day)) {
+      if (!scoredByEntryDay.has(`${e.id}|${day}`)) {
         rows.push({
           day,
           height: e.height,

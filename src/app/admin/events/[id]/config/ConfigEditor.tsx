@@ -136,6 +136,7 @@ export default function ConfigEditor({
   });
   const [nominationExempt, setNominationExempt] = useState<string[]>(initialConfig.pricing.nominationExempt);
   const [nominationBasis, setNominationBasis] = useState<"rider" | "pair">(initialConfig.pricing.nominationBasis);
+  const [nominationMandatory, setNominationMandatory] = useState(initialConfig.pricing.nominationMandatory);
   const [nominationExemptExcept, setNominationExemptExcept] = useState<Record<string, string[]>>(initialConfig.pricing.nominationExemptExcept);
   const [cancelMode, setCancelMode] = useState<"credit" | "fee" | "no_refund">(initialConfig.pricing.cancellation.mode);
   const [cancelFee, setCancelFee] = useState(String(initialConfig.pricing.cancellation.fee));
@@ -397,6 +398,7 @@ export default function ConfigEditor({
       header: { title: headerTitle, subtitle: headerSubtitle },
       pricing: {
         nominationFee: Number(nominationFee) || 0,
+        nominationMandatory,
         entryFeeDefault: def,
         entryFeeByHeight,
         nominationBasis,
@@ -878,6 +880,18 @@ export default function ConfigEditor({
             <option value="rider">Por jinete</option>
             <option value="pair">Por binomio (jinete + caballo)</option>
           </select>
+          <label className="mt-3 flex items-center gap-2 text-sm font-semibold text-slate-700">
+            <input
+              type="checkbox"
+              className="accent-emerald-600"
+              checked={nominationMandatory}
+              onChange={(e) => setNominationMandatory(e.target.checked)}
+            />
+            Nominación obligatoria (todos pagan)
+          </label>
+          <p className="mt-1 text-xs text-slate-500">
+            Si se activa, se cobra nominación a todos los jinetes sin importar la casilla &quot;Nominación&quot; (las exenciones y el descuento siguen aplicando). Puede ocultar la casilla en &quot;Campos opcionales&quot;.
+          </p>
         </div>
 
         <div className="mt-4">

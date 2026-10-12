@@ -111,10 +111,11 @@ export function computeStatement(
     const key = unitKey(e);
     (groups.get(key) ?? groups.set(key, []).get(key)!).push(e);
   }
+  const nominationMandatory = !!config.pricing.nominationMandatory;
   let nominationRiders = 0;
   for (const rs of groups.values()) {
-    // Nomination is opt-in, judged on the entries that have the checkbox set.
-    const paying = rs.filter((e) => e.nomination);
+    // Mandatory → every entry counts; otherwise only the ones with the checkbox.
+    const paying = nominationMandatory ? rs : rs.filter((e) => e.nomination);
     if (paying.length === 0) continue;
     const hasDiscount = (discount?.waivesNomination ?? false) && paying.some((e) => e.discount);
     if (hasDiscount) continue;
@@ -212,8 +213,9 @@ export function computeRiderBreakdown(
     byPair ? `${riderKey(e)}|${e.horse_id || `h:${(e.horse_name ?? "").trim().toLowerCase()}`}` : riderKey(e);
   const entryExempt = (e: BillingEntry) =>
     exempt.has(e.height) || (exempt.has(e.section) && !(except[e.section] ?? []).includes(e.height));
+    const nominationMandatory = !!config.pricing.nominationMandatory;
   const unitPays = (rs: BillingEntry[]) => {
-    const paying = rs.filter((e) => e.nomination); // nomination is opt-in via the checkbox
+    const paying = nominationMandatory ? rs : rs.filter((e) => e.nomination);
     if (paying.length === 0) return false;
     const hasDiscount = (discount?.waivesNomination ?? false) && paying.some((e) => e.discount);
     if (hasDiscount) return false;

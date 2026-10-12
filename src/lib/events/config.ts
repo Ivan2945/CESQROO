@@ -42,6 +42,9 @@ export type EventConfig = {
     // How nominations are counted: once per rider, or once per rider+horse
     // combination (binomio).
     nominationBasis: "rider" | "pair";
+    // When true, every rider is charged nomination regardless of the per-entry
+    // "Nominación" checkbox (exemptions + discount waiver still apply).
+    nominationMandatory: boolean;
     nominationExempt: string[];
     // Per-section exceptions: a section listed in nominationExempt is exempt
     // EXCEPT at these heights, where it must still pay. e.g. { Libre: ["1.10m","1.20m"] }.
@@ -86,6 +89,7 @@ export const TEMPLATE_CONFIG: EventConfig = {
     entryFeeDefault: 750,
     entryFeeByHeight: {},
     nominationBasis: "rider",
+    nominationMandatory: false,
     nominationExempt: ["Cruces"],
     nominationExemptExcept: {},
     cancellation: { mode: "credit", fee: 0 },
@@ -206,6 +210,7 @@ function normalizePricing(raw: unknown): EventConfig["pricing"] {
     entryFeeDefault: Number.isFinite(Number(p.entryFeeDefault)) ? Number(p.entryFeeDefault) : 750,
     entryFeeByHeight,
     nominationBasis: p.nominationBasis === "pair" ? "pair" : "rider",
+    nominationMandatory: !!p.nominationMandatory,
     nominationExempt: Array.isArray(p.nominationExempt) ? p.nominationExempt.map(String) : ["Cruces"],
     nominationExemptExcept,
     cancellation: {

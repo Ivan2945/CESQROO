@@ -31,6 +31,7 @@ import {
   type ResultRow,
 } from "@/lib/scoring/store";
 import { activeById, resultsByKey, classCount, type CountEntry, type CountResult, type CountSetup } from "@/lib/events/classCounts";
+import { activeHeightsForDay } from "@/lib/events/config";
 
 const STATUSES = ["OK", "NP", "EL", "RT", "FC", "T"];
 const FORMAT_LABELS: Record<string, string> = {
@@ -203,28 +204,54 @@ function ClassPicker({ boot, onPick }: { boot: BootstrapData; onPick: (h: string
     const setup = boot.setups.find((s) => s.height === h && s.day === d) as CountSetup | undefined;
     return classCount(d, h, active, countEntries, byKey, setup).total;
   };
+  // Expand the day that matches today — mapped purely by ORDER from the show's
+  // start date (day 1 = earliest configured date, day 2 = +1, …), ignoring names.
+  const addDays = (iso: string, n: number) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+  };
+  // saturdayDate = "Fecha de inicio" (show start); sundayDate = "Fecha de fin".
+  const startDate = (boot.event.saturdayDate || boot.event.sundayDate) || undefined;
+  const today = new Date().toLocaleDateString("en-CA"); // YYYY-MM-DD, local
+  const todayIdx = startDate ? config.days.findIndex((_, i) => addDays(startDate, i) === today) : -1;
+  const defaultOpen = todayIdx >= 0 ? config.days[todayIdx] : config.days[0];
   return (
-    <div className="space-y-5">
-      {config.days.map((day) => (
-        <section key={day} className="rounded-xl border border-slate-200 bg-white p-4">
-          <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-slate-500">{day}</h2>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-            {config.heights.map((h) => {
-              const n = countFor(h, day);
-              const setup = boot.setups.find((s) => s.height === h && s.day === day);
-              const fmt = setup?.format || defaultFormatForHeight(h);
-              return (
-                <button key={h} disabled={n === 0} onClick={() => onPick(h, day)}
-                  className={"rounded-lg border p-3 text-left transition " + (n === 0 ? "cursor-not-allowed border-slate-100 text-slate-300" : "border-slate-200 hover:border-blue-400 hover:shadow")}>
-                  <div className="text-lg font-bold text-slate-900">{h}</div>
-                  <div className="text-xs text-slate-500">{n} binomio(s)</div>
-                  <div className="mt-1 text-[11px] font-semibold text-blue-600">{FORMAT_LABELS[fmt]}</div>
-                </button>
-              );
-            })}
-          </div>
-        </section>
-      ))}
+    <div className="space-y-3">
+      {config.days.map((day) => {
+        const heights = activeHeightsForDay(config, null, day);
+        return (
+          <details key={day} open={day === defaultOpen} className="group rounded-xl border border-slate-200 bg-white">
+            <summary className="flex cursor-pointer list-none items-center justify-between px-4 py-3">
+              <span className="text-sm font-bold uppercase tracking-wide text-slate-600">
+                {day}
+                <span className="ml-2 text-xs font-normal normal-case text-slate-400">{heights.length} prueba(s)</span>
+              </span>
+              <span className="text-slate-400 transition group-open:rotate-180">▾</span>
+            </summary>
+            <div className="px-4 pb-4">
+              {heights.length === 0 ? (
+                <p className="text-sm text-slate-400">No hay pruebas programadas este día.</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+                  {heights.map((h) => {
+                    const n = countFor(h, day);
+                    const setup = boot.setups.find((s) => s.height === h && s.day === day);
+                    const fmt = setup?.format || defaultFormatForHeight(h);
+                    return (
+                      <button key={h} disabled={n === 0} onClick={() => onPick(h, day)}
+                        className={"rounded-lg border p-3 text-left transition " + (n === 0 ? "cursor-not-allowed border-slate-100 text-slate-300" : "border-slate-200 hover:border-blue-400 hover:shadow")}>
+                        <div className="text-lg font-bold text-slate-900">{h}</div>
+                        <div className="text-xs text-slate-500">{n} binomio(s)</div>
+                        <div className="mt-1 text-[11px] font-semibold text-blue-600">{FORMAT_LABELS[fmt]}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </details>
+        );
+      })}
     </div>
   );
 }
@@ -308,6 +335,8 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
 
   // ---- Live state for the public view (status + current rider) ----
   const [classStatus, setClassStatus] = useState<string>(existing?.status || "pending");
+  // Can't rank/score until the class has been started.
+  const scoringLocked = classStatus === "pending";
   const currentRef = useRef<string | null>(existing?.current_entry_id ?? null);
 
   // Best-effort push to the server (only matters when online; the public view
@@ -696,7 +725,14 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
         );
       })()}
 
-      <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+      {scoringLocked && (
+        <div className="flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+          <span>Inicie la clase para comenzar a calificar. Puede ajustar el orden y la configuración antes de iniciar.</span>
+          <button onClick={startClass} className="rounded-md bg-emerald-600 px-3 py-1 text-xs font-bold text-white">▶ Iniciar clase</button>
+        </div>
+      )}
+
+      <div className={"overflow-x-auto rounded-xl border border-slate-200 bg-white " + (scoringLocked ? "opacity-60" : "")}>
         <table className="w-full text-sm">
           <thead><tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
             <th className="p-2">No.</th><th className="p-2">Lugar</th><th className="p-2 text-left">Binomio</th>
@@ -722,12 +758,12 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
                       </select>
                     </div>
                   </td>
-                  <td className="p-2"><input value={r.f1} onChange={(e) => patch(r.entryId, { f1: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-40 rounded border border-slate-300 px-2 py-1" placeholder="obst. · RM" /></td>
-                  <td className="p-2"><input type="number" step="0.01" value={r.t1} onChange={(e) => patch(r.entryId, { t1: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-20 rounded border border-slate-300 px-2 py-1 text-right" /></td>
-                  <td className="p-2"><select value={r.status1} onChange={(e) => patch(r.entryId, { status1: e.target.value })} className="rounded border border-slate-300 px-1 py-1">{STATUSES.map((x) => <option key={x}>{x}</option>)}</select></td>
-                  {hasR2 && <><td className="p-2"><input value={r.f2} onChange={(e) => patch(r.entryId, { f2: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-28 rounded border border-slate-300 px-2 py-1" /></td>
-                  <td className="p-2"><input type="number" step="0.01" value={r.t2} onChange={(e) => patch(r.entryId, { t2: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-20 rounded border border-slate-300 px-2 py-1 text-right" /></td></>}
-                  {hasStatus2 && <td className="p-2"><select value={r.status2} onChange={(e) => patch(r.entryId, { status2: e.target.value })} className="rounded border border-slate-300 px-1 py-1">{STATUSES.map((x) => <option key={x}>{x}</option>)}</select></td>}
+                  <td className="p-2"><input disabled={scoringLocked} value={r.f1} onChange={(e) => patch(r.entryId, { f1: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-40 rounded border border-slate-300 px-2 py-1 disabled:bg-slate-100 disabled:text-slate-400" placeholder="obst. · RM" /></td>
+                  <td className="p-2"><input disabled={scoringLocked} type="number" step="0.01" value={r.t1} onChange={(e) => patch(r.entryId, { t1: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-20 rounded border border-slate-300 px-2 py-1 text-right disabled:bg-slate-100 disabled:text-slate-400" /></td>
+                  <td className="p-2"><select disabled={scoringLocked} value={r.status1} onChange={(e) => patch(r.entryId, { status1: e.target.value })} className="rounded border border-slate-300 px-1 py-1 disabled:bg-slate-100 disabled:text-slate-400">{STATUSES.map((x) => <option key={x}>{x}</option>)}</select></td>
+                  {hasR2 && <><td className="p-2"><input disabled={scoringLocked} value={r.f2} onChange={(e) => patch(r.entryId, { f2: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-28 rounded border border-slate-300 px-2 py-1 disabled:bg-slate-100 disabled:text-slate-400" /></td>
+                  <td className="p-2"><input disabled={scoringLocked} type="number" step="0.01" value={r.t2} onChange={(e) => patch(r.entryId, { t2: e.target.value })} onKeyDown={(e) => e.key === "Enter" && onEnter(r.entryId)} className="w-20 rounded border border-slate-300 px-2 py-1 text-right disabled:bg-slate-100 disabled:text-slate-400" /></td></>}
+                  {hasStatus2 && <td className="p-2"><select disabled={scoringLocked} value={r.status2} onChange={(e) => patch(r.entryId, { status2: e.target.value })} className="rounded border border-slate-300 px-1 py-1 disabled:bg-slate-100 disabled:text-slate-400">{STATUSES.map((x) => <option key={x}>{x}</option>)}</select></td>}
                   <td className="p-2 text-center"><span className="inline-block min-w-7 rounded bg-slate-900 px-2 py-0.5 font-bold text-white">{(() => { const lf = liveFaults(r); return lf == null ? "—" : lf; })()}</span></td>
                 </tr>
               );

@@ -242,23 +242,26 @@ export async function POST(
     submission = created;
   }
 
-  // ---- Insert the entries ----
-  const rows = resolved.map((r) => ({
-    submission_id: submission.id,
-    event_id: event.id,
-    club_id: resolvedClubId,
-    rider_id: r.rider_id,
-    horse_id: r.horse_id,
-    rider_name: r.rider_name,
-    horse_name: r.horse_name,
-    height: r.entry.height,
-    section: r.entry.section,
-    days: r.entry.days,
-    // Only honor optional fields if the event enables them
-    circuit: config.fields.circuit ? !!r.entry.circuit : false,
-    discount: config.fields.discount ? !!r.entry.discount : false,
-    is_extemp: extemp,
-  }));
+  // ---- Insert the entries: ONE row per day (each day is independent after
+  // sign-up; a two-day sign-up becomes two rows). ----
+  const rows = resolved.flatMap((r) =>
+    (Array.isArray(r.entry.days) ? r.entry.days : []).map((d) => ({
+      submission_id: submission.id,
+      event_id: event.id,
+      club_id: resolvedClubId,
+      rider_id: r.rider_id,
+      horse_id: r.horse_id,
+      rider_name: r.rider_name,
+      horse_name: r.horse_name,
+      height: r.entry.height,
+      section: r.entry.section,
+      days: [d],
+      // Only honor optional fields if the event enables them
+      circuit: config.fields.circuit ? !!r.entry.circuit : false,
+      discount: config.fields.discount ? !!r.entry.discount : false,
+      is_extemp: extemp,
+    }))
+  );
 
   const { data: inserted, error: entErr } = await supabaseAdmin
     .from("event_entries").insert(rows).select("id, height, days, section");

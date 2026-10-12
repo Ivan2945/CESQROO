@@ -2,7 +2,29 @@
 
 import { useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { deleteSubmissionAction, deleteEntryAction, setEntryDayCancelledAction, mergeDuplicateSubmissionsAction, cleanupGhostsAction, removeUnscoredDuplicatesAction } from "./actions";
+import { deleteSubmissionAction, deleteEntryAction, setEntryDayCancelledAction, mergeDuplicateSubmissionsAction, cleanupGhostsAction, removeUnscoredDuplicatesAction, splitMultiDayEntriesAction } from "./actions";
+
+export function SplitMultiDayButton({ eventId }: { eventId: string }) {
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={() => {
+        if (!confirm("¿Dividir las inscripciones de dos días en una participación por día? Cada día quedará independiente. Esto no se puede deshacer automáticamente.")) return;
+        start(async () => {
+          const res = await splitMultiDayEntriesAction(eventId);
+          alert(res && res.message ? res.message : "Listo.");
+          router.refresh();
+        });
+      }}
+      className="rounded-md border border-indigo-300 px-2.5 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 disabled:opacity-50 dark:border-indigo-800 dark:text-indigo-300"
+    >
+      {pending ? "Dividiendo…" : "Dividir por día"}
+    </button>
+  );
+}
 
 export function ResolveDuplicatesButton({ eventId }: { eventId: string }) {
   const [pending, start] = useTransition();

@@ -209,6 +209,83 @@ export async function cleanupGhostsAction(eventId: string): Promise<ActionResult
   };
 }
 
+// One-time migration for an event: split every multi-day entry into one row per
+// day so each day is fully independent. Keeps the first day on the original row,
+// clones the rest, moves that day's results to the clone, and repoints the day's
+// committed start order. Safe to run more than once (no-op once all are single-day).
+export async function splitMultiDayEntriesAction(eventId: string): Promise<ActionResult<void>> {
+  if (!(await isAdminUser())) return { ok: false, message: "Solo un administrador puede dividir inscripciones." };
+
+  const { data: ents } = await supabaseAdmin
+    .from("event_entries")
+    .select("id, submission_id, club_id, rider_id, horse_id, rider_name, horse_name, height, section, days, circuit, discount, status, is_extemp")
+    .eq("event_id", eventId);
+  const multi = (ents ?? []).filter((e) => Array.isArray(e.days) && e.days.length > 1);
+  if (!multi.length) return { ok: true, data: undefined, message: "No hay inscripciones multi-día para dividir." };
+
+  let createdRows = 0;
+  for (const e of multi) {
+    const days = e.days as string[];
+    const [first, ...rest] = days;
+    const { error: upErr } = await supabaseAdmin.from("event_entries").update({ days: [first] }).eq("id", e.id);
+    if (upErr) return { ok: false, message: upErr.message };
+    for (const d of rest) {
+      const { data: clone, error: insErr } = await supabaseAdmin
+        .from("event_entries")
+        .insert({
+          submission_id: e.submission_id,
+          event_id: eventId,
+          club_id: e.club_id,
+          rider_id: e.rider_id,
+          horse_id: e.horse_id,
+          rider_name: e.rider_name,
+          horse_name: e.horse_name,
+          height: e.height,
+          section: e.section,
+          days: [d],
+          circuit: e.circuit,
+          discount: e.discount,
+          status: e.status ?? "active",
+          is_extemp: e.is_extemp ?? false,
+        })
+        .select("id")
+        .single();
+      if (insErr || !clone) return { ok: false, message: "No se pudo dividir: " + (insErr?.message ?? "") };
+      createdRows += 1;
+
+      // Move that day's results onto the new row.
+      await supabaseAdmin
+        .from("event_results")
+        .update({ entry_id: clone.id })
+        .eq("event_id", eventId)
+        .eq("entry_id", e.id)
+        .eq("day", d);
+
+      // Repoint the committed start order for that class/day.
+      const { data: setup } = await supabaseAdmin
+        .from("event_class_setup")
+        .select("id, start_order")
+        .eq("event_id", eventId)
+        .eq("height", e.height)
+        .eq("day", d)
+        .maybeSingle();
+      const so = (setup?.start_order as { entry_id: string; no: number | string }[] | null) ?? null;
+      if (so && so.some((o) => o.entry_id === e.id)) {
+        const next = so.map((o) => (o.entry_id === e.id ? { ...o, entry_id: clone.id } : o));
+        await supabaseAdmin.from("event_class_setup").update({ start_order: next }).eq("id", setup!.id);
+      }
+    }
+  }
+
+  revalidatePath(`/admin/events/${eventId}`);
+  revalidatePath("/admin/events");
+  return {
+    ok: true,
+    data: undefined,
+    message: `${multi.length} inscripción(es) multi-día divididas en participaciones por día (${createdRows} fila(s) nueva(s)).`,
+  };
+}
+
 // Admin: manually add a participation (binomio) to any club. Picks an existing
 // rider/horse (by id) or creates one by name; attaches to the club's single
 // submission (creating it if needed); positions in a committed start order.
@@ -368,6 +445,7 @@ export type EditEntryInput = {
   circuit: boolean;
   discount: boolean;
   renameRecord: boolean;
+  clubId?: string | null; // move the entry to this club (reuses/creates its submission)
 };
 
 export async function updateEntryAction(input: EditEntryInput): Promise<ActionResult<void>> {
@@ -381,10 +459,29 @@ export async function updateEntryAction(input: EditEntryInput): Promise<ActionRe
 
   const { data: entry } = await supabaseAdmin
     .from("event_entries")
-    .select("id, rider_id, horse_id")
+    .select("id, rider_id, horse_id, club_id")
     .eq("id", input.entryId)
     .single();
   if (!entry) return { ok: false, message: "Participación no encontrada." };
+
+  // Move to a different club: reuse that club's submission for this event (or
+  // create it) and re-point the entry's club_id + submission_id.
+  let clubPatch: { club_id: string; submission_id: string } | null = null;
+  if (input.clubId && input.clubId !== entry.club_id) {
+    const { data: club } = await supabaseAdmin.from("show_clubs").select("id, name").eq("id", input.clubId).single();
+    if (!club) return { ok: false, message: "Club destino no encontrado." };
+    const { data: subs } = await supabaseAdmin
+      .from("event_submissions").select("id").eq("event_id", input.eventId).eq("club_id", club.id)
+      .order("created_at", { ascending: true }).limit(1);
+    let submissionId = subs?.[0]?.id as string | undefined;
+    if (!submissionId) {
+      const { data: ns, error } = await supabaseAdmin
+        .from("event_submissions").insert({ event_id: input.eventId, club_id: club.id, club_name: club.name }).select("id").single();
+      if (error || !ns) return { ok: false, message: "No se pudo crear la inscripción del club destino." };
+      submissionId = ns.id;
+    }
+    clubPatch = { club_id: club.id, submission_id: submissionId! };
+  }
 
   // Re-point to a different EXISTING rider/horse when one was picked from the list.
   const riderRepoint = !!input.riderId && input.riderId !== entry.rider_id;
@@ -420,6 +517,7 @@ export async function updateEntryAction(input: EditEntryInput): Promise<ActionRe
       discount: input.discount,
       ...(riderRepoint ? { rider_id: input.riderId } : {}),
       ...(horseRepoint ? { horse_id: input.horseId } : {}),
+      ...(clubPatch ?? {}),
     })
     .eq("id", input.entryId);
   if (error) return { ok: false, message: error.message };
@@ -483,6 +581,15 @@ export async function setEntryDayCancelledAction(
   if (!cancel) {
     const { error } = await supabaseAdmin.from("event_entries").update({ status: "active" }).eq("id", entryId);
     if (error) return { ok: false, message: error.message };
+    // Cancelling marks the rider as a no-show (NP) for scoring; restoring must
+    // clear those NP marks so the entry is billed/counted again. Otherwise the
+    // statement sees every day as a no-show and charges nothing.
+    await supabaseAdmin
+      .from("event_results")
+      .delete()
+      .eq("event_id", eventId)
+      .eq("entry_id", entryId)
+      .eq("r1_status", "NP");
     revalidatePath(`/admin/events/${eventId}`);
     return { ok: true, data: undefined, message: "Restaurada." };
   }

@@ -209,24 +209,27 @@ export async function importEntries(
         days: p.days.slice().sort((a, b) => config.days.indexOf(a) - config.days.indexOf(b)),
       }));
 
+      // One row per day — each day is independent after sign-up.
       const entryRows = [];
       for (const p of mergedRows) {
         const riderId = await resolveRider(p.first, p.last, p.fullName);
         const horseId = await resolveHorse(p.horse);
-        entryRows.push({
-          submission_id: sub.id,
-          event_id: eventId,
-          club_id: club.id,
-          rider_id: riderId,
-          horse_id: horseId,
-          rider_name: p.fullName,
-          horse_name: p.horse,
-          height: p.height,
-          section: p.section,
-          days: p.days,
-          circuit: p.circuit,
-          discount: p.discount,
-        });
+        for (const d of p.days) {
+          entryRows.push({
+            submission_id: sub.id,
+            event_id: eventId,
+            club_id: club.id,
+            rider_id: riderId,
+            horse_id: horseId,
+            rider_name: p.fullName,
+            horse_name: p.horse,
+            height: p.height,
+            section: p.section,
+            days: [d],
+            circuit: p.circuit,
+            discount: p.discount,
+          });
+        }
       }
       const { error: entErr } = await supabaseAdmin.from("event_entries").insert(entryRows);
       if (entErr) throw new Error("entries: " + entErr.message);

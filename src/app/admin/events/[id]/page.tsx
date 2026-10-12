@@ -4,7 +4,7 @@ import { isShowAdminFor } from "@/lib/auth/eventAccess";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeConfig } from "@/lib/events/config";
 import { computeStatement, npDaysFromResults } from "@/lib/events/billing";
-import { DeleteSubmissionButton, DeleteEntryButton, CancelEntryButton, MergeDuplicatesButton, CleanGhostsButton } from "./DeleteButtons";
+import { DeleteSubmissionButton, DeleteEntryButton, CancelEntryButton, MergeDuplicatesButton, CleanGhostsButton, SplitMultiDayButton } from "./DeleteButtons";
 import { EditEntryButton } from "./EditEntryButton";
 import { EditSubmissionButton } from "./EditSubmissionButton";
 import { AddEntryButton } from "./AddEntryButton";
@@ -148,6 +148,7 @@ export default async function AdminEventDetail({
             </a>
             <MergeDuplicatesButton eventId={event.id} />
             <CleanGhostsButton eventId={event.id} />
+            <SplitMultiDayButton eventId={event.id} />
             <AddEntryButton eventId={event.id} slug={event.slug} config={config} />
           </>
         )}
@@ -243,7 +244,7 @@ export default async function AdminEventDetail({
                             {isAdmin && (
                               <td className="py-2 pr-3 text-right">
                                 <span className="inline-flex gap-3">
-                                  <EditEntryButton entry={e} eventId={event.id} slug={event.slug} config={config} />
+                                  <EditEntryButton entry={e} eventId={event.id} slug={event.slug} config={config} currentClubId={s.club_id} />
                                   <CancelEntryButton entryId={e.id} eventId={event.id} day={day} cancelled={cancelled} />
                                   <DeleteEntryButton entryId={e.id} eventId={event.id} />
                                 </span>

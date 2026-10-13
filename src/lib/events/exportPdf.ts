@@ -275,9 +275,9 @@ export async function buildStatementsPdf(opts: {
     });
 
     // Charges breakdown (kept together on one page).
-    const lineItem = (labelText: string, value: string, bold = false) => {
+    const lineItem = (labelText: string, value: string, bold = false, sizeOverride?: number) => {
       const f = bold ? d.fontB : d.font;
-      const size = bold ? 12 : 10;
+      const size = sizeOverride ?? (bold ? 12 : 10);
       page.drawText(labelText, { x: d.left, y: PAGE_H - yTop - size, size, font: f, color: d.black });
       const vw = f.widthOfTextAtSize(value, size);
       page.drawText(value, { x: d.right - vw, y: PAGE_H - yTop - size, size, font: f, color: d.black });
@@ -289,9 +289,9 @@ export async function buildStatementsPdf(opts: {
     hline(page, yTop, "solid", d.left, d.right, d.gray);
     yTop += 8;
     lineItem(`Inscripciones (${s.starts} salida${s.starts === 1 ? "" : "s"})`, money(s.entryFeesFull));
-    if (s.entryDiscount > 0) lineItem("Descuento", "-" + money(s.entryDiscount));
-    lineItem("Total pruebas", money(s.entryFeesFull - s.entryDiscount), true);
-    lineItem(`Total Nominaciones (${s.nominationRiders})`, money(s.nominationFees), true);
+    if (s.entryDiscount > 0) lineItem(`Descuento Instructor (${s.discountStarts})`, "-" + money(s.entryDiscount));
+    lineItem("Total pruebas", money(s.entryFeesFull - s.entryDiscount), true, 10);
+    lineItem(`Total Nominaciones (${s.nominationRiders})`, money(s.nominationFees), true, 10);
     yTop += 2;
     hline(page, yTop, "solid", d.left, d.right, d.black);
     yTop += 8;

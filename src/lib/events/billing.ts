@@ -33,6 +33,7 @@ export type Statement = {
   starts: number;
   entryFeesFull: number; // gross entry fees BEFORE the discount
   entryDiscount: number; // entry-fee discount only (>= 0); nomination waivers are reflected in nominationRiders, not here
+  discountStarts: number; // number of discounted starts (billable days flagged Descuento)
   nominationRiders: number;
   nominationFees: number;
   cancellationCharge: number;
@@ -78,6 +79,7 @@ export function computeStatement(
   let starts = 0;
   let entryFeesFull = 0;
   let entryDiscount = 0;
+  let discountStarts = 0;
   for (const e of entries) {
     if (isCancelled(e)) continue;
     const n = billableDayCount(e);
@@ -85,7 +87,7 @@ export function computeStatement(
     starts += n;
     const full = n * entryFeeForHeight(config, e.height);
     entryFeesFull += full;
-    if (e.discount) entryDiscount += full - discounted(full, n);
+    if (e.discount) { entryDiscount += full - discounted(full, n); discountStarts += n; }
   }
 
   // Nomination: counted once per rider, or once per rider+horse (binomio),
@@ -148,6 +150,7 @@ export function computeStatement(
     starts,
     entryFeesFull,
     entryDiscount,
+    discountStarts,
     nominationRiders,
     nominationFees,
     cancellationCharge,

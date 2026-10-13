@@ -213,6 +213,7 @@ export async function getEventStandings(eventId: string, scope: Scope = "mini_se
   const { name: seriesName, cfg } = await resolveSeries((event as { series_id?: string }).series_id);
   const eventCfg = ((event.config ?? {}) as { standings?: EventStandingsCfg }).standings;
   const { rule, enabled } = effectiveRule(cfg, eventCfg, scope);
+  if (scope !== "season") rule.rider_points_heights = [];
   const normCfg = normalizeConfig(event.config);
   rule.points_sections_by_height = resolvePointsSectionsByHeight(normCfg);
   const allowed = new Set(scopeDays(normCfg, eventCfg?.[scope]));
@@ -225,6 +226,7 @@ export async function getEventStandings(eventId: string, scope: Scope = "mini_se
 export async function getSeriesStandings(seriesId: string, scope: Scope = "season"): Promise<EventStandings> {
   const { name: seriesName, cfg } = await resolveSeries(seriesId);
   const rule = resolveRule(cfg, scope);
+  if (scope !== "season") rule.rider_points_heights = [];
   const enabled = cfg?.scopes?.[scope] != null;
   const { data: evs } = await supabaseAdmin.from("events").select("id, config").eq("series_id", seriesId);
   const included = (evs ?? []).filter(

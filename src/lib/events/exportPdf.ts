@@ -284,14 +284,14 @@ export async function buildStatementsPdf(opts: {
       yTop += size + 8;
     };
     const s = club.stmt;
-    flow(24 + 4 * 18 + 20);
+    flow(24 + 6 * 18 + 20);
     yTop += 12;
     hline(page, yTop, "solid", d.left, d.right, d.gray);
     yTop += 8;
     lineItem(`Inscripciones (${s.starts} salida${s.starts === 1 ? "" : "s"})`, money(s.entryFeesFull));
     if (s.entryDiscount > 0) lineItem("Descuento", "-" + money(s.entryDiscount));
-    lineItem(`Nominación (${s.nominationRiders})`, money(s.nominationFees));
-    if (s.cancellationCharge > 0) lineItem("Cancelaciones", money(s.cancellationCharge));
+    lineItem("Total pruebas", money(s.entryFeesFull - s.entryDiscount), true);
+    lineItem(`Total Nominaciones (${s.nominationRiders})`, money(s.nominationFees), true);
     yTop += 2;
     hline(page, yTop, "solid", d.left, d.right, d.black);
     yTop += 8;

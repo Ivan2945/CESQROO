@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import type { EventConfig, EventStandingsConfig } from "@/lib/events/config";
+import { resolvePointsSectionsByHeight, type EventConfig, type EventStandingsConfig } from "@/lib/events/config";
 import { saveEventConfigAction } from "./actions";
 
 type ScopeMode = "inherit" | "on" | "off";
@@ -168,6 +168,14 @@ export default function ConfigEditor({
   const [seasonDays, setSeasonDays] = useState<string[]>(initSt?.season?.days ?? []);
   const [riderOverride, setRiderOverride] = useState<boolean>(Array.isArray(initSt?.rider_points_heights));
   const [riderHeights, setRiderHeights] = useState<string[]>(initSt?.rider_points_heights ?? []);
+  // Which sections earn championship points at each height (weekend + season).
+  const [pointsSections, setPointsSections] = useState<Record<string, string[]>>(resolvePointsSectionsByHeight(initialConfig));
+  const togglePointsSection = (h: string, s: string) =>
+    setPointsSections((prev) => {
+      const cur = prev[h] ?? [];
+      const next = cur.includes(s) ? cur.filter((x) => x !== s) : [...cur, s];
+      return { ...prev, [h]: next };
+    });
   const toggleRiderHeight = (h: string) =>
     setRiderHeights((prev) => (prev.includes(h) ? prev.filter((x) => x !== h) : [...prev, h]));
   const [saving, setSaving] = useState(false);
@@ -359,6 +367,10 @@ export default function ConfigEditor({
     if (miniMode !== "inherit") out.mini_series = miniMode === "on" ? { enabled: true, basis: miniBasis, eligibility: miniElig, per_day_cap: miniCap, ...(validMiniDays.length ? { days: validMiniDays } : {}) } : { enabled: false };
     if (seasonMode !== "inherit") out.season = seasonMode === "on" ? { enabled: true, basis: seasonBasis, eligibility: seasonElig, per_day_cap: seasonCap, ...(validSeasonDays.length ? { days: validSeasonDays } : {}) } : { enabled: false };
     if (riderOverride) out.rider_points_heights = riderHeights;
+    // Persist the per-height scoring sections, filtered to current heights/sections.
+    const psbh: Record<string, string[]> = {};
+    for (const h of heights) psbh[h] = (pointsSections[h] ?? []).filter((s) => sections.includes(s));
+    out.points_sections_by_height = psbh;
     return Object.keys(out).length ? out : undefined;
   }
 
@@ -1122,6 +1134,52 @@ export default function ConfigEditor({
           ) : (
             <p className="mt-1 text-xs text-slate-500">Si no se personaliza, se heredan las alturas de la serie (CESQROO: 40/60/75).</p>
           )}
+        </div>
+
+        <div className="mt-6 border-t border-slate-200 pt-4 dark:border-slate-700">
+          <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Secciones que puntúan por altura</h4>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Marca qué secciones otorgan puntos de campeonato en cada altura. Por defecto puntúan Abierta y Especial en
+            todas las alturas, y Libre solo en 1.20m y 1.30m.
+          </p>
+          <div className="mt-3 overflow-x-auto">
+            <table className="min-w-full border-separate border-spacing-0 text-sm">
+              <thead>
+                <tr>
+                  <th className="sticky left-0 bg-white px-3 py-2 text-left font-semibold text-slate-500 dark:bg-slate-900 dark:text-slate-400">
+                    Altura
+                  </th>
+                  {sections.map((s) => (
+                    <th key={s} className="px-3 py-2 text-center font-semibold text-slate-500 dark:text-slate-400">
+                      {s}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {heights.map((h) => (
+                  <tr key={h} className="border-t border-slate-100 dark:border-slate-800">
+                    <td className="sticky left-0 bg-white px-3 py-2 font-semibold text-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                      {h}
+                    </td>
+                    {sections.map((s) => {
+                      const on = (pointsSections[h] ?? []).includes(s);
+                      return (
+                        <td key={s} className="px-3 py-2 text-center">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 accent-indigo-600"
+                            checked={on}
+                            onChange={() => togglePointsSection(h, s)}
+                          />
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </section>
 

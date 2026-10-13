@@ -31,6 +31,9 @@ export type StandingsRule = {
   eligibility: "all" | "circuit";
   sections: string[]; // scored separately, in this order
   section_fallback: string[]; // used at a height with none of `sections` present
+  // When set, the authoritative map of which sections score at each height
+  // (overrides sections/section_fallback). Keyed by height → scoring sections.
+  points_sections_by_height?: Record<string, string[]>;
   per_day_cap: "first_class" | "none" | { max: number };
   rider_points_heights?: string[]; // heights whose Abierta scores by RIDER
   rider_points_section?: string; // defaults to "Abierta"
@@ -80,6 +83,10 @@ const strip = (e: StandingEntryInput): ScoreInput => ({ id: e.id, section: e.sec
 function sectionsForHeight(classes: ClassForStandings[], height: string, rule: StandingsRule): string[] {
   const present = new Set<string>();
   for (const c of classes) if (c.height === height) for (const e of c.entries) present.add(e.section);
+  // A per-height scoring map is authoritative when provided.
+  if (rule.points_sections_by_height) {
+    return (rule.points_sections_by_height[height] ?? []).filter((s) => present.has(s));
+  }
   const chosen = rule.sections.filter((s) => present.has(s));
   return chosen.length ? chosen : rule.section_fallback.filter((s) => present.has(s));
 }

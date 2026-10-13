@@ -11,6 +11,11 @@ export type EventStandingsConfig = {
   mini_series?: EventStandingsScope;
   season?: EventStandingsScope;
   rider_points_heights?: string[];
+  // Which sections earn championship points at each height (applies to both the
+  // weekend and season standings). Keyed by height → the sections that score
+  // there. When unset, the default (Abierta + Especial everywhere, Libre only at
+  // 1.20m & 1.30m) is used.
+  points_sections_by_height?: Record<string, string[]>;
 };
 
 export type EventConfig = {
@@ -182,7 +187,39 @@ function normalizeEventStandings(raw: unknown): EventStandingsConfig | undefined
   const season = scope(s.season);
   if (season) out.season = season;
   if (Array.isArray(s.rider_points_heights)) out.rider_points_heights = (s.rider_points_heights as unknown[]).map(String);
+  const psbhRaw = (s.points_sections_by_height && typeof s.points_sections_by_height === "object" ? s.points_sections_by_height : null) as Record<string, unknown> | null;
+  if (psbhRaw) {
+    const psbh: Record<string, string[]> = {};
+    for (const h of Object.keys(psbhRaw)) {
+      if (Array.isArray(psbhRaw[h])) psbh[h] = (psbhRaw[h] as unknown[]).map(String);
+    }
+    if (Object.keys(psbh).length) out.points_sections_by_height = psbh;
+  }
   return Object.keys(out).length ? out : undefined;
+}
+
+// Default championship scoring sections per height: Abierta & Especial score at
+// every height; Libre scores only at 1.20m & 1.30m. Filtered to the sections the
+// event actually uses. Used when the event hasn't customized it.
+export function defaultPointsSectionsByHeight(config: EventConfig): Record<string, string[]> {
+  const has = (s: string) => config.sections.includes(s);
+  const base = ["Abierta", "Especial"].filter(has);
+  const libreHeights = new Set(["1.20m", "1.30m"]);
+  const out: Record<string, string[]> = {};
+  for (const h of config.heights) {
+    const secs = [...base];
+    if (has("Libre") && libreHeights.has(h)) secs.push("Libre");
+    out[h] = secs;
+  }
+  return out;
+}
+
+// Resolve the effective points-sections map for an event: its saved config
+// merged over the default (so a customized height overrides, others keep default).
+export function resolvePointsSectionsByHeight(config: EventConfig): Record<string, string[]> {
+  const def = defaultPointsSectionsByHeight(config);
+  const saved = config.standings?.points_sections_by_height;
+  return saved ? { ...def, ...saved } : def;
 }
 
 function normalizePricing(raw: unknown): EventConfig["pricing"] {

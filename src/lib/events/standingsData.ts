@@ -11,7 +11,7 @@
 //              season:{basis:"registered",per_day_cap:"first_class"} } }
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { normalizeConfig, scopeDays } from "@/lib/events/config";
+import { normalizeConfig, scopeDays, resolvePointsSectionsByHeight } from "@/lib/events/config";
 import { classFormatFromSetup, defaultFormatForHeight, formatHasSecondRound } from "@/lib/scoring/portal";
 import { parseFaultShorthand, hasFallMarker } from "@/lib/scoring/faults";
 import {
@@ -45,7 +45,8 @@ function resolveRule(cfg: SeriesStandingsConfig | null | undefined, scope: Scope
   return {
     basis: s?.basis ?? "class",
     eligibility: s?.eligibility ?? "all",
-    per_day_cap: s?.per_day_cap ?? "none",
+    // House rule: a competitor scores only in its first class of the day by default.
+    per_day_cap: s?.per_day_cap ?? "first_class",
     sections: cfg?.sections ?? DEFAULT_SECTIONS,
     section_fallback: cfg?.section_fallback ?? DEFAULT_FALLBACK,
     rider_points_heights: cfg?.rider_points_heights ?? [],
@@ -212,7 +213,9 @@ export async function getEventStandings(eventId: string, scope: Scope = "mini_se
   const { name: seriesName, cfg } = await resolveSeries((event as { series_id?: string }).series_id);
   const eventCfg = ((event.config ?? {}) as { standings?: EventStandingsCfg }).standings;
   const { rule, enabled } = effectiveRule(cfg, eventCfg, scope);
-  const allowed = new Set(scopeDays(normalizeConfig(event.config), eventCfg?.[scope]));
+  const normCfg = normalizeConfig(event.config);
+  rule.points_sections_by_height = resolvePointsSectionsByHeight(normCfg);
+  const allowed = new Set(scopeDays(normCfg, eventCfg?.[scope]));
   const classes = enabled ? (await loadClasses([eventId])).filter((c) => allowed.has(c.day)) : [];
   return { title: event.name as string, seriesName, scope, rule, enabled, championships: enabled ? computeStandings(classes, rule) : [] };
 }
@@ -227,6 +230,9 @@ export async function getSeriesStandings(seriesId: string, scope: Scope = "seaso
   const included = (evs ?? []).filter(
     (e) => (((e.config ?? {}) as { standings?: EventStandingsCfg }).standings?.[scope]?.enabled ?? true) !== false
   );
+  // Same section-points-by-height rule for the season (events in a series share
+  // the same classes/sections); resolve from the first included event's config.
+  if (included.length) rule.points_sections_by_height = resolvePointsSectionsByHeight(normalizeConfig(included[0].config));
   const includeIds = included.map((e) => e.id);
   const allowedByEvent = new Map(
     included.map((e) => {

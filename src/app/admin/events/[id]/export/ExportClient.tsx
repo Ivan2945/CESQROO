@@ -83,6 +83,9 @@ export default function ExportClient({
       `${eventName} - ${day} - ${label}.pdf`
     );
 
+  const downloadResults = (list: string[], label: string) =>
+    download(`/api/events/${eventSlug}/results-xlsx`, { days: list }, `${eventName} - ${label} - Resultados.xlsx`);
+
   const totalForDay = order.reduce((n, h) => n + (countsForDay.get(h) ?? 0), 0);
 
   return (
@@ -127,6 +130,28 @@ export default function ExportClient({
           >
             {busy ? "Generando…" : "Excel (4 hojas)"}
           </button>
+        </div>
+
+        <div className="mt-4">
+          <p className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-200">Resultados en Excel — una hoja por prueba</p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => downloadResults([day], day)}
+              disabled={busy || !day}
+              className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-60 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-200 dark:hover:bg-emerald-900"
+            >
+              Resultados {day} (Excel)
+            </button>
+            {days.length > 1 && (
+              <button
+                onClick={() => downloadResults(days, "Fin de semana")}
+                disabled={busy}
+                className="rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-800 hover:bg-emerald-100 disabled:opacity-60 dark:border-emerald-700 dark:bg-emerald-950 dark:text-emerald-200 dark:hover:bg-emerald-900"
+              >
+                Resultados fin de semana (Excel)
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="mt-4">

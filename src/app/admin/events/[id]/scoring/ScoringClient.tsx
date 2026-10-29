@@ -32,6 +32,7 @@ import {
 } from "@/lib/scoring/store";
 import { activeById, resultsByKey, classCount, type CountEntry, type CountResult, type CountSetup } from "@/lib/events/classCounts";
 import { activeHeightsForDay } from "@/lib/events/config";
+import { FarmtekPanel } from "./FarmtekPanel";
 
 const STATUSES = ["OK", "NP", "EL", "RT", "FC", "T"];
 const FORMAT_LABELS: Record<string, string> = {
@@ -448,6 +449,56 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
     setLastId(entryId);
   };
 
+  const rowsRef = useRef<Row[]>(rows);
+  useEffect(() => { rowsRef.current = rows; }, [rows]);
+  const consecutivePhases = format === "two_phase" || format === "two_phase_special";
+
+  const timerSlot = (r: Row): 1 | 2 | null => {
+    if (r.cancelled || r.committed || r.status1 !== "OK") return null;
+    if (r.t1.trim() === "") return 1;
+    if (hasR2 && r.t2.trim() === "") return 2;
+    return null;
+  };
+
+  const timerTarget = (rs: Row[]) => {
+    const cur = rs.find((r) => r.entryId === currentRef.current);
+    if (cur && timerSlot(cur)) return cur;
+    return rs.find((r) => timerSlot(r) != null) ?? null;
+  };
+
+  const onTimerTime = (seconds: number): string => {
+    if (scoringLocked) return "· clase sin iniciar, no asignado";
+    const rs = rowsRef.current;
+    const r = timerTarget(rs);
+    if (!r) return "· sin binomio pendiente";
+    const slot = timerSlot(r)!;
+    const t = seconds.toFixed(2);
+    const holdForPhase2 = slot === 1 && consecutivePhases && (format === "two_phase_special" || parseFaultShorthand(r.f1) === 0);
+    const next: Row = slot === 1 ? { ...r, t1: t } : { ...r, t2: t };
+    const commit = !holdForPhase2;
+    const updated = commit ? { ...next, scored: true, committed: true } : next;
+    setRows((list) => list.map((x) => (x.entryId === r.entryId ? updated : x)));
+    if (commit) {
+      persist(updated);
+      setLastId(r.entryId);
+      const after = rs.map((x) => (x.entryId === r.entryId ? updated : x));
+      const nxt = timerTarget(after);
+      if (nxt) markCurrent(nxt.entryId);
+    } else {
+      markCurrent(r.entryId);
+    }
+    const tag = slot === 1 ? (consecutivePhases ? "F1" : "R1") : (consecutivePhases ? "F2" : "R2");
+    return `→ #${r.no} ${tag}${commit ? " ✓" : ", esperando F2"}`;
+  };
+
+  const timerNext = (() => {
+    const r = timerTarget(rows);
+    if (!r) return null;
+    const slot = timerSlot(r);
+    const tag = slot === 1 ? (consecutivePhases ? "F1" : "R1") : (consecutivePhases ? "F2" : "R2");
+    return { label: `#${r.no} ${r.rider} / ${r.horse} · ${tag}` };
+  })();
+
   // Save the class setup (format + params + current order) to server + cache.
   async function saveSetup() {
     const startOrder = rows.map((r) => ({ entry_id: r.entryId, no: r.no }));
@@ -701,6 +752,8 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
       )}
 
       <ParamPanel format={format} params={params} setParams={setParams} />
+
+      <FarmtekPanel target={timerNext} onTime={onTimerTime} />
 
       {lastScore && last && (() => {
         const p = parts(last);

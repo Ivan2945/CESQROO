@@ -81,10 +81,13 @@ export function getSerial(): SerialLike | null {
 
 export type FarmtekConnection = { close: () => Promise<void> };
 
+const RECOVERABLE = new Set(["BreakError", "FramingError", "ParityError", "BufferOverrunError"]);
+
 export async function connectFarmtek(opts: {
   baudRate: number;
   reuse: boolean;
   onLine: (line: string) => void;
+  onNotice?: (msg: string) => void;
   onClose: (err?: unknown) => void;
 }): Promise<FarmtekConnection> {
   const serial = getSerial();
@@ -100,36 +103,59 @@ export async function connectFarmtek(opts: {
   let stopped = false;
   let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
   const decoder = new TextDecoder("ascii");
+  let buf = "";
+  let idle: ReturnType<typeof setTimeout> | null = null;
+
+  const flush = () => {
+    idle = null;
+    const rest = buf;
+    buf = "";
+    if (rest.trim()) opts.onLine(rest);
+  };
+
+  const push = (text: string) => {
+    buf += text;
+    const parts = buf.split(/\r\n|\r|\n/);
+    buf = parts.pop() ?? "";
+    for (const p of parts) if (p.trim()) opts.onLine(p);
+    if (idle) clearTimeout(idle);
+    idle = buf.trim() ? setTimeout(flush, 250) : null;
+  };
 
   const loop = async () => {
-    let buf = "";
-    try {
-      while (!stopped && port!.readable) {
-        reader = port!.readable.getReader();
-        try {
-          for (;;) {
-            const { value, done } = await reader.read();
-            if (done) break;
-            buf += decoder.decode(value, { stream: true });
-            const parts = buf.split(/\r\n|\r|\n/);
-            buf = parts.pop() ?? "";
-            for (const p of parts) if (p.trim()) opts.onLine(p);
-          }
-        } finally {
-          reader.releaseLock();
-          reader = null;
+    let fatal: unknown = undefined;
+    while (!stopped && port!.readable) {
+      reader = port!.readable.getReader();
+      try {
+        for (;;) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) push(decoder.decode(value, { stream: true }));
         }
+      } catch (err) {
+        const name = err instanceof Error ? err.name : "";
+        if (RECOVERABLE.has(name)) {
+          opts.onNotice?.(`[${name}]`);
+          continue;
+        }
+        fatal = err;
+        break;
+      } finally {
+        try { reader?.releaseLock(); } catch {}
+        reader = null;
       }
-      opts.onClose();
-    } catch (err) {
-      opts.onClose(err);
     }
+    if (idle) { clearTimeout(idle); flush(); }
+    if (stopped) return;
+    try { await port!.close(); } catch {}
+    opts.onClose(fatal ?? new Error("closed"));
   };
   loop();
 
   return {
     close: async () => {
       stopped = true;
+      if (idle) clearTimeout(idle);
       try { await reader?.cancel(); } catch {}
       try { await port!.close(); } catch {}
     },

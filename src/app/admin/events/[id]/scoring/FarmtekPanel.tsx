@@ -31,6 +31,8 @@ export function FarmtekPanel({ target, onTime }: { target: TimerTarget; onTime: 
   const burstTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastFire = useRef<{ seconds: number; at: number } | null>(null);
   const onTimeRef = useRef(onTime);
+  const retry = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const connectRef = useRef<((reuse: boolean, baudRate: number) => Promise<void>) | null>(null);
   useEffect(() => { onTimeRef.current = onTime; }, [onTime]);
 
   const fire = useCallback((seconds: number) => {
@@ -64,10 +66,15 @@ export function FarmtekPanel({ target, onTime }: { target: TimerTarget; onTime: 
         baudRate,
         reuse,
         onLine: handleLine,
-        onClose: (err) => {
+        onNotice: (msg) => setLog((l) => [`${new Date().toLocaleTimeString()}  ${msg}`, ...l].slice(0, 40)),
+        onClose: () => {
           conn.current = null;
-          setStatus(err ? "error" : "off");
-          if (err) setError("Se perdió la conexión con el cronómetro.");
+          let auto = false;
+          try { auto = localStorage.getItem(LS_ON) === "1"; } catch {}
+          if (!auto) { setStatus("off"); return; }
+          setStatus("connecting");
+          if (retry.current) clearTimeout(retry.current);
+          retry.current = setTimeout(() => { retry.current = null; connectRef.current?.(true, baudRate); }, 1500);
         },
       });
       setStatus("on");
@@ -81,8 +88,11 @@ export function FarmtekPanel({ target, onTime }: { target: TimerTarget; onTime: 
     }
   }, [handleLine]);
 
+  useEffect(() => { connectRef.current = connect; }, [connect]);
+
   const disconnect = useCallback(async () => {
     try { localStorage.removeItem(LS_ON); } catch {}
+    if (retry.current) { clearTimeout(retry.current); retry.current = null; }
     await conn.current?.close();
     conn.current = null;
     setStatus("off");
@@ -92,7 +102,7 @@ export function FarmtekPanel({ target, onTime }: { target: TimerTarget; onTime: 
     let auto = false;
     try { auto = localStorage.getItem(LS_ON) === "1"; } catch {}
     const t = auto && getSerial() ? setTimeout(() => connect(true, readBaud()), 0) : null;
-    return () => { if (t) clearTimeout(t); conn.current?.close(); if (burstTimer.current) clearTimeout(burstTimer.current); };
+    return () => { if (t) clearTimeout(t); if (retry.current) clearTimeout(retry.current); conn.current?.close(); if (burstTimer.current) clearTimeout(burstTimer.current); };
   }, [connect]);
 
   function changeBaud(v: number) {

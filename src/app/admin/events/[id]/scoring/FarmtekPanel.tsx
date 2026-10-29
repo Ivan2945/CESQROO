@@ -13,7 +13,7 @@ export type TimerTarget = { label: string } | null;
 
 function readBaud() {
   try { const v = Number(localStorage.getItem(LS_BAUD)); if (BAUDS.includes(v)) return v; } catch {}
-  return 9600;
+  return 1200;
 }
 
 export function FarmtekPanel({ target, onTime }: { target: TimerTarget; onTime: (seconds: number) => string }) {
@@ -137,7 +137,7 @@ export function FarmtekPanel({ target, onTime }: { target: TimerTarget; onTime: 
           </>
         )}
         <span className="text-xs text-slate-500 dark:text-slate-400">
-          Próximo tiempo → <b className="uppercase text-slate-800 dark:text-slate-100">{target ? target.label : "sin binomio pendiente"}</b>
+          Próximo tiempo → <b className="uppercase text-slate-800 dark:text-slate-100">{target ? target.label : "seleccione un binomio"}</b>
         </span>
         {last && (
           <span className="rounded-md bg-slate-900 px-2.5 py-1 font-mono text-white dark:bg-slate-100 dark:text-slate-900">

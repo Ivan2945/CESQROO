@@ -339,6 +339,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
   // Can't rank/score until the class has been started.
   const scoringLocked = classStatus === "pending";
   const currentRef = useRef<string | null>(existing?.current_entry_id ?? null);
+  const [currentId, setCurrentId] = useState<string | null>(existing?.current_entry_id ?? null);
 
   // Best-effort push to the server (only matters when online; the public view
   // reads it). Failures are ignored — scoring stays fully offline-capable.
@@ -350,7 +351,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
   }, [slug, height, day]);
 
   function startClass() { setClassStatus("in_progress"); pushLive({ status: "in_progress" }); }
-  function endClass() { setClassStatus("finished"); pushLive({ status: "finished", currentEntryId: null }); currentRef.current = null; }
+  function endClass() { setClassStatus("finished"); pushLive({ status: "finished", currentEntryId: null }); currentRef.current = null; setCurrentId(null); }
 
   // Persist the class format + time allowances to the server (best-effort, no
   // start order → never clobbers the draw). Without this the PUBLIC view can't
@@ -366,6 +367,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
   function markCurrent(entryId: string) {
     if (currentRef.current === entryId) return;
     currentRef.current = entryId;
+    setCurrentId(entryId);
     if (classStatus === "in_progress") pushLive({ currentEntryId: entryId });
   }
 
@@ -456,47 +458,28 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
   const timerSlot = (r: Row): 1 | 2 | null => {
     if (r.cancelled || r.committed || r.status1 !== "OK") return null;
     if (r.t1.trim() === "") return 1;
-    if (hasR2 && r.t2.trim() === "") return 2;
+    if (hasR2 && r.t2.trim() === "" && (consecutivePhases || r.scored)) return 2;
     return null;
   };
 
-  const timerTarget = (rs: Row[]) => {
-    const cur = rs.find((r) => r.entryId === currentRef.current);
-    if (cur && timerSlot(cur)) return cur;
-    return rs.find((r) => timerSlot(r) != null) ?? null;
-  };
+  const slotTag = (slot: 1 | 2) => (slot === 1 ? (consecutivePhases ? "F1" : "R1") : (consecutivePhases ? "F2" : "R2"));
 
   const onTimerTime = (seconds: number): string => {
     if (scoringLocked) return "· clase sin iniciar, no asignado";
-    const rs = rowsRef.current;
-    const r = timerTarget(rs);
-    if (!r) return "· sin binomio pendiente";
-    const slot = timerSlot(r)!;
+    const r = rowsRef.current.find((x) => x.entryId === currentRef.current && !x.committed && !x.cancelled);
+    if (!r) return "· seleccione un binomio, no asignado";
+    const slot = timerSlot(r);
+    if (!slot) return `· #${r.no} ya tiene tiempo, no asignado`;
     const t = seconds.toFixed(2);
-    const holdForPhase2 = slot === 1 && consecutivePhases && (format === "two_phase_special" || parseFaultShorthand(r.f1) === 0);
-    const next: Row = slot === 1 ? { ...r, t1: t } : { ...r, t2: t };
-    const commit = !holdForPhase2;
-    const updated = commit ? { ...next, scored: true, committed: true } : next;
-    setRows((list) => list.map((x) => (x.entryId === r.entryId ? updated : x)));
-    if (commit) {
-      persist(updated);
-      setLastId(r.entryId);
-      const after = rs.map((x) => (x.entryId === r.entryId ? updated : x));
-      const nxt = timerTarget(after);
-      if (nxt) markCurrent(nxt.entryId);
-    } else {
-      markCurrent(r.entryId);
-    }
-    const tag = slot === 1 ? (consecutivePhases ? "F1" : "R1") : (consecutivePhases ? "F2" : "R2");
-    return `→ #${r.no} ${tag}${commit ? " ✓" : ", esperando F2"}`;
+    setRows((list) => list.map((x) => (x.entryId === r.entryId ? (slot === 1 ? { ...x, t1: t } : { ...x, t2: t }) : x)));
+    return `→ #${r.no} ${slotTag(slot)}`;
   };
 
   const timerNext = (() => {
-    const r = timerTarget(rows);
+    const r = rows.find((x) => x.entryId === currentId && !x.committed && !x.cancelled);
     if (!r) return null;
     const slot = timerSlot(r);
-    const tag = slot === 1 ? (consecutivePhases ? "F1" : "R1") : (consecutivePhases ? "F2" : "R2");
-    return { label: `#${r.no} ${r.rider} / ${r.horse} · ${tag}` };
+    return { label: `#${r.no} ${r.rider} / ${r.horse} · ${slot ? slotTag(slot) : "ya tiene tiempo"}` };
   })();
 
   // Save the class setup (format + params + current order) to server + cache.
@@ -797,7 +780,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
             {pendingRows.map((r) => {
               const s = r.scored ? byId[r.entryId] : null;
               return (
-                <tr key={r.entryId} onFocus={() => markCurrent(r.entryId)} className={"border-b border-slate-200 " + (currentRef.current === r.entryId && classStatus === "in_progress" ? "ring-2 ring-emerald-400 " : "") + (r.scored ? "bg-blue-50" : "")}>
+                <tr key={r.entryId} onFocus={() => markCurrent(r.entryId)} onClick={() => markCurrent(r.entryId)} className={"cursor-pointer border-b border-slate-200 " + (currentId === r.entryId && classStatus === "in_progress" ? "ring-2 ring-emerald-400 " : "") + (r.scored ? "bg-blue-50" : "")}>
                   <td className="p-2 text-center">
                     <input value={String(r.no ?? "")} onChange={(e) => patch(r.entryId, { no: e.target.value })} onBlur={() => setRows((rs) => { saveOrder(rs); return rs; })} className="w-12 rounded border border-slate-300 px-1 py-0.5 text-center font-bold" />
                   </td>

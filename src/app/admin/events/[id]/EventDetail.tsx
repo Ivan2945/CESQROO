@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
-import { isShowAdminFor } from "@/lib/auth/eventAccess";
+import { isShowAdminFor, showClubIdsForClub } from "@/lib/auth/eventAccess";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeConfig } from "@/lib/events/config";
 import { computeStatement, npDaysFromResults } from "@/lib/events/billing";
@@ -62,7 +62,7 @@ export async function EventDetail({ id, view }: { id: string; view: "club" | "sh
     .select("id, club_name, representative, coach, phone, email, created_at, club_id")
     .eq("event_id", id)
     .order("created_at", { ascending: false });
-  if (!canViewAll) subQuery = subQuery.eq("club_id", clubId as string);
+  if (!canViewAll) subQuery = subQuery.in("club_id", await showClubIdsForClub(clubId));
   const { data: submissions } = await subQuery;
 
   const subIds = (submissions ?? []).map((s) => s.id);

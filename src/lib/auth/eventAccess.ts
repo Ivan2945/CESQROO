@@ -44,3 +44,9 @@ export async function requireEventManager(eventId: string): Promise<{ isAdmin: b
   if (!allowed) redirect("/admin/events");
   return { isAdmin, backHref: isAdmin ? `/admin/events/${eventId}` : `/admin/admon-eventos/${eventId}` };
 }
+
+export async function showClubIdsForClub(clubId: string | null | undefined): Promise<string[]> {
+  if (!clubId) return [];
+  const { data } = await supabaseAdmin.from("show_clubs").select("id").eq("circuit_club_id", clubId);
+  return [...new Set([clubId, ...(data ?? []).map((r) => r.id as string)])];
+}

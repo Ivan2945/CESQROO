@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { showClubIdsForClub } from "@/lib/auth/eventAccess";
 import { npDaysFromResults } from "@/lib/events/billing";
 import { summarizeCounts, type CountItem, type CountSummary } from "@/lib/events/uniqueCounts";
 
@@ -32,6 +33,7 @@ export async function participationCounts(eventIds: string[], clubId?: string | 
   const counts = new Map<string, CountSummary>();
   if (!eventIds.length) return counts;
 
+  const clubIds = clubId ? await showClubIdsForClub(clubId) : null;
   const entries = await fetchAll<CountEntry>((from, to) => {
     let q = supabaseAdmin
       .from("event_entries")
@@ -39,7 +41,7 @@ export async function participationCounts(eventIds: string[], clubId?: string | 
       .in("event_id", eventIds)
       .order("id")
       .range(from, to);
-    if (clubId) q = q.eq("club_id", clubId);
+    if (clubIds) q = q.in("club_id", clubIds);
     return q;
   });
 

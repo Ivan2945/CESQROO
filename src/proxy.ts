@@ -50,8 +50,18 @@ export async function proxy(request: NextRequest) {
     }
   );
 
-  // refresh session cookie if needed
-  await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  const path = request.nextUrl.pathname;
+  const gated = ["/admin", "/club", "/cuenta", "/no-club"].some((p) => path === p || path.startsWith(p + "/"));
+  if (user?.app_metadata?.must_change_password === true && gated) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/auth/set-password";
+    url.search = "";
+    const redirect = NextResponse.redirect(url);
+    response.cookies.getAll().forEach((c) => redirect.cookies.set(c));
+    return redirect;
+  }
 
   return response;
 }

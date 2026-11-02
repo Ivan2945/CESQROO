@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseBrowser";
+import { clearMustChangePasswordAction } from "@/app/actions/passwordReset";
 
 const input =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 outline-none focus:border-blue-600 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100";
@@ -11,6 +12,8 @@ export default function SetPasswordPage() {
   const router = useRouter();
   const [email, setEmail] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [isReset, setIsReset] = useState(false);
+  const [forced, setForced] = useState(false);
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -24,6 +27,9 @@ export default function SetPasswordPage() {
         return;
       }
       setEmail(data.session.user.email ?? null);
+      setIsReset(new URLSearchParams(window.location.search).get("reset") === "1");
+      const { data: fresh } = await supabase.auth.getUser();
+      setForced(fresh.user?.app_metadata?.must_change_password === true);
       setReady(true);
     })();
   }, [router]);
@@ -41,6 +47,13 @@ export default function SetPasswordPage() {
       setErr(error.message);
       return;
     }
+    const cleared = await clearMustChangePasswordAction();
+    if (!cleared.ok) {
+      setLoading(false);
+      setErr(cleared.message);
+      return;
+    }
+    await supabase.auth.refreshSession();
     const { data: isAdmin } = await supabase.rpc("is_admin");
     setLoading(false);
     router.replace(isAdmin ? "/admin" : "/club");
@@ -57,8 +70,13 @@ export default function SetPasswordPage() {
 
   return (
     <main className="mx-auto max-w-md px-4 py-12">
-      <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Crea tu contraseña</h1>
+      <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{isReset ? "Nueva contraseña" : "Crea tu contraseña"}</h1>
       {email && <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{email}</p>}
+      {forced && !isReset && (
+        <p className="mt-3 rounded-lg bg-blue-50 p-3 text-sm text-blue-800 dark:bg-blue-950/40 dark:text-blue-200">
+          Es tu primer inicio de sesión. Por seguridad, crea una contraseña personal para continuar.
+        </p>
+      )}
 
       <form onSubmit={onSubmit} className="mt-6 grid gap-4">
         <label className="grid gap-1.5 text-sm font-semibold text-slate-700 dark:text-slate-200">

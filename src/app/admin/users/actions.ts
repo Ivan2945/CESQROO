@@ -57,6 +57,7 @@ export type UserListRow = {
   club_name: string | null;
   created_at: string | null;
   pending: boolean;
+  must_change_password: boolean;
 };
 
 // Full user directory (admin only): every profile joined to its auth email and
@@ -68,6 +69,9 @@ export async function getUsersList(): Promise<UserListRow[]> {
 
   const { data: authList } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
   const emailById = new Map((authList?.users ?? []).map((u) => [u.id, u.email ?? ""]));
+  const mustChangeById = new Map(
+    (authList?.users ?? []).map((u) => [u.id, u.app_metadata?.must_change_password === true])
+  );
   const pendingById = new Map(
     (authList?.users ?? []).map((u) => [u.id, !u.email_confirmed_at && !u.last_sign_in_at])
   );
@@ -89,6 +93,7 @@ export async function getUsersList(): Promise<UserListRow[]> {
       club_name: p.club_id ? clubName.get(p.club_id) ?? null : null,
       created_at: (p.created_at as string | null) ?? null,
       pending: pendingById.get(p.user_id) ?? false,
+      must_change_password: mustChangeById.get(p.user_id) ?? false,
     }))
     .sort((a, b) => a.role.localeCompare(b.role) || a.name.localeCompare(b.name));
 }
@@ -193,12 +198,16 @@ export async function createUserAction(
     if (!data?.user?.id) return { ok: false, message: "Invite failed (no user id returned)." };
     user_id = data.user.id;
     invited = true;
+    await adminClient.auth.admin.updateUserById(user_id, {
+      app_metadata: { must_change_password: true },
+    });
   } else {
     const { data, error } = await adminClient.auth.admin.createUser({
       email,
       password: password || undefined,
       email_confirm: true,
       user_metadata: { name },
+      app_metadata: { must_change_password: true },
     });
     if (error) return { ok: false, message: error.message };
     if (!data?.user?.id) return { ok: false, message: "Create user failed (no user id returned)." };

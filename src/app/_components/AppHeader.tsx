@@ -124,6 +124,21 @@ export default async function AppHeader() {
           ) : null}
         </div>
 
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <Link
+          href="/cuenta"
+          style={{
+            padding: "6px 10px",
+            border: "1px solid #ccc",
+            borderRadius: 8,
+            background: "#ffffff",
+            color: "#000000",
+            fontSize: 13,
+            textDecoration: "none",
+          }}
+        >
+          Cambiar contraseña
+        </Link>
         <form action={signOutAction}>
           <button
             type="submit"
@@ -138,6 +153,7 @@ export default async function AppHeader() {
              Cerrar Sesión
           </button>
         </form>
+        </div>
       </div>
 
       <div style={{ marginTop: 10 }}>

@@ -68,6 +68,8 @@ export default async function AdminUsersPage() {
                   <td className="p-3">
                     {u.pending ? (
                       <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">Invitación pendiente</span>
+                    ) : u.must_change_password ? (
+                      <span className="rounded-full bg-sky-100 px-2.5 py-0.5 text-xs font-bold text-sky-800 dark:bg-sky-950/50 dark:text-sky-300">Debe cambiar contraseña</span>
                     ) : (
                       <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">Activo</span>
                     )}

@@ -59,7 +59,7 @@ export default function AuthConfirmPage() {
 
       window.history.replaceState(null, "", url.pathname);
       const needsPassword = type === "invite" || type === "recovery" || type === "signup" || !type;
-      router.replace(needsPassword ? "/auth/set-password" : "/login");
+      router.replace(needsPassword ? (type === "recovery" ? "/auth/set-password?reset=1" : "/auth/set-password") : "/login");
     })();
   }, [router]);
 

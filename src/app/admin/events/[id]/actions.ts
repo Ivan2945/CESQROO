@@ -6,6 +6,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { dayCommitted, type DayStateMap } from "@/lib/events/locks";
 import { binomioDayKey } from "@/lib/events/classCounts";
 import type { ActionResult } from "@/lib/types/actions";
+import { canManageEvent } from "@/lib/auth/eventAccess";
 
 async function isAdminUser() {
   const supabase = await supabaseServer();
@@ -305,7 +306,7 @@ export type AddEntryInput = {
 };
 
 export async function addEntryAction(input: AddEntryInput): Promise<ActionResult<void>> {
-  if (!(await isAdminUser())) return { ok: false, message: "Solo un administrador puede agregar participaciones." };
+  if (!(await canManageEvent(input.eventId))) return { ok: false, message: "Solo un administrador del evento puede agregar participaciones." };
   const rider = input.riderName.trim();
   const horse = input.horseName.trim();
   if (!input.clubId) return { ok: false, message: "Seleccione un club." };
@@ -388,6 +389,7 @@ export async function addEntryAction(input: AddEntryInput): Promise<ActionResult
   }
 
   revalidatePath(`/admin/events/${input.eventId}`);
+  revalidatePath(`/admin/admon-eventos/${input.eventId}`);
   return { ok: true, data: undefined, message: "Participación agregada." };
 }
 

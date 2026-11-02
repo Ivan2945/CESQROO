@@ -1,27 +1,17 @@
-import { supabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { canManageEventSlug } from "@/lib/auth/eventAccess";
 import { normalizeConfig } from "@/lib/events/config";
 import { importEntries, type RawImportRow } from "@/lib/events/importEntries";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function isAdminUser() {
-  const supabase = await supabaseServer();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return false;
-  const { data: isAdmin } = await supabase.rpc("is_admin");
-  return !!isAdmin;
-}
-
 // POST /api/events/[slug]/import  { rows: RawImportRow[] }  (admin only)
 export async function POST(req: Request, { params }: { params: Promise<{ slug: string }> }) {
-  if (!(await isAdminUser())) {
-    return Response.json({ error: "Solo un administrador puede importar." }, { status: 403 });
-  }
   const { slug } = await params;
+  if (!(await canManageEventSlug(slug))) {
+    return Response.json({ error: "Solo un administrador del evento puede importar." }, { status: 403 });
+  }
 
   let body: { rows?: RawImportRow[] };
   try {

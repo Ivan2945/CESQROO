@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/auth/requireAdmin";
+import { requireEventManager } from "@/lib/auth/eventAccess";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeConfig } from "@/lib/events/config";
 import ExportClient from "./ExportClient";
@@ -10,8 +10,8 @@ export default async function EventExportPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireAdmin();
   const { id } = await params;
+  const { backHref } = await requireEventManager(id);
 
   const { data: event, error } = await supabaseAdmin
     .from("events")
@@ -22,7 +22,6 @@ export default async function EventExportPage({
 
   const config = normalizeConfig(event.config);
 
-  // Minimal data for the client to compute per-day classes + counts.
   const { data: rows } = await supabaseAdmin
     .from("event_entries")
     .select("height, days")
@@ -35,6 +34,7 @@ export default async function EventExportPage({
 
   return (
     <ExportClient
+      backHref={backHref}
       eventId={event.id}
       eventSlug={event.slug}
       eventName={event.name}

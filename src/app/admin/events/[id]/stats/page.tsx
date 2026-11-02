@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
+import { isShowAdminFor } from "@/lib/auth/eventAccess";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeConfig } from "@/lib/events/config";
 import { computeEventStats, billedWithoutResult, duplicateBinomios, type StatsEntry, type StatsResult, type StatsSetup, type ClubGroup } from "@/lib/events/stats";
@@ -63,7 +64,9 @@ function ClubAccordion({ title, groups }: { title: string; groups: ClubGroup[] }
 
 export default async function EventStatsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { isAdmin } = await requireClubAdmin();
+  const { isAdmin: globalAdmin, user } = await requireClubAdmin();
+  const isAdmin = globalAdmin || (await isShowAdminFor(user.id, id));
+  const backHref = globalAdmin ? `/admin/events/${id}` : `/admin/admon-eventos/${id}`;
 
   const { data: event, error: evErr } = await supabaseAdmin
     .from("events")
@@ -75,7 +78,7 @@ export default async function EventStatsPage({ params }: { params: Promise<{ id:
   if (!isAdmin) {
     return (
       <div className="mx-auto max-w-3xl">
-        <Link href={`/admin/events/${event.id}`} className="text-sm text-blue-600 dark:text-blue-400">← {event.name}</Link>
+        <Link href={backHref} className="text-sm text-blue-600 dark:text-blue-400">← {event.name}</Link>
         <p className="mt-6 rounded-lg border border-amber-200 bg-amber-50 p-4 text-amber-800 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300">
           Las estadísticas del evento solo están disponibles para administradores.
         </p>
@@ -123,7 +126,7 @@ export default async function EventStatsPage({ params }: { params: Promise<{ id:
 
   return (
     <div className="mx-auto max-w-5xl">
-      <Link href={`/admin/events/${event.id}`} className="text-sm text-blue-600 dark:text-blue-400">← {event.name}</Link>
+      <Link href={backHref} className="text-sm text-blue-600 dark:text-blue-400">← {event.name}</Link>
       <h2 className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">Estadísticas</h2>
       <p className="mb-6 text-sm text-slate-500 dark:text-slate-400">
         Solo cuentan jinetes que compitieron. Los NP (no presentó) y las cancelaciones no se contabilizan como participación.

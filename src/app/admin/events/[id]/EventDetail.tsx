@@ -145,6 +145,23 @@ export async function EventDetail({ id, view }: { id: string; view: "club" | "sh
             <AddEntryButton eventId={event.id} slug={event.slug} config={config} />
           </>
         )}
+        {showAdmin && (
+          <>
+            <Link href={`/admin/events/${event.id}/export`} className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+              Exportar a Excel
+            </Link>
+            <Link href={`/admin/events/${event.id}/import`} className="text-sm font-semibold text-blue-600 dark:text-blue-400">
+              Importar
+            </Link>
+            <a href={`/api/events/${event.slug}/billing-pdf`} className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+              Estados de cuenta (PDF)
+            </a>
+            <Link href={`/admin/events/${event.id}/stats`} className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+              Show Stats
+            </Link>
+            <AddEntryButton eventId={event.id} slug={event.slug} config={config} />
+          </>
+        )}
       </div>
       <p className="mb-5 text-sm text-slate-500 dark:text-slate-400">
         {(submissions ?? []).length} club(es) · {totalEntries} participación(es) ·{" "}
@@ -192,6 +209,14 @@ export async function EventDetail({ id, view }: { id: string; view: "club" | "sh
                       </a>
                       <DeleteSubmissionButton submissionId={s.id} eventId={event.id} clubName={s.club_name} />
                     </span>
+                  )}
+                  {showAdmin && (
+                    <a
+                      href={`/api/events/${event.slug}/billing-pdf?submission=${s.id}`}
+                      className="ml-auto text-sm font-semibold text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+                    >
+                      PDF
+                    </a>
                   )}
                 </div>
                 <p className="mb-3 text-xs text-slate-500">

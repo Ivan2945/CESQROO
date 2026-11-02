@@ -66,14 +66,14 @@ function parseCSV(text: string): string[][] {
 type RowObj = Record<string, string>;
 
 export default function ImportClient({
-  eventId,
+  backHref,  eventId,
   eventSlug,
   eventName,
   heights,
   sections,
   days,
 }: {
-  eventId: string;
+  backHref: string;  eventId: string;
   eventSlug: string;
   eventName: string;
   heights: string[];
@@ -182,7 +182,7 @@ export default function ImportClient({
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link href={`/admin/events/${eventId}`} className="text-sm text-blue-600 dark:text-blue-400">
+      <Link href={backHref} className="text-sm text-blue-600 dark:text-blue-400">
         ← Volver al evento
       </Link>
       <h2 className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">Importar inscripciones</h2>

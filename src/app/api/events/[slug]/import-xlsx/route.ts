@@ -1,21 +1,11 @@
 import ExcelJS from "exceljs";
-import { supabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { canManageEventSlug } from "@/lib/auth/eventAccess";
 import { normalizeConfig } from "@/lib/events/config";
 import { importEntries, type RawImportRow } from "@/lib/events/importEntries";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-async function isAdminUser() {
-  const supabase = await supabaseServer();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return false;
-  const { data: isAdmin } = await supabase.rpc("is_admin");
-  return !!isAdmin;
-}
 
 const fold = (v: string) => v.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
 
@@ -48,10 +38,10 @@ function fieldFromHeader(h: string): string | null {
 
 // POST /api/events/[slug]/import-xlsx  (raw .xlsx bytes)  (admin only)
 export async function POST(req: Request, { params }: { params: Promise<{ slug: string }> }) {
-  if (!(await isAdminUser())) {
-    return Response.json({ error: "Solo un administrador puede importar." }, { status: 403 });
-  }
   const { slug } = await params;
+  if (!(await canManageEventSlug(slug))) {
+    return Response.json({ error: "Solo un administrador del evento puede importar." }, { status: 403 });
+  }
 
   const { data: event } = await supabaseAdmin.from("events").select("id, config").eq("slug", slug).single();
   if (!event) return Response.json({ error: "Evento no encontrado." }, { status: 404 });

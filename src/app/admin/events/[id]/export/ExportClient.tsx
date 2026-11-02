@@ -6,14 +6,14 @@ import Link from "next/link";
 type EntrySummary = { height: string; days: string[] };
 
 export default function ExportClient({
-  eventId,
+  backHref,  eventId,
   eventSlug,
   eventName,
   days,
   heightOrder,
   entries,
 }: {
-  eventId: string;
+  backHref: string;  eventId: string;
   eventSlug: string;
   eventName: string;
   days: string[];
@@ -90,7 +90,7 @@ export default function ExportClient({
 
   return (
     <div className="mx-auto max-w-2xl">
-      <Link href={`/admin/events/${eventId}`} className="text-sm text-blue-600 dark:text-blue-400">
+      <Link href={backHref} className="text-sm text-blue-600 dark:text-blue-400">
         ← Volver al evento
       </Link>
       <h2 className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">Exportar a Excel</h2>

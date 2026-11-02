@@ -1,21 +1,11 @@
-import { supabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { canManageEventSlug } from "@/lib/auth/eventAccess";
 import { normalizeConfig } from "@/lib/events/config";
 import { computeRiderBreakdown, npDaysFromResults, type BillingEntry } from "@/lib/events/billing";
 import { buildStatementsPdf, type StatementClub } from "@/lib/events/exportPdf";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-async function isAdminUser() {
-  const supabase = await supabaseServer();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return false;
-  const { data: isAdmin } = await supabase.rpc("is_admin");
-  return !!isAdmin;
-}
 
 function safeFilename(s: string) {
   return s.replace(/[^\p{L}\p{N} _.-]/gu, "").replace(/\s+/g, " ").trim() || "estado-de-cuenta";
@@ -44,10 +34,10 @@ type EntryRow = BillingEntry & {
 // GET /api/events/[slug]/billing-pdf[?submission=<id>]  (admin only)
 // No submission param -> all clubs, one page each.
 export async function GET(req: Request, { params }: { params: Promise<{ slug: string }> }) {
-  if (!(await isAdminUser())) {
-    return Response.json({ error: "Solo un administrador puede exportar." }, { status: 403 });
-  }
   const { slug } = await params;
+  if (!(await canManageEventSlug(slug))) {
+    return Response.json({ error: "Solo un administrador del evento puede exportar." }, { status: 403 });
+  }
   const submissionId = new URL(req.url).searchParams.get("submission");
 
   const { data: event } = await supabaseAdmin

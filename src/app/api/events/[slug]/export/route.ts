@@ -1,20 +1,10 @@
-import { supabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabase/admin";
+import { canManageEventSlug } from "@/lib/auth/eventAccess";
 import { normalizeConfig, activeHeightsForDay, startNumberForDay } from "@/lib/events/config";
 import { buildDayWorkbook, type ExportEntry } from "@/lib/events/exportWorkbook";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-async function isAdminUser() {
-  const supabase = await supabaseServer();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return false;
-  const { data: isAdmin } = await supabase.rpc("is_admin");
-  return !!isAdmin;
-}
 
 function safeFilename(s: string) {
   return s.replace(/[^\p{L}\p{N} _.-]/gu, "").replace(/\s+/g, " ").trim() || "export";
@@ -22,10 +12,10 @@ function safeFilename(s: string) {
 
 // POST /api/events/[slug]/export  { day, heightOrder: string[] }  (admin only)
 export async function POST(req: Request, { params }: { params: Promise<{ slug: string }> }) {
-  if (!(await isAdminUser())) {
-    return Response.json({ error: "Solo un administrador puede exportar." }, { status: 403 });
-  }
   const { slug } = await params;
+  if (!(await canManageEventSlug(slug))) {
+    return Response.json({ error: "Solo un administrador del evento puede exportar." }, { status: 403 });
+  }
 
   let body: { day?: string };
   try {

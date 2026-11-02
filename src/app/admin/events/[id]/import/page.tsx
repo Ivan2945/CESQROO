@@ -1,4 +1,4 @@
-import { requireAdmin } from "@/lib/auth/requireAdmin";
+import { requireEventManager } from "@/lib/auth/eventAccess";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeConfig } from "@/lib/events/config";
 import ImportClient from "./ImportClient";
@@ -10,8 +10,8 @@ export default async function EventImportPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
-  await requireAdmin();
   const { id } = await params;
+  const { backHref } = await requireEventManager(id);
 
   const { data: event, error } = await supabaseAdmin
     .from("events")
@@ -24,6 +24,7 @@ export default async function EventImportPage({
 
   return (
     <ImportClient
+      backHref={backHref}
       eventId={event.id}
       eventSlug={event.slug}
       eventName={event.name}

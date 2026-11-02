@@ -42,13 +42,15 @@ export default function AccountPage() {
       return setMsg({ ok: false, text: "La contraseña actual es incorrecta." });
     }
     const { error } = await supabase.auth.updateUser({ password });
-    setLoading(false);
-    if (error) return setMsg({ ok: false, text: error.message });
+    if (error) {
+      setLoading(false);
+      return setMsg({ ok: false, text: error.message });
+    }
 
-    setCurrent("");
-    setPassword("");
-    setConfirm("");
-    setMsg({ ok: true, text: "Contraseña actualizada." });
+    setMsg({ ok: true, text: "Contraseña actualizada. Redirigiendo…" });
+    const { data: isAdmin } = await supabase.rpc("is_admin");
+    router.replace(isAdmin ? "/admin" : "/club");
+    router.refresh();
   }
 
   return (

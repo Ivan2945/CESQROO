@@ -2,6 +2,7 @@ import Link from "next/link";
 import { supabaseServer } from "@/lib/supabaseServer";
 import ClientNav from "./ClientNav";
 import { signOutAction } from "@/app/actions/signout";
+import { showAdminEventIds } from "@/lib/auth/eventAccess";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -60,6 +61,8 @@ export default async function AppHeader() {
     clubName = (data as { name: string } | null)?.name ?? null;
   }
 
+  const isShowAdmin = !isAdmin && profile?.role === "club_admin" && (await showAdminEventIds(user.id)).length > 0;
+
   const adminItems = [
     { href: "/admin", label: "Inicio" },
     { href: "/admin/events", label: "Eventos" },
@@ -84,6 +87,7 @@ export default async function AppHeader() {
     { href: "/club/membresias", label: "Membresías" },
     { href: "/club/payments", label: "Pagos" },
     { href: "/admin/events", label: "Eventos" },
+    ...(isShowAdmin ? [{ href: "/admin/admon-eventos", label: "Admon Eventos" }] : []),
     { href: "/inscripciones", label: "Inscripciones / Resultados ↗" },
   ];
 

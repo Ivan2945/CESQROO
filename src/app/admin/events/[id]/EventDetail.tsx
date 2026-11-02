@@ -1,0 +1,270 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
+import { isShowAdminFor } from "@/lib/auth/eventAccess";
+import { supabaseAdmin } from "@/lib/supabase/admin";
+import { normalizeConfig } from "@/lib/events/config";
+import { computeStatement, npDaysFromResults } from "@/lib/events/billing";
+import { DeleteSubmissionButton, DeleteEntryButton, CancelEntryButton, MergeDuplicatesButton, CleanGhostsButton, SplitMultiDayButton } from "./DeleteButtons";
+import { EditEntryButton } from "./EditEntryButton";
+import { EditSubmissionButton } from "./EditSubmissionButton";
+import { AddEntryButton } from "./AddEntryButton";
+
+const money = (n: number) => `$${n.toLocaleString("es-MX")}`;
+
+type Submission = {
+  id: string;
+  club_name: string;
+  representative: string | null;
+  coach: string | null;
+  phone: string | null;
+  email: string | null;
+  created_at: string;
+  club_id: string | null;
+};
+
+type Entry = {
+  id: string;
+  submission_id: string;
+  rider_id: string | null;
+  rider_name: string;
+  horse_id: string | null;
+  horse_name: string;
+  height: string;
+  section: string;
+  days: string[] | null;
+  circuit: boolean;
+  discount: boolean;
+  nomination: boolean;
+  status: string | null;
+  is_extemp: boolean | null;
+};
+
+export async function EventDetail({ id, view }: { id: string; view: "club" | "show" }) {
+  const { isAdmin, clubId, user } = await requireClubAdmin();
+
+  const { data: event, error: evErr } = await supabaseAdmin
+    .from("events")
+    .select("id, name, slug, is_open, config")
+    .eq("id", id)
+    .single();
+  if (evErr || !event) throw new Error("Evento no encontrado.");
+  const config = normalizeConfig(event.config);
+
+  const showAdmin = !isAdmin && view === "show" && (await isShowAdminFor(user?.id, id));
+  if (view === "show" && !isAdmin && !showAdmin) redirect("/admin/admon-eventos");
+  const canViewAll = isAdmin || showAdmin;
+
+  let subQuery = supabaseAdmin
+    .from("event_submissions")
+    .select("id, club_name, representative, coach, phone, email, created_at, club_id")
+    .eq("event_id", id)
+    .order("created_at", { ascending: false });
+  if (!canViewAll) subQuery = subQuery.eq("club_id", clubId as string);
+  const { data: submissions } = await subQuery;
+
+  const subIds = (submissions ?? []).map((s) => s.id);
+  let entries: Entry[] = [];
+  if (subIds.length) {
+    const { data: ent } = await supabaseAdmin
+      .from("event_entries")
+      .select("id, submission_id, rider_id, rider_name, horse_id, horse_name, height, section, days, circuit, discount, nomination, status, is_extemp")
+      .in("submission_id", subIds);
+    entries = (ent as Entry[]) ?? [];
+  }
+  const bySubmission = new Map<string, Entry[]>();
+  entries.forEach((e) => {
+    const arr = bySubmission.get(e.submission_id) ?? [];
+    arr.push(e);
+    bySubmission.set(e.submission_id, arr);
+  });
+
+  const { data: npRowsRaw } = entries.length
+    ? await supabaseAdmin
+        .from("event_results")
+        .select("entry_id, height, day, r1_status")
+        .eq("event_id", id)
+        .eq("r1_status", "NP")
+    : { data: [] as { entry_id: string; height: string; day: string; r1_status: string | null }[] };
+  const entryHeightById = new Map(entries.map((e) => [e.id, e.height]));
+  const npRows = (npRowsRaw ?? []).filter((r) => r.height === entryHeightById.get(r.entry_id));
+  const npDaysByEntry = npDaysFromResults(npRows);
+  const fullCredit = config.pricing.cancellation.mode === "credit";
+  const sinksToBottom = (e: Entry, day: string) =>
+    (e.status ?? "active") === "cancelled" || (fullCredit && (npDaysByEntry.get(e.id)?.has(day) ?? false));
+
+  const totalEntries = entries.reduce((n, e) => {
+    if ((e.status ?? "active") === "cancelled") return n;
+    const days = Array.isArray(e.days) && e.days.length ? e.days : [""];
+    const np = npDaysByEntry.get(e.id);
+    return n + days.filter((d) => !(np?.has(d) ?? false)).length;
+  }, 0);
+
+  return (
+    <div className="mx-auto max-w-5xl">
+      <Link href={view === "show" ? "/admin/admon-eventos" : "/admin/events"} className="text-sm text-blue-600 dark:text-blue-400">
+        {view === "show" ? "← Admon Eventos" : "← Eventos"}
+      </Link>
+      <div className="mt-2 flex items-center gap-3">
+        <h2 className="text-2xl font-bold text-slate-900 dark:text-white">{event.name}</h2>
+        {isAdmin && (
+          <>
+            <Link href={`/admin/events/${event.id}/config`} className="text-sm font-semibold text-blue-600">
+              Configurar
+            </Link>
+            <Link href={`/admin/events/${event.id}/commit`} className="text-sm font-semibold text-emerald-700">
+              Cerrar / Comprometer
+            </Link>
+            <Link href={`/admin/events/${event.id}/export`} className="text-sm font-semibold text-emerald-600">
+              Exportar a Excel
+            </Link>
+            <Link href={`/admin/events/${event.id}/import`} className="text-sm font-semibold text-blue-600">
+              Importar
+            </Link>
+            <Link href={`/signup/${event.slug}/extemporaneo`} className="text-sm font-semibold text-amber-600">
+              Inscripciones/Cancelaciones (Día en Curso)
+            </Link>
+            <a href={`/api/events/${event.slug}/billing-pdf`} className="text-sm font-semibold text-emerald-600">
+              Estados de cuenta (PDF)
+            </a>
+            <Link href={`/admin/events/${event.id}/scoring`} className="text-sm font-semibold text-indigo-600">
+              Calificar
+            </Link>
+            <Link href={`/admin/events/${event.id}/standings`} className="text-sm font-semibold text-indigo-600">
+              Premiación
+            </Link>
+            <Link href={`/admin/events/${event.id}/stats`} className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+              Show Stats
+            </Link>
+            <a href={`/resultados/${event.slug}`} target="_blank" className="text-sm font-semibold text-emerald-600">
+              Resultados en vivo ↗
+            </a>
+            <MergeDuplicatesButton eventId={event.id} />
+            <CleanGhostsButton eventId={event.id} />
+            <SplitMultiDayButton eventId={event.id} />
+            <AddEntryButton eventId={event.id} slug={event.slug} config={config} />
+          </>
+        )}
+      </div>
+      <p className="mb-5 text-sm text-slate-500 dark:text-slate-400">
+        {(submissions ?? []).length} club(es) · {totalEntries} participación(es) ·{" "}
+        <span className="font-mono">/signup/{event.slug}</span>
+      </p>
+
+      {(submissions ?? []).length === 0 ? (
+        <p className="text-slate-500 dark:text-slate-400">Aún no hay inscripciones.</p>
+      ) : (
+        <div className="space-y-5">
+          {(submissions as Submission[]).map((s) => {
+            const rows = bySubmission.get(s.id) ?? [];
+            const stmt = computeStatement(rows, config, npDaysByEntry);
+            const hIdx = (h: string) => { const i = config.heights.indexOf(h); return i < 0 ? 999 : i; };
+            const dIdx = (d: string) => { const i = config.days.indexOf(d); return i < 0 ? 999 : i; };
+            const dayRows = rows.flatMap((e) => {
+              const ds = Array.isArray(e.days) && e.days.length ? e.days : [""];
+              return ds.map((day) => ({ e, day }));
+            });
+            const sortedRows = dayRows.sort((a, b) => {
+              const ac = sinksToBottom(a.e, a.day) ? 1 : 0;
+              const bc = sinksToBottom(b.e, b.day) ? 1 : 0;
+              return (
+                ac - bc ||
+                dIdx(a.day) - dIdx(b.day) ||
+                hIdx(a.e.height) - hIdx(b.e.height) ||
+                (a.e.rider_name || "").localeCompare(b.e.rider_name || "")
+              );
+            });
+            return (
+              <section key={s.id} className="rounded-xl border border-slate-200 bg-white p-5">
+                <div className="mb-1 flex items-center gap-2">
+                  <h3 className="text-lg font-semibold text-slate-900">{s.club_name}</h3>
+                  <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
+                    {rows.length} jinete(s)
+                  </span>
+                  {isAdmin && (
+                    <span className="ml-auto inline-flex items-center gap-3">
+                      <EditSubmissionButton submission={s} eventId={event.id} />
+                      <a
+                        href={`/api/events/${event.slug}/billing-pdf?submission=${s.id}`}
+                        className="text-sm font-semibold text-emerald-600 hover:text-emerald-700"
+                      >
+                        PDF
+                      </a>
+                      <DeleteSubmissionButton submissionId={s.id} eventId={event.id} clubName={s.club_name} />
+                    </span>
+                  )}
+                </div>
+                <p className="mb-3 text-xs text-slate-500">
+                  {[s.representative && `Rep: ${s.representative}`, s.coach && `Coach: ${s.coach}`, s.phone, s.email]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-slate-900">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+                        <th className="py-2 pr-3">Jinete</th>
+                        <th className="py-2 pr-3">Caballo</th>
+                        <th className="py-2 pr-3">Altura</th>
+                        <th className="py-2 pr-3">Sección</th>
+                        <th className="py-2 pr-3">Día</th>
+                        {config.fields.circuit && <th className="py-2 pr-3">Circuito</th>}
+                        {config.fields.nomination && <th className="py-2 pr-3">Nominación</th>}
+                        {config.fields.discount && <th className="py-2 pr-3">Descuento</th>}
+                        {isAdmin && <th className="py-2 pr-3"></th>}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sortedRows.map(({ e, day }) => {
+                        const cancelled = (e.status ?? "active") === "cancelled";
+                        const npCredit = fullCredit && (npDaysByEntry.get(e.id)?.has(day) ?? false);
+                        const crossed = cancelled || npCredit;
+                        return (
+                          <tr key={`${e.id}-${day}`} className={"border-b border-slate-100 " + (crossed ? "text-slate-400 line-through" : "")}>
+                            <td className="py-2 pr-3 uppercase">
+                              {e.rider_name}
+                              {e.is_extemp && (
+                                <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                                  EXT
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2 pr-3 uppercase">{e.horse_name}</td>
+                            <td className="py-2 pr-3">{e.height}</td>
+                            <td className="py-2 pr-3">{e.section}</td>
+                            <td className="py-2 pr-3">{day || "—"}</td>
+                            {config.fields.circuit && <td className="py-2 pr-3">{e.circuit ? "Sí" : "No"}</td>}
+                            {config.fields.nomination && <td className="py-2 pr-3">{e.nomination ? "Sí" : "No"}</td>}
+                            {config.fields.discount && <td className="py-2 pr-3">{e.discount ? "Sí" : "No"}</td>}
+                            {isAdmin && (
+                              <td className="py-2 pr-3 text-right">
+                                <span className="inline-flex gap-3">
+                                  <EditEntryButton entry={e} eventId={event.id} slug={event.slug} config={config} currentClubId={s.club_id} />
+                                  <CancelEntryButton entryId={e.id} eventId={event.id} day={day} cancelled={cancelled} />
+                                  <DeleteEntryButton entryId={e.id} eventId={event.id} />
+                                </span>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Estado de cuenta */}
+                <div className="mt-3 flex flex-wrap gap-x-6 gap-y-1 border-t border-slate-200 pt-3 text-sm text-slate-700">
+                  <span>Inscripciones ({stmt.starts} salida{stmt.starts === 1 ? "" : "s"}): {money(stmt.entryFeesFull)}</span>
+                  {stmt.entryDiscount > 0 && <span className="text-emerald-700">Descuento: −{money(stmt.entryDiscount)}</span>}
+                  <span>Nominación: <b>{stmt.nominationRiders}</b> = {money(stmt.nominationFees)}</span>
+                  {stmt.cancellationCharge > 0 && <span>Cancelaciones: {money(stmt.cancellationCharge)}</span>}
+                  <span className="font-bold text-slate-900">Total: {money(stmt.total)}</span>
+                </div>
+              </section>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}

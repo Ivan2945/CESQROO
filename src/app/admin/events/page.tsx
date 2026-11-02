@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { EventRow } from "@/lib/types/events";
+import { participationCounts } from "@/lib/events/participationCounts";
 import { createEventAction } from "./actions";
 import { DeleteEventButton } from "./DeleteEventButton";
 
@@ -16,12 +17,10 @@ export default async function AdminEventsPage() {
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
 
-  // Entry counts (scoped to the user's club when not admin)
-  let entryQuery = supabaseAdmin.from("event_entries").select("event_id, club_id");
-  if (!isAdmin) entryQuery = entryQuery.eq("club_id", clubId as string);
-  const { data: allEntries } = await entryQuery;
-  const counts = new Map<string, number>();
-  (allEntries ?? []).forEach((e) => counts.set(e.event_id, (counts.get(e.event_id) ?? 0) + 1));
+  const counts = await participationCounts(
+    (events ?? []).map((e) => e.id as string),
+    isAdmin ? null : (clubId as string)
+  );
 
   return (
     <div className="mx-auto max-w-3xl">

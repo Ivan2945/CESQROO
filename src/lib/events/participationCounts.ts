@@ -1,7 +1,18 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { npDaysFromResults } from "@/lib/events/billing";
+import { summarizeCounts, type CountItem, type CountSummary } from "@/lib/events/uniqueCounts";
 
-type CountEntry = { id: string; event_id: string; height: string; days: string[] | null; status: string | null };
+type CountEntry = {
+  id: string;
+  event_id: string;
+  height: string;
+  days: string[] | null;
+  status: string | null;
+  rider_id: string | null;
+  rider_name: string | null;
+  horse_id: string | null;
+  horse_name: string | null;
+};
 type NpRow = { entry_id: string; height: string; day: string; r1_status: string | null };
 
 const PAGE = 1000;
@@ -17,14 +28,14 @@ async function fetchAll<T>(build: (from: number, to: number) => PromiseLike<{ da
   return out;
 }
 
-export async function participationCounts(eventIds: string[], clubId?: string | null): Promise<Map<string, number>> {
-  const counts = new Map<string, number>();
+export async function participationCounts(eventIds: string[], clubId?: string | null): Promise<Map<string, CountSummary>> {
+  const counts = new Map<string, CountSummary>();
   if (!eventIds.length) return counts;
 
   const entries = await fetchAll<CountEntry>((from, to) => {
     let q = supabaseAdmin
       .from("event_entries")
-      .select("id, event_id, height, days, status")
+      .select("id, event_id, height, days, status, rider_id, rider_name, horse_id, horse_name")
       .in("event_id", eventIds)
       .order("id")
       .range(from, to);
@@ -46,12 +57,16 @@ export async function participationCounts(eventIds: string[], clubId?: string | 
   const heightById = new Map(entries.map((e) => [e.id, e.height]));
   const npDays = npDaysFromResults(npRaw.filter((r) => r.height === heightById.get(r.entry_id)));
 
+  const items = new Map<string, CountItem[]>();
   for (const e of entries) {
     if ((e.status ?? "active") === "cancelled") continue;
     const days = Array.isArray(e.days) && e.days.length ? e.days : [""];
     const np = npDays.get(e.id);
-    const n = days.filter((d) => !(np?.has(d) ?? false)).length;
-    counts.set(e.event_id, (counts.get(e.event_id) ?? 0) + n);
+    const starts = days.filter((d) => !(np?.has(d) ?? false)).length;
+    const arr = items.get(e.event_id) ?? [];
+    arr.push({ riderId: e.rider_id, riderName: e.rider_name, horseId: e.horse_id, horseName: e.horse_name, starts });
+    items.set(e.event_id, arr);
   }
+  for (const [eventId, arr] of items) counts.set(eventId, summarizeCounts(arr));
   return counts;
 }

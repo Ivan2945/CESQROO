@@ -9,6 +9,8 @@ import { DeleteSubmissionButton, DeleteEntryButton, CancelEntryButton, MergeDupl
 import { EditEntryButton } from "./EditEntryButton";
 import { EditSubmissionButton } from "./EditSubmissionButton";
 import { AddEntryButton } from "./AddEntryButton";
+import { CountPills } from "@/app/_components/CountPills";
+import { summarizeCounts } from "@/lib/events/uniqueCounts";
 
 const money = (n: number) => `$${n.toLocaleString("es-MX")}`;
 
@@ -93,12 +95,16 @@ export async function EventDetail({ id, view }: { id: string; view: "club" | "sh
   const sinksToBottom = (e: Entry, day: string) =>
     (e.status ?? "active") === "cancelled" || (fullCredit && (npDaysByEntry.get(e.id)?.has(day) ?? false));
 
-  const totalEntries = entries.reduce((n, e) => {
-    if ((e.status ?? "active") === "cancelled") return n;
-    const days = Array.isArray(e.days) && e.days.length ? e.days : [""];
-    const np = npDaysByEntry.get(e.id);
-    return n + days.filter((d) => !(np?.has(d) ?? false)).length;
-  }, 0);
+  const countsFor = (list: Entry[]) =>
+    summarizeCounts(
+      list.map((e) => {
+        const days = Array.isArray(e.days) && e.days.length ? e.days : [""];
+        const np = npDaysByEntry.get(e.id);
+        const starts = (e.status ?? "active") === "cancelled" ? 0 : days.filter((d) => !(np?.has(d) ?? false)).length;
+        return { riderId: e.rider_id, riderName: e.rider_name, horseId: e.horse_id, horseName: e.horse_name, starts };
+      })
+    );
+  const totalCounts = countsFor(entries);
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -163,10 +169,11 @@ export async function EventDetail({ id, view }: { id: string; view: "club" | "sh
           </>
         )}
       </div>
-      <p className="mb-5 text-sm text-slate-500 dark:text-slate-400">
-        {(submissions ?? []).length} club(es) · {totalEntries} participación(es) ·{" "}
+      <div className="mb-5 flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
+        <span>{(submissions ?? []).length} club(es)</span>
+        <CountPills counts={totalCounts} />
         <span className="font-mono">/signup/{event.slug}</span>
-      </p>
+      </div>
 
       {(submissions ?? []).length === 0 ? (
         <p className="text-slate-500 dark:text-slate-400">Aún no hay inscripciones.</p>
@@ -195,9 +202,7 @@ export async function EventDetail({ id, view }: { id: string; view: "club" | "sh
               <section key={s.id} className="rounded-xl border border-slate-200 bg-white p-5">
                 <div className="mb-1 flex items-center gap-2">
                   <h3 className="text-lg font-semibold text-slate-900">{s.club_name}</h3>
-                  <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
-                    {rows.length} jinete(s)
-                  </span>
+                  <CountPills counts={countsFor(rows)} />
                   {isAdmin && (
                     <span className="ml-auto inline-flex items-center gap-3">
                       <EditSubmissionButton submission={s} eventId={event.id} />

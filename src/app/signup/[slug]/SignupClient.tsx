@@ -5,6 +5,8 @@ import { createPortal } from "react-dom";
 import { normalizeConfig, selectableSectionsUnion, daysOfferingSection } from "@/lib/events/config";
 import type { ClubOption, EventRow, RosterRider, RosterHorse, EntryInput } from "@/lib/types/events";
 import { Combobox } from "./Combobox";
+import { CountPills } from "@/app/_components/CountPills";
+import { summarizeCounts } from "@/lib/events/uniqueCounts";
 
 const OTHER = "__other__";
 
@@ -459,9 +461,17 @@ export default function SignupClient({ slug, extemp = false }: { slug: string; e
         <section className={card}>
           <div className="mb-1 flex items-center gap-2">
             <h2 className="text-lg font-semibold text-slate-900">Participaciones</h2>
-            <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700">
-              {entries.length}
-            </span>
+            <CountPills
+              counts={summarizeCounts(
+                entries.map((e) => ({
+                  riderId: e.riderNew ? null : e.riderId,
+                  riderName: e.riderNew ? `${e.newRiderFirst} ${e.newRiderLast}` : e.riderId ? e.riderQuery : "",
+                  horseId: e.horseNew ? null : e.horseId,
+                  horseName: e.horseNew ? e.newHorseName : e.horseId ? e.horseQuery : "",
+                  starts: e.days.length,
+                }))
+              )}
+            />
           </div>
           <p className="mb-4 text-sm text-slate-500">
             {clubId

@@ -3,6 +3,7 @@ import { dayHeightOrder } from "./config";
 import { defaultFormatForHeight } from "@/lib/scoring/portal";
 import { parseFaultShorthand, hasFallMarker } from "@/lib/scoring/faults";
 import { activeById, resultsByKey, resultFor, isNP, classRoster, type CountEntry, type CountResult, type CountSetup } from "./classCounts";
+import { riderKeyOf, horseKeyOf } from "@/lib/events/uniqueCounts";
 
 export type StatsEntry = CountEntry & {
   club_id: string | null;
@@ -28,7 +29,7 @@ export type ClassStat = {
   clears: number;
   eliminations: number;
 };
-export type DayStat = { day: string; entries: number; classes: ClassStat[] };
+export type DayStat = { day: string; entries: number; riders: number; horses: number; classes: ClassStat[] };
 
 export type UnscoredRow = { day: string; height: string; club: string; rider: string; horse: string };
 export type DupGroup = { day: string; height: string; section: string; club: string; rider: string; horse: string; count: number };
@@ -173,9 +174,12 @@ export function computeEventStats(
   const setupByHeightDay = new Map<string, StatsSetup>();
   for (const s of setups) setupByHeightDay.set(`${s.height}|${s.day}`, s);
 
+  const statsById = new Map(valid.map((e) => [e.id, e]));
   const perDay: DayStat[] = config.days.map((day) => {
     const classes: ClassStat[] = [];
     let dayEntries = 0;
+    const dayRiders = new Set<string>();
+    const dayHorses = new Set<string>();
     for (const height of dayHeightOrder(config, dayState, day)) {
       const setup = setupByHeightDay.get(`${height}|${day}`);
       const roster = classRoster(day, height, activeMap, valid, setup);
@@ -190,6 +194,11 @@ export function computeEventStats(
         const r = resultFor(byKey, e, day);
         if (isNP(r)) continue;
         starts += 1;
+        const se = statsById.get(e.id);
+        const rk = se ? riderKeyOf(se.rider_id, se.rider_name) : "";
+        const hk = se ? horseKeyOf(se.horse_id, se.horse_name) : "";
+        if (rk) dayRiders.add(rk);
+        if (hk) dayHorses.add(hk);
         if (!r) continue;
         if (isDnf(r.r1_status) || isDnf(r.r2_status)) eliminations += 1;
 
@@ -225,7 +234,7 @@ export function computeEventStats(
       classes.push({ height, format, starts, clears, eliminations });
       dayEntries += starts;
     }
-    return { day, entries: dayEntries, classes };
+    return { day, entries: dayEntries, riders: dayRiders.size, horses: dayHorses.size, classes };
   });
 
   const riderKey = (e: StatsEntry) => e.rider_id || `name:${(e.rider_name || "").trim().toUpperCase()}`;

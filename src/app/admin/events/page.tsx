@@ -3,6 +3,8 @@ import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import type { EventRow } from "@/lib/types/events";
 import { participationCounts } from "@/lib/events/participationCounts";
+import { EMPTY_COUNTS } from "@/lib/events/uniqueCounts";
+import { CountPills } from "@/app/_components/CountPills";
 import { createEventAction } from "./actions";
 import { DeleteEventButton } from "./DeleteEventButton";
 
@@ -48,7 +50,7 @@ export default async function AdminEventsPage() {
           (events as EventRow[]).map((ev) => (
             <div
               key={ev.id}
-              className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4"
             >
               <div>
                 <Link href={`/admin/events/${ev.id}`} className="font-semibold text-slate-900 hover:text-blue-700">
@@ -59,9 +61,7 @@ export default async function AdminEventsPage() {
                 </div>
               </div>
               <div className="flex items-center gap-3">
-                <span className="rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700">
-                  {counts.get(ev.id) ?? 0} participación(es)
-                </span>
+                <CountPills counts={counts.get(ev.id) ?? EMPTY_COUNTS} size="md" />
                 {isAdmin && (
                   <Link href={`/admin/events/${ev.id}/config`} className="text-sm font-semibold text-blue-600">
                     Configurar

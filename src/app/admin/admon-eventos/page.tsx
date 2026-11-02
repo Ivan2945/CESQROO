@@ -3,6 +3,8 @@ import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
 import { showAdminEventIds } from "@/lib/auth/eventAccess";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { participationCounts } from "@/lib/events/participationCounts";
+import { EMPTY_COUNTS } from "@/lib/events/uniqueCounts";
+import { CountPills } from "@/app/_components/CountPills";
 import type { EventRow } from "@/lib/types/events";
 
 export const dynamic = "force-dynamic";
@@ -35,7 +37,7 @@ export default async function AdmonEventosPage() {
           (events as EventRow[]).map((ev) => (
             <div
               key={ev.id}
-              className="flex items-center justify-between rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900"
             >
               <div>
                 <Link
@@ -48,9 +50,7 @@ export default async function AdmonEventosPage() {
                   /signup/{ev.slug} · {ev.is_open ? "Abierto" : "Cerrado"}
                 </div>
               </div>
-              <span className="rounded-full bg-blue-50 px-3 py-1 text-sm font-semibold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                {counts.get(ev.id) ?? 0} participación(es)
-              </span>
+              <CountPills counts={counts.get(ev.id) ?? EMPTY_COUNTS} size="md" />
             </div>
           ))
         ) : (

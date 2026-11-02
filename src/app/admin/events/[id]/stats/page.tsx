@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabase/admin";
 import { normalizeConfig } from "@/lib/events/config";
 import { computeEventStats, billedWithoutResult, duplicateBinomios, type StatsEntry, type StatsResult, type StatsSetup, type ClubGroup } from "@/lib/events/stats";
 import { ResolveDuplicatesButton } from "../DeleteButtons";
+import { CountPills } from "@/app/_components/CountPills";
 
 export const dynamic = "force-dynamic";
 
@@ -234,9 +235,7 @@ export default async function EventStatsPage({ params }: { params: Promise<{ id:
           <section key={d.day} className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
             <div className="mb-3 flex items-center gap-2">
               <h3 className="text-lg font-semibold text-slate-900 dark:text-white">{d.day}</h3>
-              <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
-                {d.entries} participación(es)
-              </span>
+              <CountPills counts={{ participaciones: d.entries, jinetes: d.riders, caballos: d.horses }} />
             </div>
             {d.classes.length === 0 ? (
               <p className="text-sm text-slate-500 dark:text-slate-400">Sin clases con participación este día.</p>

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { normalizeConfig, selectableSectionsUnion, daysOfferingSection } from "@/lib/events/config";
 import type { ClubOption, EventRow, RosterRider, RosterHorse, ExistingEntry, EntryInput } from "@/lib/types/events";
 import { Combobox, card, fieldInput, fieldLabel } from "../Combobox";
+import { CountPills } from "@/app/_components/CountPills";
+import { summarizeCounts } from "@/lib/events/uniqueCounts";
 
 type EditRow = {
   id: string | null; // existing entry id, or null for a newly added row
@@ -306,7 +308,20 @@ export default function EditClient({ slug }: { slug: string }) {
       {phase === "edit" && (
         <>
           <section className={card}>
-            <h2 className="mb-3 text-lg font-semibold text-slate-900">Participaciones ({rows.length})</h2>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <h2 className="text-lg font-semibold text-slate-900">Participaciones</h2>
+              <CountPills
+                counts={summarizeCounts(
+                  rows.map((r) => ({
+                    riderId: r.riderNew ? null : r.riderId,
+                    riderName: r.riderNew ? `${r.newRiderFirst} ${r.newRiderLast}` : r.riderId ? r.riderQuery : "",
+                    horseId: r.horseNew ? null : r.horseId,
+                    horseName: r.horseNew ? r.newHorseName : r.horseId ? r.horseQuery : "",
+                    starts: r.days.length,
+                  }))
+                )}
+              />
+            </div>
             <div className="space-y-4">
               {rows.map((r, i) => {
                 const allowed = r.height ? selectableSectionsUnion(config, r.height) : [];

@@ -1,8 +1,10 @@
 import { requireAdmin } from "@/lib/auth/requireAdmin";
+import { supabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getUsersList, getEventAdmins } from "./actions";
 import CreateUserForm from "./CreateUserForm";
 import ShowAdminManager from "./ShowAdminManager";
+import UserRowActions from "./UserRowActions";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -21,6 +23,7 @@ const roleBadge = (role: string) =>
 
 export default async function AdminUsersPage() {
   await requireAdmin();
+  const { data: { user: me } } = await (await supabaseServer()).auth.getUser();
 
   const [users, { data: clubs }, { data: events }, grants] = await Promise.all([
     getUsersList(),
@@ -30,7 +33,7 @@ export default async function AdminUsersPage() {
   ]);
 
   return (
-    <main className="mx-auto max-w-4xl px-4 py-6">
+    <main className="mx-auto max-w-5xl px-4 py-6">
       <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Usuarios</h1>
       <p className="mt-1 mb-5 text-sm text-slate-500 dark:text-slate-400">
         {users.length} usuario(s). Solo un administrador puede ver y crear usuarios.
@@ -44,11 +47,13 @@ export default async function AdminUsersPage() {
               <th className="p-3">Correo</th>
               <th className="p-3">Tipo</th>
               <th className="p-3">Club</th>
+              <th className="p-3">Estado</th>
+              <th className="p-3 text-right">Acciones</th>
             </tr>
           </thead>
           <tbody>
             {users.length === 0 ? (
-              <tr><td colSpan={4} className="p-3 text-slate-500 dark:text-slate-400">Sin usuarios.</td></tr>
+              <tr><td colSpan={6} className="p-3 text-slate-500 dark:text-slate-400">Sin usuarios.</td></tr>
             ) : (
               users.map((u) => (
                 <tr key={u.user_id} className="border-b border-slate-100 last:border-0 dark:border-slate-800">
@@ -60,6 +65,16 @@ export default async function AdminUsersPage() {
                     </span>
                   </td>
                   <td className="p-3 text-slate-600 dark:text-slate-300">{u.club_name ?? (u.club_id ? u.club_id : "—")}</td>
+                  <td className="p-3">
+                    {u.pending ? (
+                      <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-800 dark:bg-amber-950/50 dark:text-amber-300">Invitación pendiente</span>
+                    ) : (
+                      <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-xs font-bold text-emerald-800 dark:bg-emerald-950/50 dark:text-emerald-300">Activo</span>
+                    )}
+                  </td>
+                  <td className="p-3">
+                    <UserRowActions userId={u.user_id} pending={u.pending} isSelf={u.user_id === me?.id} />
+                  </td>
                 </tr>
               ))
             )}

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { createClient } from "@supabase/supabase-js";
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
@@ -39,6 +40,14 @@ function adminSupabase() {
   });
 }
 
+async function inviteRedirectUrl() {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") || h.get("host");
+  const proto = h.get("x-forwarded-proto") || (host?.startsWith("localhost") ? "http" : "https");
+  const base = host ? `${proto}://${host}` : process.env.NEXT_PUBLIC_SITE_URL || "https://app.lacompe.digital";
+  return `${base.replace(/\/$/, "")}/auth/confirm`;
+}
+
 export type UserListRow = {
   user_id: string;
   email: string;
@@ -47,6 +56,7 @@ export type UserListRow = {
   club_id: string | null;
   club_name: string | null;
   created_at: string | null;
+  pending: boolean;
 };
 
 // Full user directory (admin only): every profile joined to its auth email and
@@ -58,6 +68,9 @@ export async function getUsersList(): Promise<UserListRow[]> {
 
   const { data: authList } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
   const emailById = new Map((authList?.users ?? []).map((u) => [u.id, u.email ?? ""]));
+  const pendingById = new Map(
+    (authList?.users ?? []).map((u) => [u.id, !u.email_confirmed_at && !u.last_sign_in_at])
+  );
 
   const { data: profiles } = await admin.from("profiles").select("user_id, name, role, club_id, created_at");
   const clubIds = [...new Set((profiles ?? []).map((p) => p.club_id).filter(Boolean))] as string[];
@@ -75,6 +88,7 @@ export async function getUsersList(): Promise<UserListRow[]> {
       club_id: (p.club_id as string | null) ?? null,
       club_name: p.club_id ? clubName.get(p.club_id) ?? null : null,
       created_at: (p.created_at as string | null) ?? null,
+      pending: pendingById.get(p.user_id) ?? false,
     }))
     .sort((a, b) => a.role.localeCompare(b.role) || a.name.localeCompare(b.name));
 }
@@ -171,7 +185,10 @@ export async function createUserAction(
   let invited = false;
 
   if (send_invite && !password) {
-    const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email);
+    const { data, error } = await adminClient.auth.admin.inviteUserByEmail(email, {
+      redirectTo: await inviteRedirectUrl(),
+      data: { name },
+    });
     if (error) return { ok: false, message: error.message };
     if (!data?.user?.id) return { ok: false, message: "Invite failed (no user id returned)." };
     user_id = data.user.id;
@@ -214,4 +231,52 @@ export async function createUserAction(
     message: invited ? "User invited." : "User created.",
     data: { user_id, email, name, role, club_id, invited },
   };
+}
+
+export async function resendInviteAction(userId: string): Promise<ActionResult<void>> {
+  const { profile } = await requireClubAdmin();
+  if (profile.role !== "admin") return { ok: false, message: "Access denied." };
+  if (!userId) return { ok: false, message: "Usuario inválido." };
+
+  const admin = adminSupabase();
+  const { data, error } = await admin.auth.admin.getUserById(userId);
+  if (error || !data?.user) return { ok: false, message: error?.message ?? "Usuario no encontrado." };
+  const u = data.user;
+  if (!u.email) return { ok: false, message: "El usuario no tiene correo." };
+  if (u.email_confirmed_at || u.last_sign_in_at) {
+    return { ok: false, message: "Este usuario ya aceptó su invitación." };
+  }
+
+  const { error: invErr } = await admin.auth.admin.inviteUserByEmail(u.email, {
+    redirectTo: await inviteRedirectUrl(),
+    data: u.user_metadata ?? {},
+  });
+  if (invErr) {
+    const rate = /rate limit|too many/i.test(invErr.message);
+    return {
+      ok: false,
+      message: rate ? "Límite de correos alcanzado. Intenta de nuevo más tarde." : invErr.message,
+    };
+  }
+  return { ok: true, data: undefined, message: "Invitación reenviada." };
+}
+
+export async function deleteUserAction(userId: string): Promise<ActionResult<void>> {
+  const { user, profile } = await requireClubAdmin();
+  if (profile.role !== "admin") return { ok: false, message: "Access denied." };
+  if (!userId) return { ok: false, message: "Usuario inválido." };
+  if (userId === user.id) return { ok: false, message: "No puedes eliminar tu propio usuario." };
+
+  const admin = adminSupabase();
+  const { error } = await admin.auth.admin.deleteUser(userId);
+  if (error && !/not.?found/i.test(error.message)) {
+    return { ok: false, message: `No se pudo eliminar: ${error.message}` };
+  }
+
+  await admin.from("event_admins").delete().eq("user_id", userId);
+  const { error: profErr } = await admin.from("profiles").delete().eq("user_id", userId);
+  if (profErr) return { ok: false, message: `Usuario eliminado, pero falló limpiar el perfil: ${profErr.message}` };
+
+  revalidatePath("/admin/users");
+  return { ok: true, data: undefined, message: "Usuario eliminado." };
 }

@@ -93,7 +93,7 @@ export default function ExportClient({
       <Link href={backHref} className="text-sm text-blue-600 dark:text-blue-400">
         ← Volver al evento
       </Link>
-      <h2 className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">Exportar a Excel</h2>
+      <h2 className="mt-2 text-2xl font-bold text-slate-900 dark:text-white">Exportar Listas/Resultados</h2>
       <p className="mb-5 text-sm text-slate-500 dark:text-slate-400">
         {eventName} · genera Listas de Impresión, Público, Resultados y Stewarding para el día elegido.
       </p>

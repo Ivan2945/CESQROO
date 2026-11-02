@@ -122,7 +122,7 @@ export async function EventDetail({ id, view }: { id: string; view: "club" | "sh
               Cerrar / Comprometer
             </Link>
             <Link href={`/admin/events/${event.id}/export`} className="text-sm font-semibold text-emerald-600">
-              Exportar a Excel
+              Exportar Listas/Resultados
             </Link>
             <Link href={`/admin/events/${event.id}/import`} className="text-sm font-semibold text-blue-600">
               Importar
@@ -154,7 +154,7 @@ export async function EventDetail({ id, view }: { id: string; view: "club" | "sh
         {showAdmin && (
           <>
             <Link href={`/admin/events/${event.id}/export`} className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
-              Exportar a Excel
+              Exportar Listas/Resultados
             </Link>
             <Link href={`/admin/events/${event.id}/import`} className="text-sm font-semibold text-blue-600 dark:text-blue-400">
               Importar

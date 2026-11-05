@@ -34,10 +34,10 @@ function UpcomingCard({ ev }: { ev: EventCard }) {
   const dates = fmtRange(ev.saturday_date, ev.sunday_date);
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-700 dark:bg-slate-900 sm:flex-row sm:items-center sm:justify-between">
-      <div>
-        <h3 className="text-xl font-semibold text-slate-900 dark:text-white">{ev.name}</h3>
+      <Link href={`/resultados/${ev.slug}`} className="group block rounded-lg -m-1 p-1 hover:bg-slate-50 dark:hover:bg-slate-800/50">
+        <h3 className="text-xl font-semibold text-slate-900 group-hover:text-emerald-700 dark:text-white dark:group-hover:text-emerald-400">{ev.name}</h3>
         {dates && <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{dates}</p>}
-      </div>
+      </Link>
       <div className="flex shrink-0 flex-col gap-2 sm:items-end">
         <Link href={`/signup/${ev.slug}`} className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-5 py-2.5 font-semibold text-white hover:bg-blue-700">
           Inscripciones Nuevas →
@@ -60,15 +60,15 @@ function PastCard({ ev }: { ev: EventCard }) {
   const dates = fmtRange(ev.saturday_date, ev.sunday_date);
   return (
     <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-5 dark:border-slate-800 dark:bg-slate-900/50 sm:flex-row sm:items-center sm:justify-between">
-      <div>
+      <Link href={`/resultados/${ev.slug}`} className="group block rounded-lg -m-1 p-1 hover:bg-slate-100 dark:hover:bg-slate-800/50">
         <div className="flex items-center gap-2">
-          <h3 className="text-lg font-semibold text-slate-700 dark:text-slate-200">{ev.name}</h3>
+          <h3 className="text-lg font-semibold text-slate-700 group-hover:text-emerald-700 dark:text-slate-200 dark:group-hover:text-emerald-400">{ev.name}</h3>
           <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600 dark:bg-slate-700 dark:text-slate-300">
             Finalizado
           </span>
         </div>
         {dates && <p className="mt-0.5 text-sm text-slate-500 dark:text-slate-400">{dates}</p>}
-      </div>
+      </Link>
       <Link href={`/resultados/${ev.slug}`} className="inline-flex shrink-0 items-center justify-center rounded-lg border border-emerald-300 bg-emerald-50 px-5 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
         Resultados →
       </Link>

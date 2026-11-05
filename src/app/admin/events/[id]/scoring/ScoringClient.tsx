@@ -352,6 +352,13 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
 
   function startClass() { setClassStatus("in_progress"); pushLive({ status: "in_progress" }); }
   function endClass() { setClassStatus("finished"); pushLive({ status: "finished", currentEntryId: null }); currentRef.current = null; setCurrentId(null); }
+  function resetClass() {
+    if (!confirm("¿Reiniciar esta clase a “Sin iniciar”? Se desbloquearán las inscripciones de esta prueba. Los resultados ya capturados no se borran.")) return;
+    setClassStatus("pending");
+    pushLive({ status: "pending", currentEntryId: null });
+    currentRef.current = null;
+    setCurrentId(null);
+  }
 
   // Persist the class format + time allowances to the server (best-effort, no
   // start order → never clobbers the draw). Without this the PUBLIC view can't
@@ -695,6 +702,9 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
           <button onClick={startClass} className="rounded-md bg-emerald-600 px-3 py-1 text-sm font-semibold text-white">▶ Iniciar clase</button>
         ) : (
           <button onClick={endClass} className="rounded-md bg-rose-600 px-3 py-1 text-sm font-semibold text-white">■ Finalizar clase</button>
+        )}
+        {classStatus !== "pending" && (
+          <button onClick={resetClass} className="rounded-md border border-slate-400 bg-white px-3 py-1 text-sm font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-500 dark:bg-slate-800 dark:text-slate-200 dark:hover:bg-slate-700">↺ Reiniciar</button>
         )}
         <span className={"rounded-full px-2.5 py-0.5 text-xs font-bold " + (classStatus === "in_progress" ? "bg-emerald-100 text-emerald-800" : classStatus === "finished" ? "bg-slate-200 text-slate-700" : "bg-amber-100 text-amber-800")}>
           {classStatus === "in_progress" ? "EN PROGRESO (público)" : classStatus === "finished" ? "Finalizada" : "Sin iniciar"}

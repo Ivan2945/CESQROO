@@ -274,7 +274,12 @@ export default function ConfigEditor({
     return Array.isArray(ov) && ov.length ? ov : sectionsByHeight[height] ?? [];
   };
   const orderForDay = (day: string) => {
-    const base = classOrderByDay[day]?.length ? classOrderByDay[day] : heights;
+    const first = days[0];
+    const base = classOrderByDay[day]?.length
+      ? classOrderByDay[day]
+      : classOrderByDay[first]?.length
+        ? classOrderByDay[first]
+        : heights;
     const valid = base.filter((h) => heights.includes(h));
     return [...valid, ...heights.filter((h) => !valid.includes(h))];
   };

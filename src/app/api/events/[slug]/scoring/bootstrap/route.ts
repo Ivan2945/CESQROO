@@ -15,10 +15,13 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
 
   const { data: event } = await supabaseAdmin
     .from("events")
-    .select("id, name, slug, saturday_date, sunday_date, config, pdf_logo")
+    .select("id, name, slug, saturday_date, sunday_date, config, pdf_logo, day_state")
     .eq("slug", slug)
     .single();
   if (!event) return Response.json({ error: "Evento no encontrado." }, { status: 404 });
+
+  const dayStateRaw = (event.day_state ?? {}) as Record<string, { committed?: boolean } | undefined>;
+  const committedDays = Object.keys(dayStateRaw).filter((d) => dayStateRaw[d]?.committed === true);
 
   const config = normalizeConfig(event.config);
 
@@ -66,6 +69,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
       pdfLogo: event.pdf_logo ?? null,
     },
     config,
+    committedDays,
     entries,
     setups: setups ?? [],
     results: results ?? [],

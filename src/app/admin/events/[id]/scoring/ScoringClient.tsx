@@ -350,7 +350,16 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
     }).catch(() => {});
   }, [slug, height, day]);
 
-  function startClass() { setClassStatus("in_progress"); pushLive({ status: "in_progress" }); }
+  const dayCommitted = (boot.committedDays ?? []).includes(day);
+
+  function startClass() {
+    if (!dayCommitted) {
+      alert(`No se puede iniciar la calificación: primero cierre las inscripciones y comprometa las listas de ${day} en “Cerrar y comprometer listas”.`);
+      return;
+    }
+    setClassStatus("in_progress");
+    pushLive({ status: "in_progress" });
+  }
   function endClass() { setClassStatus("finished"); pushLive({ status: "finished", currentEntryId: null }); currentRef.current = null; setCurrentId(null); }
   function resetClass() {
     if (!confirm("¿Reiniciar esta clase a “Sin iniciar”? Se desbloquearán las inscripciones de esta prueba. Los resultados ya capturados no se borran.")) return;

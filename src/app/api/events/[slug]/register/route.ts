@@ -290,19 +290,19 @@ export async function POST(
       // no start order yet, so the extemp shows via the normal roster and will be
       // placed when the draw is made.
       if (!setupRow || existing.length === 0) continue;
-      const inSession = setupRow.status === "in_progress";
+      // Additions after the draw: Training/FC go to the END; every other section
+      // goes to the FRONT, numbered 1A, 1B, 1C…
       let endNum = existing.reduce((m, o) => { const n = Number(o.no); return Number.isFinite(n) && n > m ? n : m; }, 0);
       let frontLetter = existing.filter((o) => /^1[A-Za-z]+$/.test(String(o.no))).length;
       const front: StartItem[] = [];
       const end: StartItem[] = [];
       for (const it of items) {
-        if (inSession || extSet.has(it.section)) { endNum += 1; end.push({ entry_id: it.id, no: endNum }); }
+        if (extSet.has(it.section)) { endNum += 1; end.push({ entry_id: it.id, no: endNum }); }
         else { front.push({ entry_id: it.id, no: `1${String.fromCharCode(65 + frontLetter)}` }); frontLetter += 1; }
       }
       front.reverse(); // newest extemp furthest to the front (1B before 1A)
       const start_order = [...front, ...existing, ...end];
-      if (setupRow) await supabaseAdmin.from("event_class_setup").update({ start_order }).eq("id", setupRow.id);
-      else await supabaseAdmin.from("event_class_setup").insert({ event_id: event.id, height, day: d, format: "table_a_jo", params: {}, start_order });
+      await supabaseAdmin.from("event_class_setup").update({ start_order }).eq("id", setupRow.id);
     }
   }
 

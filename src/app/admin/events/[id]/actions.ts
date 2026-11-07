@@ -314,10 +314,9 @@ export async function addEntryAction(input: AddEntryInput): Promise<ActionResult
   if (!input.height || !input.section) return { ok: false, message: "Elija altura y sección." };
   if (!Array.isArray(input.days) || input.days.length === 0) return { ok: false, message: "Elija al menos un día." };
 
-  const { data: event } = await supabaseAdmin.from("events").select("id, config, day_state").eq("id", input.eventId).single();
+  const { data: event } = await supabaseAdmin.from("events").select("id, config").eq("id", input.eventId).single();
   if (!event) return { ok: false, message: "Evento no encontrado." };
   const extempSections: string[] = Array.isArray(event.config?.extempSections) ? event.config.extempSections : ["Training", "FC"];
-  const dayState = (event.day_state ?? {}) as Record<string, { committed?: boolean }>;
 
   const { data: club } = await supabaseAdmin.from("show_clubs").select("id, name").eq("id", input.clubId).single();
   if (!club) return { ok: false, message: "Club no encontrado." };
@@ -368,17 +367,15 @@ export async function addEntryAction(input: AddEntryInput): Promise<ActionResult
     .select("id").single();
   if (entErr || !entry) return { ok: false, message: "No se pudo agregar: " + (entErr?.message ?? "") };
 
-  // Position in any already-committed class (front 1A/1B, or end for Training/FC
-  // or a class in session).
+  // Position in any already-drawn class: Training/FC go to the END; every other
+  // section goes to the FRONT, numbered 1A, 1B, 1C…
   type StartItem = { entry_id: string; no: number | string };
   for (const d of input.days) {
-    if (!dayState[d]?.committed) continue;
     const { data: setupRow } = await supabaseAdmin.from("event_class_setup").select("id, start_order, status").eq("event_id", event.id).eq("height", input.height).eq("day", d).maybeSingle();
     const existing = (setupRow?.start_order as StartItem[] | null) ?? [];
     if (!setupRow || existing.length === 0) continue;
-    const goesEnd = setupRow.status === "in_progress" || extempSections.includes(input.section);
     let start_order: StartItem[];
-    if (goesEnd) {
+    if (extempSections.includes(input.section)) {
       const maxNum = existing.reduce((m, o) => { const n = Number(o.no); return Number.isFinite(n) && n > m ? n : m; }, 0);
       start_order = [...existing, { entry_id: entry.id, no: maxNum + 1 }];
     } else {

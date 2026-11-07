@@ -118,9 +118,9 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
       .from("event_class_setup").select("id, start_order, status").eq("event_id", event.id).eq("height", b.height).eq("day", b.day).maybeSingle();
     const existing = (setupRow?.start_order as StartItem[] | null) ?? [];
     if (setupRow && existing.length) {
-      const goesEnd = setupRow.status === "in_progress" || extempSections.includes(b.section);
+      // Training/FC go to the END; every other section goes to the FRONT (1A, 1B…).
       let start_order: StartItem[];
-      if (goesEnd) {
+      if (extempSections.includes(b.section)) {
         const maxNum = existing.reduce((m, o) => { const n = Number(o.no); return Number.isFinite(n) && n > m ? n : m; }, 0);
         start_order = [...existing, { entry_id: entry.id, no: maxNum + 1 }];
       } else {

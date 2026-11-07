@@ -277,10 +277,8 @@ export async function POST(
     const byClass = new Map<string, { id: string; section: string }[]>();
     for (const e of inserted) {
       for (const d of (Array.isArray(e.days) ? e.days : [])) {
-        if (dayState[d]?.committed) {
-          const k = `${e.height}|${d}`;
-          (byClass.get(k) ?? byClass.set(k, []).get(k)!).push({ id: e.id, section: e.section });
-        }
+        const k = `${e.height}|${d}`;
+        (byClass.get(k) ?? byClass.set(k, []).get(k)!).push({ id: e.id, section: e.section });
       }
     }
     for (const [k, items] of byClass) {
@@ -288,7 +286,11 @@ export async function POST(
       const { data: setupRow } = await supabaseAdmin
         .from("event_class_setup").select("id, start_order, status").eq("event_id", event.id).eq("height", height).eq("day", d).maybeSingle();
       const existing = (setupRow?.start_order as StartItem[] | null) ?? [];
-      const inSession = setupRow?.status === "in_progress";
+      // Only slot into a class that has already been drawn. An undrawn class has
+      // no start order yet, so the extemp shows via the normal roster and will be
+      // placed when the draw is made.
+      if (!setupRow || existing.length === 0) continue;
+      const inSession = setupRow.status === "in_progress";
       let endNum = existing.reduce((m, o) => { const n = Number(o.no); return Number.isFinite(n) && n > m ? n : m; }, 0);
       let frontLetter = existing.filter((o) => /^1[A-Za-z]+$/.test(String(o.no))).length;
       const front: StartItem[] = [];

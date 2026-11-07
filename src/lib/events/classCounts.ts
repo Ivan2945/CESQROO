@@ -82,10 +82,15 @@ export function classRoster(
   const belongs = (e: CountEntry | undefined) =>
     !!e && e.height === height && (Array.isArray(e.days) ? e.days : []).includes(day);
   const committed = setup?.start_order ?? null;
-  const ids =
-    committed && committed.length
-      ? committed.map((o) => o.entry_id).filter((id) => belongs(active.get(id)))
-      : allEntries.filter((e) => active.has(e.id) && belongs(e)).map((e) => e.id);
+  let ids: string[];
+  if (committed && committed.length) {
+    const drawn = committed.map((o) => o.entry_id).filter((id) => belongs(active.get(id)));
+    const inOrder = new Set(drawn);
+    const extra = allEntries.filter((e) => active.has(e.id) && belongs(e) && !inOrder.has(e.id)).map((e) => e.id);
+    ids = [...extra, ...drawn];
+  } else {
+    ids = allEntries.filter((e) => active.has(e.id) && belongs(e)).map((e) => e.id);
+  }
   return [...new Set(ids)].map((id) => active.get(id)!);
 }
 

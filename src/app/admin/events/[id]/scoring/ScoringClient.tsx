@@ -396,15 +396,27 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
   useEffect(() => {
     (async () => {
       const stored = await loadResults(slug);
+      const belongs = (e: typeof boot.entries[number]) =>
+        e.height === height && (Array.isArray(e.days) ? e.days : []).includes(day);
       const order = existing?.start_order && existing.start_order.length
-        ? existing.start_order
-            // Skip entries no longer in the roster (deleted from sign-ups) so a
-            // ghost row never appears — and its stray result can't block sync.
-            .filter((o) => boot.entries.some((x) => x.id === o.entry_id))
-            .map((o) => {
-              const e = boot.entries.find((x) => x.id === o.entry_id);
-              return { entryId: o.entry_id, no: o.no, rider: e?.rider || "", horse: e?.horse || "", section: e?.section || "" };
-            })
+        ? (() => {
+            const inOrder = new Set(existing.start_order.map((o) => o.entry_id));
+            const drawn = existing.start_order
+              // Skip entries no longer in the roster (deleted from sign-ups) so a
+              // ghost row never appears — and its stray result can't block sync.
+              .filter((o) => boot.entries.some((x) => x.id === o.entry_id))
+              .map((o) => {
+                const e = boot.entries.find((x) => x.id === o.entry_id);
+                return { entryId: o.entry_id, no: o.no, rider: e?.rider || "", horse: e?.horse || "", section: e?.section || "" };
+              });
+            // Any binomio that belongs to this class but isn't in the draw yet
+            // (last-minute additions / extemporáneos) goes at the FRONT, so it is
+            // never hidden and is judged first.
+            const extra = boot.entries
+              .filter((e) => !inOrder.has(e.id) && belongs(e))
+              .map((e) => ({ entryId: e.id, no: "" as number | string, rider: e.rider || "", horse: e.horse || "", section: e.section || "" }));
+            return [...extra, ...drawn];
+          })()
         : buildStartList(boot.entries, height, day, 1);
       setRows(order.map((o) => {
         const r = stored[`${o.entryId}|${height}|${day}`];

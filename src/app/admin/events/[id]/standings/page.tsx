@@ -2,6 +2,9 @@ import Link from "next/link";
 import { requireClubAdmin } from "@/lib/auth/requireClubAdmin";
 import { supabaseAdmin } from "@/lib/supabase/admin";
 import { getEventStandings, getSeriesStandings, type Scope, type EventStandings } from "@/lib/events/standingsData";
+import { normalizeConfig } from "@/lib/events/config";
+
+const fmtPts = (n: number) => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +46,10 @@ export default async function StandingsPage({
 
   const data =
     scope === "season" && seriesId ? await getSeriesStandings(seriesId) : await getEventStandings(id, "mini_series");
+
+  // Mini-serie shows a column of points per day plus a Total. Season spans many
+  // events, so it keeps the single Puntos column.
+  const miniDays = scope === "mini_series" ? normalizeConfig(event.config).days : [];
 
   const tab = (s: Scope, label: string) => (
     <Link
@@ -92,6 +99,38 @@ export default async function StandingsPage({
         <div className="mt-6 space-y-6">
           {data.championships.map((c) => {
             const dropped = c.rows.reduce((n, r) => n + r.breakdown.filter((b) => !b.counted).length, 0);
+            // Days (in order) that actually have results in this championship.
+            const present = miniDays.filter((d) => c.rows.some((r) => r.breakdown.some((b) => b.day === d)));
+            const useDays = miniDays.length > 0;
+            const lastDay = present[present.length - 1];
+            const onlyOne = present.length <= 1;
+            const rankOn = (r: typeof c.rows[number], d: string) => {
+              const b = r.breakdown.find((x) => x.day === d);
+              return b && b.rank != null ? b.rank : Infinity;
+            };
+            const dayPts = (r: typeof c.rows[number], d: string) =>
+              r.breakdown.filter((b) => b.day === d && b.counted).reduce((s, b) => s + b.points, 0);
+            const hasDay = (r: typeof c.rows[number], d: string) => r.breakdown.some((b) => b.day === d);
+            // Sort: once ≥2 days have run, by Total (tie → better placing on the
+            // last day); while only the first day has run, by that day's placing.
+            const rows = present.length === 0
+              ? c.rows
+              : [...c.rows].sort((a, b) =>
+                  onlyOne
+                    ? (rankOn(a, lastDay) - rankOn(b, lastDay)) || (b.points - a.points)
+                    : (b.points - a.points) || (rankOn(a, lastDay) - rankOn(b, lastDay))
+                );
+            const places = new Map<string, number>();
+            if (present.length > 0) {
+              let place = 0;
+              let prev: string | null = null;
+              rows.forEach((r, i) => {
+                const k = onlyOne ? `${rankOn(r, lastDay)}` : `${r.points}|${rankOn(r, lastDay)}`;
+                if (k !== prev) { place = i + 1; prev = k; }
+                places.set(r.key, place);
+              });
+            }
+            const placeOf = (r: typeof c.rows[number]) => (present.length > 0 ? places.get(r.key) ?? r.place : r.place);
             return (
               <section key={`${c.height}|${c.section}`} className="rounded-xl border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
                 <div className="mb-3 flex items-baseline gap-2">
@@ -113,19 +152,44 @@ export default async function StandingsPage({
                         <th className="py-2 pr-3">Jinete</th>
                         <th className="py-2 pr-3">Caballo</th>
                         <th className="py-2 pr-3">Club</th>
-                        <th className="py-2 pr-3 text-right">Puntos</th>
+                        {useDays ? (
+                          <>
+                            {miniDays.map((d) => <th key={d} className="py-2 pr-3 text-right">{d}</th>)}
+                            <th className="py-2 pr-3 text-right">Total</th>
+                          </>
+                        ) : (
+                          <th className="py-2 pr-3 text-right">Puntos</th>
+                        )}
                       </tr>
                     </thead>
                     <tbody>
-                      {c.rows.map((r) => (
+                      {rows.map((r) => (
                         <tr key={r.key} className="border-b border-slate-100 dark:border-slate-800">
-                          <td className="py-2 pr-3 font-semibold tabular-nums">{r.place}</td>
+                          <td className="py-2 pr-3 font-semibold tabular-nums">{placeOf(r)}</td>
                           <td className="py-2 pr-3 uppercase">{r.rider ?? "—"}</td>
                           <td className="py-2 pr-3 uppercase">{r.horse ?? "—"}</td>
                           <td className="py-2 pr-3 text-slate-500 dark:text-slate-400">{r.club || "—"}</td>
-                          <td className="py-2 pr-3 text-right font-semibold tabular-nums">
-                            {Number.isInteger(r.points) ? r.points : r.points.toFixed(1)}
-                          </td>
+                          {useDays ? (
+                            <>
+                              {miniDays.map((d) => (
+                                <td key={d} className="py-2 pr-3 text-right tabular-nums">
+                                  {hasDay(r, d) ? (
+                                    <>
+                                      {fmtPts(dayPts(r, d))}
+                                      {rankOn(r, d) !== Infinity && (
+                                        <sup className="ml-0.5 text-[10px] text-slate-400">({rankOn(r, d)})</sup>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <span className="text-slate-300 dark:text-slate-600">—</span>
+                                  )}
+                                </td>
+                              ))}
+                              <td className="py-2 pr-3 text-right font-semibold tabular-nums">{fmtPts(r.points)}</td>
+                            </>
+                          ) : (
+                            <td className="py-2 pr-3 text-right font-semibold tabular-nums">{fmtPts(r.points)}</td>
+                          )}
                         </tr>
                       ))}
                     </tbody>

@@ -66,7 +66,7 @@ export type StandingRow = {
   club?: string;
   points: number;
   place: number; // ties share a place (standard competition ranking)
-  breakdown: { eventId: string; height: string; day: string; order: number; points: number; counted: boolean }[];
+  breakdown: { eventId: string; height: string; day: string; order: number; points: number; counted: boolean; rank: number | null }[];
 };
 
 export type Championship = {
@@ -103,6 +103,7 @@ type Participation = {
   day: string;
   order: number;
   points: number;
+  rank: number | null;
 };
 
 // Per-day cap. "first_class": for each KEY (binomio or rider), only its earliest
@@ -172,6 +173,7 @@ export function computeStandings(classes: ClassForStandings[], rule: StandingsRu
 
       const scored = scoreClass(cls.format, rankPool.map(strip));
       const pts = sectionPoints(scored); // entryId -> points
+      const rankById = new Map(scored.map((s) => [s.id, s.rankSection ?? null])); // entryId -> section placing
       for (const e of rankPool) {
         if (!eligible(e)) continue;
         const p = pts.get(e.id);
@@ -188,6 +190,7 @@ export function computeStandings(classes: ClassForStandings[], rule: StandingsRu
           day: cls.day,
           order: cls.order * 10000 + (e.startNo ?? 9999),
           points: p,
+          rank: rankById.get(e.id) ?? null,
         });
       }
     }
@@ -207,7 +210,7 @@ export function computeStandings(classes: ClassForStandings[], rule: StandingsRu
       rows.get(p.key) ??
       rows.set(p.key, { key: p.key, rider: p.rider, horse: p.entity === "rider" ? undefined : p.horse, club: p.club, points: 0, place: 0, breakdown: [] }).get(p.key)!;
     const isCounted = counted.has(i);
-    row.breakdown.push({ eventId: p.eventId, height: p.height, day: p.day, order: p.order, points: p.points, counted: isCounted });
+    row.breakdown.push({ eventId: p.eventId, height: p.height, day: p.day, order: p.order, points: p.points, counted: isCounted, rank: p.rank });
     if (isCounted) {
       row.points += p.points;
       if (p.entity === "rider") row.horse = p.horse; // show the horse they scored on

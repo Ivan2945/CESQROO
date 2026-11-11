@@ -109,10 +109,21 @@ type Participation = {
 // Per-day cap. "first_class": for each KEY (binomio or rider), only its earliest
 // participation of the day counts (lowest order = first class, then lowest start
 // number within that class). "none": keep all.
-function applyPerDayCap(parts: Participation[], rule: StandingsRule): Set<number> {
+function applyPerDayCap(parts: Participation[], rule: StandingsRule, firstByKeyDay: Map<string, number>): Set<number> {
   const counted = new Set<number>();
   if (rule.per_day_cap === "none") {
     parts.forEach((_, i) => counted.add(i));
+    return counted;
+  }
+  if (rule.per_day_cap === "first_class") {
+    // A competitor scores only in the FIRST championship class it actually rides
+    // that day. "First" is computed over EVERY championship-height ride (even
+    // sections that don't award points), so an earlier non-scoring ride (e.g.
+    // Libre at a height whose points go to Abierta) still uses up the cap.
+    parts.forEach((p, i) => {
+      const first = firstByKeyDay.get(`${p.entity}|${p.key}|${p.day}`);
+      if (first != null && p.order === first) counted.add(i);
+    });
     return counted;
   }
   const groups = new Map<string, number[]>();
@@ -121,11 +132,7 @@ function applyPerDayCap(parts: Participation[], rule: StandingsRule): Set<number
     (groups.get(k) ?? groups.set(k, []).get(k)!).push(i);
   });
   for (const idxs of groups.values()) {
-    if (rule.per_day_cap === "first_class") {
-      let best = idxs[0];
-      for (const i of idxs) if (parts[i].order < parts[best].order) best = i;
-      counted.add(best);
-    } else if (typeof rule.per_day_cap === "object" && "max" in rule.per_day_cap) {
+    if (typeof rule.per_day_cap === "object" && "max" in rule.per_day_cap) {
       [...idxs].sort((a, b) => parts[a].order - parts[b].order).slice(0, rule.per_day_cap.max).forEach((i) => counted.add(i));
     } else {
       idxs.forEach((i) => counted.add(i));
@@ -197,7 +204,25 @@ export function computeStandings(classes: ClassForStandings[], rule: StandingsRu
   }
 
   // 2) Per-day cap (keyed by entity, across heights/sections within that entity).
-  const counted = applyPerDayCap(parts, rule);
+  // First, the earliest championship ride per entity per day — over EVERY ride at
+  // a championship height (any section, excluding NP), not just scoring sections —
+  // so a non-scoring earlier ride still counts as "the first class of the day".
+  const firstByKeyDay = new Map<string, number>();
+  const noteFirst = (entity: "rider" | "binomio", key: string, day: string, order: number) => {
+    const k = `${entity}|${key}|${day}`;
+    const cur = firstByKeyDay.get(k);
+    if (cur == null || order < cur) firstByKeyDay.set(k, order);
+  };
+  for (const c of classes) {
+    if ((sectionsByHeight.get(c.height) ?? []).length === 0) continue; // non-championship height (e.g. Cruces)
+    for (const e of c.entries) {
+      if (e.r1?.status === "NP") continue; // didn't actually compete → doesn't use the cap
+      const order = c.order * 10000 + (e.startNo ?? 9999);
+      noteFirst("binomio", e.binomioKey, c.day, order);
+      noteFirst("rider", e.riderKey, c.day, order);
+    }
+  }
+  const counted = applyPerDayCap(parts, rule, firstByKeyDay);
 
   // 3) Group by (height × section), sum counted points per key.
   const groups = new Map<string, Map<string, StandingRow>>();

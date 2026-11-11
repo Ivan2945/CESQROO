@@ -11,7 +11,7 @@
 //              season:{basis:"registered",per_day_cap:"first_class"} } }
 
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { normalizeConfig, scopeDays, resolvePointsSectionsByHeight } from "@/lib/events/config";
+import { normalizeConfig, scopeDays, resolvePointsSectionsByHeight, dayHeightOrder } from "@/lib/events/config";
 import { classFormatFromSetup, defaultFormatForHeight, formatHasSecondRound } from "@/lib/scoring/portal";
 import { parseFaultShorthand, hasFallMarker } from "@/lib/scoring/faults";
 import {
@@ -146,16 +146,17 @@ async function loadClasses(eventIds: string[]): Promise<ClassForStandings[]> {
   for (const eid of eventIds) {
     const cfg = evConfig.get(eid);
     if (!cfg) continue;
-    // Chronological class order within a day ≈ its height's position in the
-    // configured heights list (low → high). Adjust if a day runs heights in a
-    // different order.
-    const heightOrder = (h: string) => {
-      const i = cfg.heights.indexOf(h);
-      return i < 0 ? 999 : i;
-    };
     const evEntries = entries.filter((e) => e.event_id === eid);
 
     for (const day of cfg.days) {
+      // Chronological class order within the day: the configured run order for
+      // that day (config.classOrderByDay, via dayHeightOrder). Drives the "first
+      // class of the day" cap, so it must match the real running order.
+      const runOrder = dayHeightOrder(cfg, null, day);
+      const heightOrder = (h: string) => {
+        const i = runOrder.indexOf(h);
+        return i < 0 ? 999 : i;
+      };
       for (const height of cfg.heights) {
         const inClass = evEntries.filter((e) => e.height === height && (Array.isArray(e.days) ? e.days : []).includes(day));
         if (!inClass.length) continue;

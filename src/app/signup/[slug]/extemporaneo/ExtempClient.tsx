@@ -98,6 +98,19 @@ function CancelFlow({ slug }: { slug: string }) {
     [entries]
   );
 
+  async function fetchEntries() {
+    const res = await fetch(`/api/events/${slug}/lookup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clubId, email: email.trim() }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) throw new Error(data.error || "No se encontraron inscripciones.");
+    setClubName(data.clubName ?? "");
+    setEntries((data.entries ?? []) as ExistingEntry[]);
+    setPicked(new Set());
+  }
+
   async function onLookup(ev: React.FormEvent) {
     ev.preventDefault();
     setStatus(null);
@@ -105,16 +118,7 @@ function CancelFlow({ slug }: { slug: string }) {
     if (!email.trim()) return setStatus({ type: "err", msg: "Ingrese el correo usado al inscribir." });
     setWorking(true);
     try {
-      const res = await fetch(`/api/events/${slug}/lookup`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clubId, email: email.trim() }),
-      });
-      const data = await res.json();
-      if (!res.ok || data.error) throw new Error(data.error || "No se encontraron inscripciones.");
-      setClubName(data.clubName ?? "");
-      setEntries((data.entries ?? []) as ExistingEntry[]);
-      setPicked(new Set());
+      await fetchEntries();
       setPhase("select");
     } catch (e) {
       setStatus({ type: "err", msg: (e as Error).message });
@@ -145,10 +149,13 @@ function CancelFlow({ slug }: { slug: string }) {
       });
       const data = await res.json();
       if (!res.ok || data.error) throw new Error(data.error || "No se pudo cancelar.");
-      // Reflect locally: mark picked as cancelled.
-      setEntries((es) => es.map((e) => (picked.has(e.id) ? { ...e, status: "cancelled" } : e)));
-      setPicked(new Set());
-      setStatus({ type: "ok", msg: `Se cancelaron ${data.count} participación(es).` });
+      // Re-fetch so the list reflects the real result: a multi-day entry keeps its
+      // other days and the cancelled (current) day shows as a separate row.
+      await fetchEntries();
+      setStatus({
+        type: "ok",
+        msg: `Se cancelaron ${data.count} participación(es) del día en curso.` + (data.message ? ` ${data.message}` : ""),
+      });
     } catch (e) {
       setStatus({ type: "err", msg: (e as Error).message });
     } finally {
@@ -230,6 +237,9 @@ function CancelFlow({ slug }: { slug: string }) {
             </button>
           </div>
 
+          <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+            Las cancelaciones aquí afectan solo el día en curso. Las participaciones de otros días no se modifican.
+          </p>
           {active.length === 0 ? (
             <p className="text-sm text-slate-500">No hay participaciones activas para cancelar.</p>
           ) : (

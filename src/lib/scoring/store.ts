@@ -25,7 +25,7 @@ export type BootstrapData = {
   config: import("@/lib/events/config").EventConfig;
   committedDays?: string[];
   entries: Array<import("./portal").EntryForScoring & { isExtemp?: boolean; cancelled?: boolean; club?: string }>;
-  setups: Array<{ height: string; day: string; format: string; params: Record<string, number>; start_order: { entry_id: string; no: number | string }[] | null; status?: string; current_entry_id?: string | null }>;
+  setups: Array<{ height: string; day: string; format: string; params: Record<string, number>; start_order: { entry_id: string; no: number | string; lateCancel?: boolean }[] | null; status?: string; current_entry_id?: string | null }>;
   results: Array<{ entry_id: string; height: string; day: string; r1_faults: string; r1_time: number | null; r1_status: string; r2_faults: string; r2_time: number | null; r2_status: string; client_updated_at: string }>;
   clubs: Array<{ id: string; name: string }>;
 };

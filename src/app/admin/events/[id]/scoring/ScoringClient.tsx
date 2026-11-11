@@ -72,7 +72,7 @@ type Row = {
   entryId: string; no: number | string; rider: string; horse: string; section: string; club?: string;
   f1: string; t1: string; status1: string;
   f2: string; t2: string; status2: string;
-  scored: boolean; committed: boolean; ext?: boolean; cancelled?: boolean;
+  scored: boolean; committed: boolean; ext?: boolean; cancelled?: boolean; lateCancel?: boolean;
 };
 
 // Sensible starting params per format (seconds + dist/cad for the helpers).
@@ -407,7 +407,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
               .filter((o) => boot.entries.some((x) => x.id === o.entry_id))
               .map((o) => {
                 const e = boot.entries.find((x) => x.id === o.entry_id);
-                return { entryId: o.entry_id, no: o.no, rider: e?.rider || "", horse: e?.horse || "", section: e?.section || "" };
+                return { entryId: o.entry_id, no: o.no, rider: e?.rider || "", horse: e?.horse || "", section: e?.section || "", lateCancel: o.lateCancel };
               });
             // Any binomio that belongs to this class but isn't in the draw yet
             // (last-minute additions / extemporáneos) goes at the FRONT, so it is
@@ -425,9 +425,10 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
         // A cancelled binomio counts as NP and is treated as already scored, so
         // it drops off the pending-to-score list (it shows crossed out below).
         const club = be?.club || "";
+        const lateCancel = (o as { lateCancel?: boolean }).lateCancel;
         if (be?.cancelled) {
           return {
-            entryId: o.entryId, no: o.no, rider: o.rider, horse: o.horse, section: o.section, club, ext, cancelled: true,
+            entryId: o.entryId, no: o.no, rider: o.rider, horse: o.horse, section: o.section, club, ext, cancelled: true, lateCancel,
             f1: "", t1: "", status1: "NP", f2: "", t2: "", status2: "NP",
             scored: true, committed: true,
           };
@@ -791,6 +792,14 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
           </div>
         );
       })()}
+
+      {classStatus === "in_progress" && rows.some((r) => r.lateCancel && r.cancelled) && (
+        <div className="rounded-lg border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-800 dark:border-rose-800 dark:bg-rose-950 dark:text-rose-200">
+          <span className="font-bold">⚠ Cancelación con la clase en curso:</span>{" "}
+          {rows.filter((r) => r.lateCancel && r.cancelled).map((r) => `${r.rider} · ${r.horse}`).join("; ")}.
+          <span className="ml-1 font-medium">Verifique que no esté en pista.</span>
+        </div>
+      )}
 
       {scoringLocked && (
         <div className="flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">

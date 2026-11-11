@@ -1,8 +1,25 @@
 import { supabaseAdmin } from "@/lib/supabase/admin";
-import { buildClassStatusMap, startedDays, dayCommitted, type DayStateMap } from "@/lib/events/locks";
+import { buildClassStatusMap, dayStarted } from "@/lib/events/locks";
+import { normalizeConfig } from "@/lib/events/config";
+import { resultsByKey, resultFor, isResolved, type CountResult } from "@/lib/events/classCounts";
 import type { ExtempCancelPayload } from "@/lib/types/events";
 
 export const dynamic = "force-dynamic";
+
+type StartItem = { entry_id: string; no: number | string; lateCancel?: boolean };
+
+// Today's show day, mapped purely by ORDER from the event's start date (day 1 =
+// earliest configured date, day 2 = +1, …). Returns null if today isn't a show day.
+function activeDayOf(startDate: string | null, days: string[]): string | null {
+  if (!startDate) return null;
+  const addDays = (iso: string, n: number) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+  };
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Mexico_City" }).format(new Date());
+  const idx = days.findIndex((_, i) => addDays(startDate, i) === today);
+  return idx >= 0 ? days[idx] : null;
+}
 
 // POST /api/events/[slug]/extemp-cancel  { clubId, email, entryIds }
 // Public cancellation: marks the given entries status='cancelled' (never deletes)
@@ -23,10 +40,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
   if (entryIds.length === 0) return Response.json({ error: "Elija al menos una participación a cancelar." }, { status: 400 });
 
   const { data: event } = await supabaseAdmin
-    .from("events").select("id, day_state").eq("slug", slug).single();
+    .from("events").select("id, day_state, saturday_date, sunday_date, config").eq("slug", slug).single();
   if (!event) return Response.json({ error: "Evento no encontrado." }, { status: 404 });
 
-  const dayState = (event.day_state ?? {}) as DayStateMap;
+  const config = normalizeConfig(event.config);
+  const activeDay = activeDayOf(event.saturday_date || event.sunday_date || null, config.days);
+  if (!activeDay) {
+    return Response.json({ error: "No hay un día del concurso en curso hoy; no se pueden cancelar participaciones desde aquí." }, { status: 409 });
+  }
   const { data: setupRows } = await supabaseAdmin
     .from("event_class_setup").select("height, day, status").eq("event_id", event.id);
   const classStatus = buildClassStatusMap(setupRows);
@@ -61,60 +82,85 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     return Response.json({ error: "No se encontraron esas participaciones para su club." }, { status: 404 });
   }
 
-  // Cancellation is allowed until a class actually STARTS (in progress / finished)
-  // — a committed-but-not-started class can still be cancelled. Cancelling never
-  // deletes: it sets status='cancelled' (shown crossed out / NP). For a multi-day
-  // entry where some classes have started, we keep the started days live (results
-  // stay intact) and split the not-started days off into a cancelled row.
+  // Results on the active day for these entries — a rider that already has a
+  // scored result can no longer be cancelled.
+  const { data: resRows } = await supabaseAdmin
+    .from("event_results")
+    .select("entry_id, height, day, r1_faults, r1_time, r1_status, r2_faults, r2_time, r2_status")
+    .eq("event_id", event.id)
+    .eq("day", activeDay)
+    .in("entry_id", rows.map((e) => e.id));
+  const resByKey = resultsByKey((resRows ?? []) as CountResult[]);
+
+  // A cancellation from the public day-in-course screen affects ONLY the active
+  // (current) day — never past or future days. Cancelling never deletes: it sets
+  // status='cancelled' (shown crossed out / NP). Allowed until that rider has an
+  // actual RESULT for the day (even mid-class). For a multi-day entry we keep the
+  // other days live and split the active day off into a cancelled row.
   let cancelled = 0;
   const blocked: string[] = [];
+  const flagged: string[] = []; // cancelled while the class was already running
   for (const e of rows) {
     const all = Array.isArray(e.days) ? e.days : [];
-    const started = startedDays(classStatus, e.height, all); // can't cancel these
-    const cancelDays = all.filter((d) => !started.includes(d));
-
-    if (cancelDays.length === 0) {
-      blocked.push(`${e.rider_name} (${e.height} ${all.join(", ")})`);
+    if (!all.includes(activeDay)) {
+      blocked.push(`${e.rider_name} (${e.height}) — sin participación en ${activeDay}`);
       continue;
     }
-    if (started.length === 0) {
-      // Nothing started: cancel the whole entry. Its id stays in any committed
-      // start order, so it shows there as NP / crossed out.
+    if (isResolved(resultFor(resByKey, e, activeDay))) {
+      blocked.push(`${e.rider_name} (${e.height} ${activeDay}) — ya tiene resultado`);
+      continue;
+    }
+    const afterStart = dayStarted(classStatus, e.height, activeDay);
+    if (afterStart) flagged.push(`${e.rider_name} · ${e.horse_name} · ${e.height} ${activeDay}`);
+    const keep = all.filter((d) => d !== activeDay);
+
+    // The id that ends up cancelled in this class's draw: the entry itself when it
+    // was only the active day, or a split-off clone for a multi-day entry.
+    let cancelledId = e.id;
+    if (keep.length === 0) {
       const { error } = await supabaseAdmin
         .from("event_entries").update({ status: "cancelled", is_extemp: true }).eq("id", e.id);
       if (error) return Response.json({ error: "No se pudo cancelar: " + error.message }, { status: 500 });
-      cancelled += 1;
-      continue;
+    } else {
+      // Multi-day: keep the other days on the original entry (results/sign-ups for
+      // those days stay intact), clone just the active day into a cancelled row.
+      const { error: upErr } = await supabaseAdmin
+        .from("event_entries").update({ days: keep }).eq("id", e.id);
+      if (upErr) return Response.json({ error: "No se pudo cancelar: " + upErr.message }, { status: 500 });
+      const { data: clone, error: insErr } = await supabaseAdmin.from("event_entries").insert({
+        submission_id: e.submission_id, event_id: event.id, club_id: e.club_id,
+        rider_id: e.rider_id, horse_id: e.horse_id, rider_name: e.rider_name, horse_name: e.horse_name,
+        height: e.height, section: e.section, days: [activeDay],
+        circuit: e.circuit, discount: e.discount, nomination: e.nomination, status: "cancelled", is_extemp: true,
+      }).select("id").single();
+      if (insErr || !clone) return Response.json({ error: "No se pudo cancelar: " + (insErr?.message ?? "") }, { status: 500 });
+      cancelledId = clone.id;
     }
-    // Mixed: keep the started days on the original entry (results stay linked),
-    // clone the not-started days into a cancelled row.
-    const { error: upErr } = await supabaseAdmin
-      .from("event_entries").update({ days: started }).eq("id", e.id);
-    if (upErr) return Response.json({ error: "No se pudo cancelar: " + upErr.message }, { status: 500 });
-    const { data: clone, error: insErr } = await supabaseAdmin.from("event_entries").insert({
-      submission_id: e.submission_id, event_id: event.id, club_id: e.club_id,
-      rider_id: e.rider_id, horse_id: e.horse_id, rider_name: e.rider_name, horse_name: e.horse_name,
-      height: e.height, section: e.section, days: cancelDays,
-      circuit: e.circuit, discount: e.discount, nomination: e.nomination, status: "cancelled", is_extemp: true,
-    }).select("id").single();
-    if (insErr || !clone) return Response.json({ error: "No se pudo cancelar: " + (insErr?.message ?? "") }, { status: 500 });
-    // For committed (but not started) cancelled days, point the start order at
-    // the cancelled clone so it shows there as NP instead of the live entry.
-    for (const d of cancelDays) {
-      if (!dayCommitted(dayState, d)) continue;
-      const { data: setup } = await supabaseAdmin
-        .from("event_class_setup").select("id, start_order").eq("event_id", event.id).eq("height", e.height).eq("day", d).maybeSingle();
-      const so = setup?.start_order as { entry_id: string; no: number | string }[] | null;
-      if (!so) continue;
-      const next = so.map((o) => (o.entry_id === e.id ? { ...o, entry_id: clone.id } : o));
-      await supabaseAdmin.from("event_class_setup").update({ start_order: next }).eq("id", setup!.id);
+
+    // Update the active day's draw: point the spot at the cancelled id so it shows
+    // as NP, and — if the class had already started — mark it lateCancel so the
+    // scoring screen raises an alert (the signup stays marked; the alert clears on
+    // its own once the class is finished).
+    const { data: setup } = await supabaseAdmin
+      .from("event_class_setup").select("id, start_order").eq("event_id", event.id).eq("height", e.height).eq("day", activeDay).maybeSingle();
+    const so = setup?.start_order as StartItem[] | null;
+    if (setup && so && so.length) {
+      let changed = false;
+      const next = so.map((o) => {
+        if (o.entry_id === e.id || o.entry_id === cancelledId) {
+          changed = true;
+          return { ...o, entry_id: cancelledId, ...(afterStart ? { lateCancel: true } : {}) };
+        }
+        return o;
+      });
+      if (changed) await supabaseAdmin.from("event_class_setup").update({ start_order: next }).eq("id", setup.id);
     }
     cancelled += 1;
   }
 
   if (cancelled === 0 && blocked.length > 0) {
     return Response.json(
-      { error: `No se puede cancelar: la clase ya inició o finalizó — ${blocked.join("; ")}. Contacte al organizador.` },
+      { error: `No se pudo cancelar para ${activeDay}: ${blocked.join("; ")}. Contacte al organizador.` },
       { status: 409 }
     );
   }
@@ -122,6 +168,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ slug: s
     ok: true,
     count: cancelled,
     blocked: blocked.length,
-    ...(blocked.length ? { message: `Algunas no se pudieron cancelar (la clase ya inició): ${blocked.join("; ")}.` } : {}),
+    flagged,
+    ...(blocked.length ? { message: `Algunas no se pudieron cancelar (el jinete ya tiene resultado): ${blocked.join("; ")}.` } : {}),
   });
 }

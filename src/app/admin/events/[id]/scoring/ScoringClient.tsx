@@ -31,7 +31,7 @@ import {
   type ResultRow,
 } from "@/lib/scoring/store";
 import { activeById, resultsByKey, classCount, type CountEntry, type CountResult, type CountSetup } from "@/lib/events/classCounts";
-import { activeHeightsForDay } from "@/lib/events/config";
+import { activeHeightsForDay, dayHeightOrder } from "@/lib/events/config";
 import { FarmtekPanel } from "./FarmtekPanel";
 
 const STATUSES = ["OK", "NP", "EL", "RT", "FC", "T"];
@@ -447,6 +447,30 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
 
   const fmtObj = useMemo(() => classFormatFromSetup(format, params), [format, params]);
 
+  // Flag Abierta binomios whose HORSE already ran the Libre section in an earlier
+  // class that day (by the configured run order). Horse-only match.
+  const librePriorEntryIds = useMemo(() => {
+    const run = dayHeightOrder(boot.config, null, day);
+    const idx = run.indexOf(height);
+    const earlier = new Set(run.slice(0, idx < 0 ? 0 : idx));
+    const libreHorses = new Set<string>();
+    for (const e of boot.entries) {
+      if (e.cancelled) continue;
+      if ((e.section || "").trim().toLowerCase() !== "libre") continue;
+      if (!(Array.isArray(e.days) ? e.days : []).includes(day)) continue;
+      if (!earlier.has(e.height)) continue;
+      libreHorses.add(e.horseKey || e.horse);
+    }
+    const flagged = new Set<string>();
+    if (libreHorses.size === 0) return flagged;
+    for (const e of boot.entries) {
+      if (e.height !== height || !(Array.isArray(e.days) ? e.days : []).includes(day)) continue;
+      if ((e.section || "").trim().toLowerCase() !== "abierta") continue;
+      if (libreHorses.has(e.horseKey || e.horse)) flagged.add(e.id);
+    }
+    return flagged;
+  }, [boot.entries, boot.config, height, day]);
+
   // Ranking over every scored/committed binomio in this class.
   const { byId, points } = useMemo(() => {
     const inputs: ScoreInput[] = rows.filter((r) => r.scored || r.committed).map((r) => ({
@@ -826,7 +850,7 @@ function ClassScoring({ slug, boot, height, day, onBack, onSetupSaved }: {
                   </td>
                   <td className="p-2 text-center font-bold text-blue-700">{s?.rankSection != null ? s.rankSection + "º" : ""}</td>
                   <td className="p-2 text-left">
-                    <div className="font-semibold uppercase text-slate-900">{r.rider}{r.ext && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">EXT</span>}</div>
+                    <div className="font-semibold uppercase text-slate-900">{r.rider}{r.ext && <span className="ml-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">EXT</span>}{librePriorEntryIds.has(r.entryId) && <span title="Este caballo ya corrió en Libre en una prueba anterior del día" className="ml-1.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[10px] font-bold text-orange-700">LIBRE PREVIO</span>}</div>
                     <div className="flex items-center gap-1 text-xs uppercase text-slate-500">
                       <span>{r.horse}{r.club ? ` · ${r.club}` : ""} ·</span>
                       <select value={r.section} onChange={(e) => setRowSection(r.entryId, e.target.value)} onFocus={() => markCurrent(r.entryId)} className="rounded border border-slate-300 px-1 py-0.5 text-[11px] uppercase">
